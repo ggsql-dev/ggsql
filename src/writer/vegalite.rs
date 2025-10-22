@@ -191,10 +191,33 @@ impl VegaLiteWriter {
         aesthetic: &str,
         value: &AestheticValue,
         df: &DataFrame,
+        spec: &VizSpec,
     ) -> Result<Value> {
         match value {
             AestheticValue::Column(col) => {
-                let field_type = self.infer_field_type(df, col);
+                // Check if there's a scale specification for this aesthetic
+                let field_type = if let Some(scale) = spec.find_scale(aesthetic) {
+                    // Use scale type if explicitly specified
+                    if let Some(scale_type) = &scale.scale_type {
+                        use crate::parser::ast::ScaleType;
+                        match scale_type {
+                            ScaleType::Linear | ScaleType::Log10 | ScaleType::Log |
+                            ScaleType::Log2 | ScaleType::Sqrt | ScaleType::Reverse => "quantitative",
+                            ScaleType::Ordinal | ScaleType::Categorical => "nominal",
+                            ScaleType::Date | ScaleType::DateTime | ScaleType::Time => "temporal",
+                            ScaleType::Viridis | ScaleType::Plasma | ScaleType::Magma |
+                            ScaleType::Inferno | ScaleType::Cividis | ScaleType::Diverging |
+                            ScaleType::Sequential => "quantitative", // Color scales
+                        }.to_string()
+                    } else {
+                        // Scale exists but no type specified, infer from data
+                        self.infer_field_type(df, col)
+                    }
+                } else {
+                    // No scale specification, infer from data
+                    self.infer_field_type(df, col)
+                };
+
                 let mut encoding = json!({
                     "field": col,
                     "type": field_type,
@@ -451,7 +474,7 @@ impl Writer for VegaLiteWriter {
             let mut encoding = Map::new();
             for (aesthetic, value) in &layer.aesthetics {
                 let channel_name = self.map_aesthetic_name(aesthetic);
-                let channel_encoding = self.build_encoding_channel(aesthetic, value, data)?;
+                let channel_encoding = self.build_encoding_channel(aesthetic, value, data, spec)?;
                 encoding.insert(channel_name, channel_encoding);
             }
 
@@ -486,8 +509,22 @@ impl Writer for VegaLiteWriter {
                 let mut encoding = Map::new();
                 for (aesthetic, value) in &layer.aesthetics {
                     let channel_name = self.map_aesthetic_name(aesthetic);
-                    let channel_encoding = self.build_encoding_channel(aesthetic, value, data)?;
+                    let channel_encoding = self.build_encoding_channel(aesthetic, value, data, spec)?;
                     encoding.insert(channel_name, channel_encoding);
+                }
+
+                // Override axis titles from labels if present (apply to each layer)
+                if let Some(labels) = &spec.labels {
+                    if let Some(x_label) = labels.labels.get("x") {
+                        if let Some(x_enc) = encoding.get_mut("x") {
+                            x_enc["title"] = json!(x_label);
+                        }
+                    }
+                    if let Some(y_label) = labels.labels.get("y") {
+                        if let Some(y_enc) = encoding.get_mut("y") {
+                            y_enc["title"] = json!(y_label);
+                        }
+                    }
                 }
 
                 layer_spec["encoding"] = Value::Object(encoding);
