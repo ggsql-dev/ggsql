@@ -3,7 +3,7 @@
 //! Provides a reader for DuckDB databases with direct Polars DataFrame integration.
 
 use crate::reader::{connection::ConnectionInfo, Reader};
-use crate::{DataFrame, Result, VizqlError};
+use crate::{DataFrame, Result, VvsqlError};
 use duckdb::{params, Connection};
 
 /// DuckDB database reader
@@ -14,7 +14,7 @@ use duckdb::{params, Connection};
 /// # Examples
 ///
 /// ```rust,ignore
-/// use vizql::reader::{Reader, DuckDBReader};
+/// use vvsql::reader::{Reader, DuckDBReader};
 ///
 /// // In-memory database
 /// let reader = DuckDBReader::from_connection_string("duckdb://memory")?;
@@ -97,13 +97,13 @@ impl DuckDBReader {
 
         let conn = match conn_info {
             ConnectionInfo::DuckDBMemory => Connection::open_in_memory().map_err(|e| {
-                VizqlError::ReaderError(format!("Failed to open in-memory DuckDB: {}", e))
+                VvsqlError::ReaderError(format!("Failed to open in-memory DuckDB: {}", e))
             })?,
             ConnectionInfo::DuckDBFile(path) => Connection::open(&path).map_err(|e| {
-                VizqlError::ReaderError(format!("Failed to open DuckDB file '{}': {}", path, e))
+                VvsqlError::ReaderError(format!("Failed to open DuckDB file '{}': {}", path, e))
             })?,
             _ => {
-                return Err(VizqlError::ReaderError(format!(
+                return Err(VvsqlError::ReaderError(format!(
                     "Connection string '{}' is not supported by DuckDBReader",
                     uri
                 )))
@@ -127,12 +127,12 @@ impl Reader for DuckDBReader {
         let mut stmt = self
             .conn
             .prepare(sql)
-            .map_err(|e| VizqlError::ReaderError(format!("Failed to prepare SQL: {}", e)))?;
+            .map_err(|e| VvsqlError::ReaderError(format!("Failed to prepare SQL: {}", e)))?;
 
         // Execute the query
         let mut rows = stmt
             .query(params![])
-            .map_err(|e| VizqlError::ReaderError(format!("Failed to execute query: {}", e)))?;
+            .map_err(|e| VvsqlError::ReaderError(format!("Failed to execute query: {}", e)))?;
 
         // Collect all rows into vectors and extract column names from first row
         let mut row_data: Vec<Vec<String>> = Vec::new();
@@ -142,13 +142,13 @@ impl Reader for DuckDBReader {
         // Process first row to get column information
         if let Some(first_row) = rows
             .next()
-            .map_err(|e| VizqlError::ReaderError(format!("Failed to fetch first row: {}", e)))?
+            .map_err(|e| VvsqlError::ReaderError(format!("Failed to fetch first row: {}", e)))?
         {
             // Get column count from the row
             column_count = first_row.as_ref().column_count();
 
             if column_count == 0 {
-                return Err(VizqlError::ReaderError(
+                return Err(VvsqlError::ReaderError(
                     "Query returned no columns".to_string(),
                 ));
             }
@@ -160,7 +160,7 @@ impl Reader for DuckDBReader {
                         .as_ref()
                         .column_name(i)
                         .map_err(|e| {
-                            VizqlError::ReaderError(format!("Failed to get column name: {}", e))
+                            VvsqlError::ReaderError(format!("Failed to get column name: {}", e))
                         })?
                         .to_string(),
                 );
@@ -174,7 +174,7 @@ impl Reader for DuckDBReader {
             }
             row_data.push(first_row_vec);
         } else {
-            return Err(VizqlError::ReaderError(
+            return Err(VvsqlError::ReaderError(
                 "Query returned no rows".to_string(),
             ));
         }
@@ -182,7 +182,7 @@ impl Reader for DuckDBReader {
         // Collect remaining rows
         while let Some(row) = rows
             .next()
-            .map_err(|e| VizqlError::ReaderError(format!("Failed to fetch row: {}", e)))?
+            .map_err(|e| VvsqlError::ReaderError(format!("Failed to fetch row: {}", e)))?
         {
             let mut row_vec = Vec::new();
             for i in 0..column_count {
@@ -203,7 +203,7 @@ impl Reader for DuckDBReader {
         }
 
         DataFrame::new(series_vec)
-            .map_err(|e| VizqlError::ReaderError(format!("Failed to create DataFrame: {}", e)))
+            .map_err(|e| VvsqlError::ReaderError(format!("Failed to create DataFrame: {}", e)))
     }
 
     fn validate_columns(&self, sql: &str, columns: &[String]) -> Result<()> {
@@ -220,7 +220,7 @@ impl Reader for DuckDBReader {
         // Check if all required columns exist
         for col in columns {
             if !schema_columns.contains(col) {
-                return Err(VizqlError::ValidationError(format!(
+                return Err(VvsqlError::ValidationError(format!(
                     "Column '{}' not found in query result. Available columns: {}",
                     col,
                     schema_columns.join(", ")

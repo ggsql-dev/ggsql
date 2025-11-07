@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "tree-sitter-vizql",
+    "tree-sitter-vvsql",
     "src"
 ]
 resolver = "2"
@@ -8,10 +8,10 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["VizQL Team"]
+authors = ["vvSQL Team"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/vizql/vizql"
-homepage = "https://vizql.org"
+repository = "https://github.com/vvsql/vvsql"
+homepage = "https://vvsql.org"
 description = "SQL extension for declarative data visualization"
 
 [workspace.dependencies]

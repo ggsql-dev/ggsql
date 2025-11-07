@@ -1,11 +1,11 @@
 /**
- * Minimal VizQL grammar without external scanner
+ * Minimal vvSQL grammar without external scanner
  *
  * Uses a simple regex to capture SQL portion as opaque text
  */
 
 module.exports = grammar({
-  name: 'vizql',
+  name: 'vvsql',
 
   rules: {
     // Main entry point - supports multiple VISUALISE/VISUALIZE statements

@@ -1,8 +1,8 @@
-# VizQL - SQL Visualization Grammar
+# vvSQL - SQL Visualization Grammar
 
 A SQL extension for declarative data visualization based on the Grammar of Graphics.
 
-VizQL allows you to write queries that combine SQL data retrieval with visualization specifications in a single, composable syntax.
+vvSQL allows you to write queries that combine SQL data retrieval with visualization specifications in a single, composable syntax.
 
 ## Example
 
@@ -26,7 +26,7 @@ THEME minimal
 
 **Completed:**
 - ✅ Rust workspace setup with tree-sitter grammar
-- ✅ Complete AST type definitions for VizQL specification
+- ✅ Complete AST type definitions for vvSQL specification
 - ✅ Basic regex-based query splitter (SQL from VISUALISE portions)
 - ✅ Comprehensive test suite for core AST types (6 tests passing)
 - ✅ Build system working with proper dependency management
@@ -47,7 +47,7 @@ THEME minimal
 
 ## Architecture
 
-VizQL splits queries at the `VISUALISE AS` boundary:
+vvSQL splits queries at the `VISUALISE AS` boundary:
 - **SQL portion** → passed to pluggable readers (DuckDB, PostgreSQL, CSV, etc.)
 - **VISUALISE portion** → parsed and compiled into visualization specifications
 - **Output** → rendered via pluggable writers (ggplot2, PNG, Vega-Lite, etc.)
@@ -64,8 +64,8 @@ VizQL splits queries at the `VISUALISE AS` boundary:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/vizql/vizql
-   cd vizql
+   git clone https://github.com/vvsql/vvsql
+   cd vvsql
    ```
 
 2. **Install tree-sitter CLI:**
@@ -91,12 +91,12 @@ VizQL splits queries at the `VISUALISE AS` boundary:
 ## Project Structure
 
 ```
-vizql/
+vvsql/
 ├── Cargo.toml                       # Workspace root configuration
 ├── README.md                        # This file
 ├── CLAUDE.md                        # Complete specification document
 │
-├── tree-sitter-vizql/               # Tree-sitter grammar package
+├── tree-sitter-vvsql/               # Tree-sitter grammar package
 │   ├── grammar.js                   # Grammar definition
 │   ├── src/
 │   │   ├── parser.c                 # Generated parser
@@ -139,11 +139,11 @@ cargo test --features duckdb,sqlite
 
 ### Working with the Grammar
 
-The tree-sitter grammar is in `tree-sitter-vizql/grammar.js`. After making changes:
+The tree-sitter grammar is in `tree-sitter-vvsql/grammar.js`. After making changes:
 
 1. **Regenerate the parser:**
    ```bash
-   cd tree-sitter-vizql
+   cd tree-sitter-vvsql
    tree-sitter generate
    ```
 
@@ -167,18 +167,18 @@ The tree-sitter grammar is in `tree-sitter-vizql/grammar.js`. After making chang
 
 ### Code Organization
 
-- **AST Types** (`src/parser/ast.rs`): Core data structures representing parsed VizQL
+- **AST Types** (`src/parser/ast.rs`): Core data structures representing parsed vvSQL
 - **Query Splitter** (`src/parser/splitter.rs`): Separates SQL from VISUALISE portions
 - **AST Builder** (`src/parser/builder.rs`): Converts tree-sitter parse trees to typed AST
 - **Error Handling** (`src/parser/error.rs`): Parse-time error types and formatting
 
 ### Adding New Grammar Features
 
-1. **Update the grammar** in `tree-sitter-vizql/grammar.js`
+1. **Update the grammar** in `tree-sitter-vvsql/grammar.js`
 2. **Add corresponding AST types** in `src/parser/ast.rs`
 3. **Update the AST builder** in `src/parser/builder.rs`
 4. **Add test cases** for the new feature
-5. **Update syntax highlighting** in `tree-sitter-vizql/queries/highlights.scm`
+5. **Update syntax highlighting** in `tree-sitter-vvsql/queries/highlights.scm`
 
 ## Testing Strategy
 
@@ -193,7 +193,7 @@ Located alongside the code they test:
 - End-to-end query processing (planned)
 
 ### Grammar Tests
-- `tree-sitter-vizql/test/corpus/` - Example queries with expected parse trees
+- `tree-sitter-vvsql/test/corpus/` - Example queries with expected parse trees
 - Run with `tree-sitter test`
 
 ### Running Specific Test Categories
@@ -206,7 +206,7 @@ cargo test ast::tests
 cargo test splitter::tests
 
 # Tree-sitter grammar
-cd tree-sitter-vizql && tree-sitter test
+cd tree-sitter-vvsql && tree-sitter test
 
 # All parser integration tests
 cargo test parser
@@ -214,7 +214,7 @@ cargo test parser
 
 ## Grammar Specification
 
-See [CLAUDE.md](CLAUDE.md) for the complete VizQL grammar specification, including:
+See [CLAUDE.md](CLAUDE.md) for the complete vvSQL grammar specification, including:
 - Complete syntax reference with examples
 - AST structure documentation
 - Implementation phases and architecture
@@ -246,7 +246,7 @@ Key grammar elements:
 ### Parser Issues
 1. **Test grammar in isolation:**
    ```bash
-   cd tree-sitter-vizql
+   cd tree-sitter-vvsql
    echo "SELECT x FROM data VISUALISE AS PLOT WITH point x = x, y = y" | tree-sitter parse
    ```
 
@@ -282,8 +282,8 @@ MIT OR Apache-2.0
 ## Links
 
 - **Specification**: [CLAUDE.md](CLAUDE.md) - Complete grammar and implementation guide
-- **Grammar**: [tree-sitter-vizql/grammar.js](tree-sitter-vizql/grammar.js) - Tree-sitter grammar definition
-- **Examples**: [tree-sitter-vizql/test/corpus/](tree-sitter-vizql/test/corpus/) - Example queries and parse trees
+- **Grammar**: [tree-sitter-vvsql/grammar.js](tree-sitter-vvsql/grammar.js) - Tree-sitter grammar definition
+- **Examples**: [tree-sitter-vvsql/test/corpus/](tree-sitter-vvsql/test/corpus/) - Example queries and parse trees
 
 ---
 

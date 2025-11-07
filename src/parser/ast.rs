@@ -1,8 +1,8 @@
-//! AST (Abstract Syntax Tree) types for VizQL specification
+//! AST (Abstract Syntax Tree) types for vvSQL specification
 //!
-//! This module defines the typed AST structures that represent parsed VizQL queries.
+//! This module defines the typed AST structures that represent parsed vvSQL queries.
 //! The AST is built from the tree-sitter CST (Concrete Syntax Tree) and provides
-//! a more convenient, typed interface for working with VizQL specifications.
+//! a more convenient, typed interface for working with vvSQL specifications.
 //!
 //! # AST Structure
 //!
@@ -20,7 +20,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Complete VizQL visualization specification
+/// Complete vvSQL visualization specification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VizSpec {
     /// Visualization output type (PLOT, TABLE, etc.)

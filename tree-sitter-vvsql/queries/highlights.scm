@@ -1,4 +1,4 @@
-; Tree-sitter highlighting queries for VizQL
+; Tree-sitter highlighting queries for vvSQL
 
 ; Keywords
 [

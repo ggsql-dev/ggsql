@@ -1,12 +1,12 @@
 //! Query splitter using tree-sitter
 //!
-//! Splits VizQL queries at the VISUALISE AS boundary, properly handling
+//! Splits vvSQL queries at the VISUALISE AS boundary, properly handling
 //! SQL strings, comments, and other edge cases.
 
-use crate::{VizqlError, Result};
+use crate::{VvsqlError, Result};
 use regex::Regex;
 
-/// Split a VizQL query into SQL and visualization portions
+/// Split a vvSQL query into SQL and visualization portions
 ///
 /// Returns (sql_part, viz_part) where:
 /// - sql_part: Everything before first "VISUALISE/VISUALIZE AS"
@@ -19,7 +19,7 @@ pub fn split_query(query: &str) -> Result<(String, String)> {
 
     // Find "VISUALISE AS" or "VISUALIZE AS" (case insensitive)
     let pattern = Regex::new(r"(?i)\bVISUALI[SZ]E\s+AS\b")
-        .map_err(|e| VizqlError::InternalError(format!("Regex error: {}", e)))?;
+        .map_err(|e| VvsqlError::InternalError(format!("Regex error: {}", e)))?;
 
     if let Some(mat) = pattern.find(query) {
         let sql_part = query[..mat.start()].trim().to_string();

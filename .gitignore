@@ -23,10 +23,10 @@ ehthumbs.db
 Thumbs.db
 
 # Tree-sitter generated files
-/tree-sitter-vizql/src/parser.c
-/tree-sitter-vizql/src/tree_sitter/
-/tree-sitter-vizql/src/node-types.json
-/tree-sitter-vizql/src/grammar.json
+/tree-sitter-vvsql/src/parser.c
+/tree-sitter-vvsql/src/tree_sitter/
+/tree-sitter-vvsql/src/node-types.json
+/tree-sitter-vvsql/src/grammar.json
 
 # Node.js (for tree-sitter CLI)
 node_modules/

@@ -1,7 +1,7 @@
 {
   "targets": [
     {
-      "target_name": "tree_sitter_vizql_binding",
+      "target_name": "tree_sitter_vvsql_binding",
       "include_dirs": [
         "<!(node -e \"require('nan')\")",
         "src"

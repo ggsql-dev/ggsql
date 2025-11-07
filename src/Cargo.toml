@@ -1,5 +1,5 @@
 [package]
-name = "vizql"
+name = "vvsql"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -9,22 +9,22 @@ homepage.workspace = true
 description.workspace = true
 
 [lib]
-name = "vizql"
+name = "vvsql"
 path = "lib.rs"
 
 [[bin]]
-name = "vizql"
+name = "vvsql"
 path = "cli.rs"
 
 [[bin]]
-name = "vizql-rest"
+name = "vvsql-rest"
 path = "rest.rs"
 required-features = ["rest-api"]
 
 [dependencies]
 # Parsing
 tree-sitter.workspace = true
-tree-sitter-vizql = { path = "../tree-sitter-vizql" }
+tree-sitter-vvsql = { path = "../tree-sitter-vvsql" }
 
 # Data processing
 polars.workspace = true

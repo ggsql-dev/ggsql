@@ -1,11 +1,11 @@
 {
-  "name": "tree-sitter-vizql",
+  "name": "tree-sitter-vvsql",
   "version": "0.1.0",
-  "description": "Tree-sitter grammar for VizQL visualization language",
+  "description": "Tree-sitter grammar for vvSQL visualization language",
   "main": "bindings/node",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vizql/vizql.git"
+    "url": "https://github.com/vvsql/vvsql.git"
   },
   "keywords": [
     "tree-sitter",
@@ -40,8 +40,8 @@
   },
   "tree-sitter": [
     {
-      "scope": "source.vizql",
-      "injection-regex": "vizql"
+      "scope": "source.vvsql",
+      "injection-regex": "vvsql"
     }
   ]
 }

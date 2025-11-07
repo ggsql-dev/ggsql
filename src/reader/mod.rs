@@ -1,4 +1,4 @@
-//! Data source abstraction layer for VizQL
+//! Data source abstraction layer for vvSQL
 //!
 //! The reader module provides a pluggable interface for executing SQL queries
 //! against various data sources and returning Polars DataFrames for visualization.
@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use vizql::reader::{Reader, DuckDBReader};
+//! use vvsql::reader::{Reader, DuckDBReader};
 //!
 //! let reader = DuckDBReader::from_connection_string("duckdb://memory")?;
 //! let df = reader.execute("SELECT * FROM table")?;
@@ -46,7 +46,7 @@ pub trait Reader {
     ///
     /// # Errors
     ///
-    /// Returns `VizqlError::ReaderError` if:
+    /// Returns `VvsqlError::ReaderError` if:
     /// - The SQL is invalid
     /// - The connection fails
     /// - The table or columns don't exist

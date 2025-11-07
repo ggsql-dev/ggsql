@@ -2,7 +2,7 @@
 //!
 //! Parses URI-style connection strings to determine database type and connection parameters.
 
-use crate::{Result, VizqlError};
+use crate::{Result, VvsqlError};
 
 /// Parsed connection information
 #[derive(Debug, Clone, PartialEq)]
@@ -32,7 +32,7 @@ pub enum ConnectionInfo {
 /// # Examples
 ///
 /// ```
-/// use vizql::reader::connection::{parse_connection_string, ConnectionInfo};
+/// use vvsql::reader::connection::{parse_connection_string, ConnectionInfo};
 ///
 /// let info = parse_connection_string("duckdb://memory").unwrap();
 /// assert_eq!(info, ConnectionInfo::DuckDBMemory);
@@ -49,7 +49,7 @@ pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
         // Remove leading slashes for file paths
         let cleaned_path = path.trim_start_matches('/');
         if cleaned_path.is_empty() {
-            return Err(VizqlError::ReaderError(
+            return Err(VvsqlError::ReaderError(
                 "DuckDB file path cannot be empty".to_string(),
             ));
         }
@@ -63,14 +63,14 @@ pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
     if let Some(path) = uri.strip_prefix("sqlite://") {
         let cleaned_path = path.trim_start_matches('/');
         if cleaned_path.is_empty() {
-            return Err(VizqlError::ReaderError(
+            return Err(VvsqlError::ReaderError(
                 "SQLite file path cannot be empty".to_string(),
             ));
         }
         return Ok(ConnectionInfo::SQLite(cleaned_path.to_string()));
     }
 
-    Err(VizqlError::ReaderError(format!(
+    Err(VvsqlError::ReaderError(format!(
         "Unsupported connection string format: {}. Supported: duckdb://, postgres://, sqlite://",
         uri
     )))

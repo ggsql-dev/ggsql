@@ -1,8 +1,8 @@
 """
-Tree-sitter bindings for VizQL
+Tree-sitter bindings for vvSQL
 
-This package provides Python bindings for the tree-sitter-vizql grammar.
-VizQL is a SQL extension for declarative data visualization based on the Grammar of Graphics.
+This package provides Python bindings for the tree-sitter-vvsql grammar.
+vvSQL is a SQL extension for declarative data visualization based on the Grammar of Graphics.
 """
 
 from tree_sitter import Language
@@ -16,7 +16,7 @@ except ImportError:
     # Try to load the language from the compiled shared library
     LIB_PATH = os.path.join(os.path.dirname(__file__), "binding.so")
     if os.path.exists(LIB_PATH):
-        language = Language(LIB_PATH, "vizql")
+        language = Language(LIB_PATH, "vvsql")
     else:
         # Fallback: try to compile from source
         import subprocess
@@ -32,7 +32,7 @@ except ImportError:
                 [grammar_path]
             )
         except Exception as e:
-            raise ImportError(f"Could not load tree-sitter-vizql language: {e}")
+            raise ImportError(f"Could not load tree-sitter-vvsql language: {e}")
 
 __version__ = "0.1.0"
 __all__ = ["language"]

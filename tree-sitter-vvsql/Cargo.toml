@@ -1,11 +1,11 @@
 [package]
-name = "tree-sitter-vizql"
+name = "tree-sitter-vvsql"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Tree-sitter grammar for VizQL visualization language"
+description = "Tree-sitter grammar for vvSQL visualization language"
 build = "bindings/rust/build.rs"
 
 [lib]

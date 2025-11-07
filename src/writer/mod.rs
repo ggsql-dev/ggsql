@@ -1,4 +1,4 @@
-//! Output writer abstraction layer for VizQL
+//! Output writer abstraction layer for vvSQL
 //!
 //! The writer module provides a pluggable interface for generating visualization
 //! outputs from VizSpec + DataFrame combinations.
@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use vizql::writer::{Writer, VegaLiteWriter};
+//! use vvsql::writer::{Writer, VegaLiteWriter};
 //!
 //! let writer = VegaLiteWriter::new();
 //! let json = writer.write(&spec, &dataframe)?;
@@ -37,7 +37,7 @@ pub trait Writer {
     ///
     /// # Arguments
     ///
-    /// * `spec` - The parsed VizQL specification
+    /// * `spec` - The parsed vvSQL specification
     /// * `data` - The DataFrame containing the query results
     ///
     /// # Returns
@@ -46,7 +46,7 @@ pub trait Writer {
     ///
     /// # Errors
     ///
-    /// Returns `VizqlError::WriterError` if:
+    /// Returns `VvsqlError::WriterError` if:
     /// - The spec is incompatible with this writer
     /// - The data doesn't match the spec's requirements
     /// - Output generation fails

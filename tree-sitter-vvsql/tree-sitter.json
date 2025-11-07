@@ -2,28 +2,28 @@
   "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
   "grammars": [
     {
-      "name": "vizql",
-      "camelcase": "VizQL",
-      "title": "VizQL",
-      "scope": "source.vizql",
+      "name": "vvsql",
+      "camelcase": "vvSQL",
+      "title": "vvSQL",
+      "scope": "source.vvsql",
       "file-types": [
-        "vizql"
+        "vvsql"
       ],
-      "injection-regex": "^vizql$",
-      "class-name": "TreeSitterVizql"
+      "injection-regex": "^vvsql$",
+      "class-name": "TreeSittervvSQL"
     }
   ],
   "metadata": {
     "version": "0.1.0",
     "license": "MIT",
-    "description": "Vizql grammar for tree-sitter",
+    "description": "vvSQL grammar for tree-sitter",
     "authors": [
       {
-        "name": "VizQL Authors"
+        "name": "vvSQL Authors"
       }
     ],
     "links": {
-      "repository": "https://github.com/tree-sitter/tree-sitter-vizql"
+      "repository": "https://github.com/tree-sitter/tree-sitter-vvsql"
     }
   },
   "bindings": {

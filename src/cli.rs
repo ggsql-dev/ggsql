@@ -1,21 +1,21 @@
 /*!
-VizQL Command Line Interface
+vvSQL Command Line Interface
 
-Provides commands for executing VizQL queries with various data sources and output formats.
+Provides commands for executing vvSQL queries with various data sources and output formats.
 */
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use vizql::{parser, VERSION};
+use vvsql::{parser, VERSION};
 
 #[cfg(feature = "duckdb")]
-use vizql::reader::{Reader, DuckDBReader};
+use vvsql::reader::{Reader, DuckDBReader};
 
 #[cfg(feature = "vegalite")]
-use vizql::writer::{Writer, VegaLiteWriter};
+use vvsql::writer::{Writer, VegaLiteWriter};
 
 #[derive(Parser)]
-#[command(name = "vizql")]
+#[command(name = "vvsql")]
 #[command(about = "SQL extension for declarative data visualization")]
 #[command(version = VERSION)]
 pub struct Cli {
@@ -25,9 +25,9 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Execute a VizQL query
+    /// Execute a vvSQL query
     Exec {
-        /// The VizQL query to execute
+        /// The vvSQL query to execute
         query: String,
 
         /// Data source connection string
@@ -43,9 +43,9 @@ pub enum Commands {
         output: Option<PathBuf>,
     },
 
-    /// Execute a VizQL query from a file
+    /// Execute a vvSQL query from a file
     Run {
-        /// Path to .sql file containing VizQL query
+        /// Path to .sql file containing vvSQL query
         file: PathBuf,
 
         /// Data source connection string
@@ -63,7 +63,7 @@ pub enum Commands {
 
     /// Parse a query and show the AST (for debugging)
     Parse {
-        /// The VizQL query to parse
+        /// The vvSQL query to parse
         query: String,
 
         /// Output format for AST (json, debug, pretty)
@@ -73,7 +73,7 @@ pub enum Commands {
 
     /// Validate a query without executing
     Validate {
-        /// The VizQL query to validate
+        /// The vvSQL query to validate
         query: String,
 
         /// Data source connection string (needed for column validation)
@@ -94,12 +94,12 @@ fn main() -> anyhow::Result<()> {
                 println!("Output: {}", output_file.display());
             }
 
-            // Split query into SQL and VizQL portions
+            // Split query into SQL and vvSQL portions
             match parser::split_query(&query) {
                 Ok((sql_part, viz_part)) => {
                     println!("\nQuery split:");
                     println!("  SQL portion: {} chars", sql_part.len());
-                    println!("  VizQL portion: {} chars", viz_part.len());
+                    println!("  vvSQL portion: {} chars", viz_part.len());
 
                     // Execute SQL portion using the reader
                     #[cfg(feature = "duckdb")]
@@ -112,7 +112,7 @@ fn main() -> anyhow::Result<()> {
                                         println!("Result shape: {:?}", df.shape());
                                         println!("Columns: {:?}", df.get_column_names());
 
-                                        // Parse VizQL portion
+                                        // Parse vvSQL portion
                                         match parser::parse_query(&query) {
                                             Ok(specs) => {
                                                 println!("\nParsed {} visualization spec(s)", specs.len());
@@ -165,7 +165,7 @@ fn main() -> anyhow::Result<()> {
                                                 }
                                             }
                                             Err(e) => {
-                                                eprintln!("Failed to parse VizQL portion: {}", e);
+                                                eprintln!("Failed to parse vvSQL portion: {}", e);
                                                 std::process::exit(1);
                                             }
                                         }
@@ -216,7 +216,7 @@ fn main() -> anyhow::Result<()> {
                         Ok((sql_part, viz_part)) => {
                             println!("\nQuery split:");
                             println!("  SQL portion: {} chars", sql_part.len());
-                            println!("  VizQL portion: {} chars", viz_part.len());
+                            println!("  vvSQL portion: {} chars", viz_part.len());
 
                             // Execute SQL portion using the reader
                             #[cfg(feature = "duckdb")]
@@ -229,7 +229,7 @@ fn main() -> anyhow::Result<()> {
                                                 println!("Result shape: {:?}", df.shape());
                                                 println!("Columns: {:?}", df.get_column_names());
 
-                                                // Parse VizQL portion
+                                                // Parse vvSQL portion
                                                 match parser::parse_query(&query) {
                                                     Ok(specs) => {
                                                         println!("\nParsed {} visualization spec(s)", specs.len());
@@ -282,7 +282,7 @@ fn main() -> anyhow::Result<()> {
                                                         }
                                                     }
                                                     Err(e) => {
-                                                        eprintln!("Failed to parse VizQL portion: {}", e);
+                                                        eprintln!("Failed to parse vvSQL portion: {}", e);
                                                         std::process::exit(1);
                                                     }
                                                 }
@@ -333,7 +333,7 @@ fn main() -> anyhow::Result<()> {
                         "json" => println!("{}", serde_json::to_string_pretty(&specs)?),
                         "debug" => println!("{:#?}", specs),
                         "pretty" => {
-                            println!("VizQL Specifications: {} total", specs.len());
+                            println!("vvSQL Specifications: {} total", specs.len());
                             for (i, spec) in specs.iter().enumerate() {
                                 println!("\nVisualization #{} ({:?}):", i + 1, spec.viz_type);
                                 println!("  Layers: {}", spec.layers.len());

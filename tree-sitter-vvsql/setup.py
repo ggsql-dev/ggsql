@@ -6,10 +6,10 @@ c_src_path = os.path.join("src", "parser.c")
 include_dirs = ["src"]
 
 # Define the extension module
-vizql_extension = Extension(
-    "tree_sitter_vizql.binding",
+vvsql_extension = Extension(
+    "tree_sitter_vvsql.binding",
     sources=[
-        "bindings/python/tree_sitter_vizql/binding.c",
+        "bindings/python/tree_sitter_vvsql/binding.c",
         c_src_path,
     ],
     include_dirs=include_dirs,
@@ -19,6 +19,6 @@ vizql_extension = Extension(
 )
 
 setup(
-    ext_modules=[vizql_extension],
+    ext_modules=[vvsql_extension],
     package_dir={"": "bindings/python"},
 )

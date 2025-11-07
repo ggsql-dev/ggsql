@@ -1,9 +1,9 @@
 /*!
-# VizQL - SQL Visualization Grammar
+# vvSQL - SQL Visualization Grammar
 
 A SQL extension for declarative data visualization based on the Grammar of Graphics.
 
-VizQL allows you to write queries that combine SQL data retrieval with visualization
+vvSQL allows you to write queries that combine SQL data retrieval with visualization
 specifications in a single, composable syntax.
 
 ## Example
@@ -25,7 +25,7 @@ THEME
 
 ## Architecture
 
-VizQL splits queries at the `VISUALISE AS` boundary:
+vvSQL splits queries at the `VISUALISE AS` boundary:
 - **SQL portion** → passed to pluggable readers (DuckDB, PostgreSQL, CSV, etc.)
 - **VISUALISE portion** → parsed and compiled into visualization specifications
 - **Output** → rendered via pluggable writers (ggplot2, PNG, Vega-Lite, etc.)
@@ -58,7 +58,7 @@ pub use polars::prelude::DataFrame;
 
 /// Main library error type
 #[derive(thiserror::Error, Debug)]
-pub enum VizqlError {
+pub enum VvsqlError {
     #[error("Parse error: {0}")]
     ParseError(String),
 
@@ -75,7 +75,7 @@ pub enum VizqlError {
     InternalError(String),
 }
 
-pub type Result<T> = std::result::Result<T, VizqlError>;
+pub type Result<T> = std::result::Result<T, VvsqlError>;
 
 /// Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

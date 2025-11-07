@@ -1,19 +1,19 @@
 /**
- * Test file for tree-sitter-vizql Node.js bindings
+ * Test file for tree-sitter-vvsql Node.js bindings
  */
 
 const Parser = require('tree-sitter');
 
 try {
-  const VizQL = require('./index.js');
-  console.log('✅ Successfully loaded tree-sitter-vizql bindings');
-  console.log('Language name:', VizQL.name);
+  const vvSQL = require('./index.js');
+  console.log('✅ Successfully loaded tree-sitter-vvsql bindings');
+  console.log('Language name:', vvSQL.name);
 
   // Create a parser
   const parser = new Parser();
-  parser.setLanguage(VizQL.language);
+  parser.setLanguage(vvSQL.language);
 
-  // Test parsing a simple VizQL query
+  // Test parsing a simple vvSQL query
   const sourceCode = `
   VISUALISE AS PLOT
   WITH point USING
@@ -27,7 +27,7 @@ try {
     console.log('❌ Parse error in test query');
     console.log(tree.rootNode.toString());
   } else {
-    console.log('✅ Successfully parsed test VizQL query');
+    console.log('✅ Successfully parsed test vvSQL query');
     console.log('Root node type:', tree.rootNode.type);
     console.log('Child count:', tree.rootNode.childCount);
   }
@@ -55,11 +55,11 @@ try {
   if (complexTree.rootNode.hasError()) {
     console.log('❌ Parse error in complex query');
   } else {
-    console.log('✅ Successfully parsed complex VizQL query');
+    console.log('✅ Successfully parsed complex vvSQL query');
     console.log('Complex query child count:', complexTree.rootNode.childCount);
   }
 
 } catch (error) {
-  console.error('❌ Failed to load tree-sitter-vizql bindings:', error.message);
+  console.error('❌ Failed to load tree-sitter-vvsql bindings:', error.message);
   process.exit(1);
 }

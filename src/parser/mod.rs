@@ -1,7 +1,7 @@
 /*!
-VizQL Parser Module
+vvSQL Parser Module
 
-Handles splitting VizQL queries into SQL and visualization portions, then parsing
+Handles splitting vvSQL queries into SQL and visualization portions, then parsing
 the visualization specification into a typed AST.
 
 ## Architecture
@@ -18,8 +18,8 @@ the visualization specification into a typed AST.
 ## Example Usage
 
 ```rust
-# use vizql::parser::parse_query;
-# use vizql::{Geom, VizType};
+# use vvsql::parser::parse_query;
+# use vvsql::{Geom, VizType};
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let query = r#"
     SELECT date, revenue, region FROM sales WHERE year = 2024
@@ -43,7 +43,7 @@ assert_eq!(specs[0].layers[0].geom, Geom::Line);
 */
 
 use tree_sitter::Tree;
-use crate::{VizqlError, Result};
+use crate::{VvsqlError, Result};
 
 pub mod ast;
 pub mod splitter;
@@ -55,9 +55,9 @@ pub use ast::*;
 pub use error::ParseError;
 pub use splitter::split_query;
 
-/// Main entry point for parsing VizQL queries
+/// Main entry point for parsing vvSQL queries
 ///
-/// Takes a complete VizQL query (SQL + VISUALISE) and returns a vector of
+/// Takes a complete vvSQL query (SQL + VISUALISE) and returns a vector of
 /// parsed specifications (one per VISUALISE statement).
 pub fn parse_query(query: &str) -> Result<Vec<VizSpec>> {
     // Step 1: Split the query into SQL and VISUALISE portions
@@ -76,25 +76,25 @@ pub fn parse_query(query: &str) -> Result<Vec<VizSpec>> {
 fn parse_viz_portion(viz_query: &str) -> Result<Tree> {
     let mut parser = tree_sitter::Parser::new();
 
-    // Set the tree-sitter-vizql language
+    // Set the tree-sitter-vvsql language
     parser
-        .set_language(&tree_sitter_vizql::language())
-        .map_err(|e| VizqlError::ParseError(format!("Failed to set language: {}", e)))?;
+        .set_language(&tree_sitter_vvsql::language())
+        .map_err(|e| VvsqlError::ParseError(format!("Failed to set language: {}", e)))?;
 
     // Parse the visualization query directly (no SQL prepending needed)
     let tree = parser
         .parse(viz_query, None)
-        .ok_or_else(|| VizqlError::ParseError("Failed to parse visualization query".to_string()))?;
+        .ok_or_else(|| VvsqlError::ParseError("Failed to parse visualization query".to_string()))?;
 
     // Check for parse errors
     if tree.root_node().has_error() {
-        return Err(VizqlError::ParseError("Parse tree contains errors".to_string()));
+        return Err(VvsqlError::ParseError("Parse tree contains errors".to_string()));
     }
 
     Ok(tree)
 }
 
-/// Extract just the SQL portion from a VizQL query
+/// Extract just the SQL portion from a vvSQL query
 pub fn extract_sql(query: &str) -> Result<String> {
     let (sql_part, _) = splitter::split_query(query)?;
     Ok(sql_part)
