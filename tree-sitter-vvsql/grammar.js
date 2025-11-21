@@ -17,14 +17,204 @@ function caseInsensitive(keyword) {
 module.exports = grammar({
   name: 'vvsql',
 
-  rules: {
-    // Main entry point - supports multiple VISUALISE/VISUALIZE statements
-    // The SQL portion will be handled by the calling code (splitter)
-    query: $ => repeat1($.visualise_statement),
+  conflicts: $ => [
+    [$.sql_portion],
+  ],
 
-    // VISUALISE/VISUALIZE AS <type> with clauses
+  rules: {
+    // Main entry point - SQL followed by VISUALISE statements
+    query: $ => seq(
+      optional($.sql_portion),
+      repeat1($.visualise_statement)
+    ),
+
+    // SQL portion - multiple statements separated by semicolons
+    sql_portion: $ => choice(
+      // Multiple statements with semicolons
+      prec.right(seq(
+        $.sql_statement,
+        repeat1(seq(';', optional($.sql_statement))),
+        optional(';')
+      )),
+      // Single statement (no semicolon before VISUALISE)
+      $.sql_statement
+    ),
+
+    // A single SQL statement - order matters! More specific first
+    sql_statement: $ => choice(
+      $.with_statement,  // Check WITH first (can contain SELECT)
+      $.select_statement,
+      $.create_statement,
+      $.insert_statement,
+      $.update_statement,
+      $.delete_statement,
+      $.other_sql_statement  // Fallback for other SQL
+    ),
+
+    // SELECT statement
+    select_statement: $ => prec(2, seq(
+      caseInsensitive('SELECT'),
+      $.select_body
+    )),
+
+    select_body: $ => prec.left(repeat1(choice(
+      $.sql_keyword,
+      $.string,
+      $.number,
+      ',', '*', '.', '=', '<', '>', '!',
+      $.subquery,
+      token(/[^\s;(),'"VvWwSsCcIiUuDd]+/),  // Other SQL tokens, excluding keyword start letters
+      $.identifier
+    ))),
+
+    // WITH statement (CTEs) - WITH must be followed by SELECT
+    with_statement: $ => prec(2, seq(
+      caseInsensitive('WITH'),
+      optional(caseInsensitive('RECURSIVE')),
+      $.cte_definition,
+      repeat(seq(',', $.cte_definition)),
+      optional($.select_statement)  // WITH can optionally be followed by SELECT
+    )),
+
+    cte_definition: $ => seq(
+      $.identifier,
+      caseInsensitive('AS'),
+      '(',
+      $.select_statement,
+      ')'
+    ),
+
+    // CREATE statement
+    create_statement: $ => prec.right(seq(
+      caseInsensitive('CREATE'),
+      repeat1(choice(
+        $.sql_keyword,
+        $.identifier,
+        $.string,
+        $.number,
+        $.subquery,
+        ',', '(', ')', '*', '.', '=',
+        /[^\s;(),'"]+/
+      ))
+    )),
+
+    // INSERT statement
+    insert_statement: $ => prec.right(seq(
+      caseInsensitive('INSERT'),
+      repeat1(choice(
+        $.sql_keyword,
+        $.identifier,
+        $.string,
+        $.number,
+        $.subquery,
+        ',', '(', ')', '*', '.', '=',
+        /[^\s;(),'"]+/
+      ))
+    )),
+
+    // UPDATE statement
+    update_statement: $ => prec.right(seq(
+      caseInsensitive('UPDATE'),
+      repeat1(choice(
+        $.sql_keyword,
+        $.identifier,
+        $.string,
+        $.number,
+        $.subquery,
+        ',', '(', ')', '*', '.', '=',
+        /[^\s;(),'"]+/
+      ))
+    )),
+
+    // DELETE statement
+    delete_statement: $ => prec.right(seq(
+      caseInsensitive('DELETE'),
+      repeat1(choice(
+        $.sql_keyword,
+        $.identifier,
+        $.string,
+        $.number,
+        $.subquery,
+        ',', '(', ')', '*', '.', '=',
+        /[^\s;(),'"]+/
+      ))
+    )),
+
+    // Other SQL statements - DO NOT match if starts with keywords we handle
+    // explicitly (WITH, SELECT, CREATE, INSERT, UPDATE, DELETE, VISUALISE)
+    other_sql_statement: $ => {
+      const exclude_pattern = /[^\s;(),'"WwSsCcIiUuDdVv]+/;
+      return prec(-1, repeat1(choice(
+        $.sql_keyword,
+        token(exclude_pattern),  // Tokens not starting with excluded letters
+        $.string,
+        $.number,
+        $.subquery,
+        ',', '(', ')', '*', '.', '='
+      )));
+    },
+
+    // Subquery in parentheses - fully recursive, can contain any SQL
+    // Higher precedence to prefer subquery interpretation over other_sql_statement
+    subquery: $ => prec(1, seq(
+      '(',
+      repeat1(choice(
+        $.select_statement,
+        $.sql_keyword,
+        $.string,
+        $.number,
+        $.identifier,
+        $.subquery,  // Nested subqueries
+        ',', '*', '.', '=', '<', '>', '!',
+        token(/[^\s;(),'\"]+/)  // Any other SQL tokens
+      )),
+      ')'
+    )),
+
+    // Common SQL keywords (to help parser recognize structure)
+    sql_keyword: $ => choice(
+      caseInsensitive('FROM'),
+      caseInsensitive('WHERE'),
+      caseInsensitive('JOIN'),
+      caseInsensitive('LEFT'),
+      caseInsensitive('RIGHT'),
+      caseInsensitive('INNER'),
+      caseInsensitive('OUTER'),
+      caseInsensitive('ON'),
+      caseInsensitive('AND'),
+      caseInsensitive('OR'),
+      caseInsensitive('NOT'),
+      caseInsensitive('IN'),
+      caseInsensitive('EXISTS'),
+      caseInsensitive('BETWEEN'),
+      caseInsensitive('LIKE'),
+      caseInsensitive('ORDER'),
+      caseInsensitive('GROUP'),
+      caseInsensitive('BY'),
+      caseInsensitive('HAVING'),
+      caseInsensitive('LIMIT'),
+      caseInsensitive('OFFSET'),
+      caseInsensitive('DISTINCT'),
+      caseInsensitive('ALL'),
+      caseInsensitive('ASC'),
+      caseInsensitive('DESC'),
+      caseInsensitive('INTO'),
+      caseInsensitive('VALUES'),
+      caseInsensitive('SET'),
+      caseInsensitive('TABLE'),
+      caseInsensitive('TEMP'),
+      caseInsensitive('TEMPORARY'),
+      caseInsensitive('VIEW'),
+      caseInsensitive('INDEX'),
+      caseInsensitive('DATABASE'),
+      caseInsensitive('SCHEMA')
+    ),
+
+    // VISUALISE/VISUALIZE [FROM source] AS <type> with clauses
+    // FROM source can be an identifier (table/CTE) or string (file path)
     visualise_statement: $ => seq(
       choice(caseInsensitive('VISUALISE'), caseInsensitive('VISUALIZE')),
+      optional(seq(caseInsensitive('FROM'), choice($.identifier, $.string))),
       caseInsensitive('AS'),
       $.viz_type,
       repeat($.viz_clause)

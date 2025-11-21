@@ -12,9 +12,6 @@ use std::collections::HashMap;
 pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<VizSpec>> {
     let root = tree.root_node();
 
-    // For now, create a simple stub implementation
-    // TODO: Implement full tree walking and AST building
-
     // Check if root is a query node
     if root.kind() != "query" {
         return Err(VvsqlError::ParseError(format!(
@@ -23,6 +20,18 @@ pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<VizSpec>> {
         )));
     }
 
+    // Extract SQL portion node (if exists)
+    let sql_portion_node = root
+        .children(&mut root.walk())
+        .find(|n| n.kind() == "sql_portion");
+
+    // Check if last SQL statement is SELECT
+    let last_is_select = if let Some(sql_node) = sql_portion_node {
+        check_last_statement_is_select(&sql_node)
+    } else {
+        false
+    };
+
     let mut specs = Vec::new();
 
     // Walk through child nodes - each visualise_statement becomes a VizSpec
@@ -30,6 +39,16 @@ pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<VizSpec>> {
     for child in root.children(&mut cursor) {
         if child.kind() == "visualise_statement" {
             let spec = build_visualise_statement(&child, source)?;
+
+            // Validate VISUALISE FROM usage
+            if spec.source.is_some() && last_is_select {
+                return Err(VvsqlError::ParseError(
+                    "Cannot use VISUALISE FROM when the last SQL statement is SELECT. \
+                     Use either 'SELECT ... VISUALISE AS' or remove the SELECT and use \
+                     'VISUALISE FROM ... AS'.".to_string()
+                ));
+            }
+
             specs.push(spec);
         }
     }
@@ -47,12 +66,19 @@ pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<VizSpec>> {
 fn build_visualise_statement(node: &Node, source: &str) -> Result<VizSpec> {
     let mut spec = VizSpec::new(VizType::Plot);
 
+    // Extract FROM source if present
+    spec.source = extract_from_clause(node, source);
+
     // Walk through children of visualise_statement
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "VISUALISE" | "VISUALIZE" | "AS" => {
+            "VISUALISE" | "VISUALIZE" | "AS" | "FROM" => {
                 // Skip keywords
+                continue;
+            }
+            "identifier" => {
+                // Skip identifier here - already extracted in FROM clause
                 continue;
             }
             "viz_type" => {
@@ -965,6 +991,86 @@ fn get_node_text(node: &Node, source: &str) -> String {
     source[node.start_byte()..node.end_byte()].to_string()
 }
 
+/// Extract FROM identifier or string from visualise_statement node
+fn extract_from_clause(node: &Node, source: &str) -> Option<String> {
+    // Look for pattern: VISUALISE [FROM] (identifier|string) AS viz_type
+    // The identifier or string that appears before viz_type is the FROM source
+    let mut found_source: Option<String> = None;
+    let mut cursor = node.walk();
+
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "identifier" => {
+                // Identifier: table name or CTE name
+                found_source = Some(get_node_text(&child, source));
+            }
+            "string" => {
+                // String literal: file path (e.g., 'mtcars.csv')
+                // Strip quotes for storage in AST
+                let text = get_node_text(&child, source);
+                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
+                found_source = Some(unquoted.to_string());
+            }
+            "viz_type" => {
+                // viz_type comes after identifier/string - return what we found
+                return found_source;
+            }
+            _ => {
+                // Keep scanning
+                continue;
+            }
+        }
+    }
+
+    found_source
+}
+
+/// Check if the last SQL statement in sql_portion is a SELECT statement
+fn check_last_statement_is_select(sql_portion_node: &Node) -> bool {
+    let mut last_statement = None;
+    let mut cursor = sql_portion_node.walk();
+
+    // Find last sql_statement node
+    for child in sql_portion_node.children(&mut cursor) {
+        if child.kind() == "sql_statement" {
+            last_statement = Some(child);
+        }
+    }
+
+    // Check if last statement is or ends with a SELECT
+    if let Some(stmt) = last_statement {
+        let mut stmt_cursor = stmt.walk();
+        for child in stmt.children(&mut stmt_cursor) {
+            if child.kind() == "select_statement" {
+                // Direct select_statement child
+                return true;
+            } else if child.kind() == "with_statement" {
+                // Check if WITH has trailing SELECT
+                return with_statement_has_trailing_select(&child);
+            }
+        }
+    }
+
+    false
+}
+
+/// Check if a with_statement has a trailing SELECT (after the CTE definitions)
+fn with_statement_has_trailing_select(with_node: &Node) -> bool {
+    let mut cursor = with_node.walk();
+    let mut seen_cte_definition = false;
+
+    for child in with_node.children(&mut cursor) {
+        if child.kind() == "cte_definition" {
+            seen_cte_definition = true;
+        } else if child.kind() == "select_statement" && seen_cte_definition {
+            // This is a SELECT after CTE definitions (trailing SELECT)
+            return true;
+        }
+    }
+
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1320,5 +1426,536 @@ mod tests {
         assert!(result.is_ok());
         let specs = result.unwrap();
         assert_eq!(specs.len(), 1);
+    }
+
+    // ========================================
+    // VISUALISE FROM Validation Tests
+    // ========================================
+
+    #[test]
+    fn test_visualise_from_cte() {
+        let query = r#"
+            WITH cte AS (SELECT * FROM x)
+            VISUALISE FROM cte AS PLOT
+            WITH bar USING x = a, y = b
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+
+        let specs = result.unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].source, Some("cte".to_string()));
+        assert_eq!(specs[0].viz_type, VizType::Plot);
+    }
+
+    #[test]
+    fn test_visualise_from_table() {
+        let query = r#"
+            VISUALISE FROM mtcars AS PLOT
+            WITH point USING x = mpg, y = hp
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+
+        let specs = result.unwrap();
+        assert_eq!(specs[0].source, Some("mtcars".to_string()));
+    }
+
+    #[test]
+    fn test_visualise_from_file_path() {
+        let query = r#"
+            VISUALISE FROM 'mtcars.csv' AS PLOT
+            WITH point USING x = hp, y = mpg
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+
+        let specs = result.unwrap();
+        // Source should be stored without quotes in AST
+        assert_eq!(specs[0].source, Some("mtcars.csv".to_string()));
+        assert_eq!(specs[0].viz_type, VizType::Plot);
+    }
+
+    #[test]
+    fn test_visualise_from_file_path_parquet() {
+        let query = r#"
+            VISUALISE FROM "data/sales.parquet" AS PLOT
+            WITH bar USING x = region, y = total
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+
+        let specs = result.unwrap();
+        // Source should be stored without quotes
+        assert_eq!(specs[0].source, Some("data/sales.parquet".to_string()));
+    }
+
+    #[test]
+    fn test_error_select_with_from() {
+        let query = r#"
+            SELECT * FROM x
+            VISUALISE FROM y AS PLOT
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Cannot use VISUALISE FROM when the last SQL statement is SELECT"));
+    }
+
+    #[test]
+    fn test_allow_non_select_with_from() {
+        let query = r#"
+            CREATE TABLE x AS SELECT 1;
+            WITH cte AS (SELECT * FROM x)
+            VISUALISE FROM cte AS PLOT
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_backward_compat_select_visualise_as() {
+        let query = r#"
+            SELECT * FROM x
+            VISUALISE AS PLOT
+            WITH bar USING x = a, y = b
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+
+        let specs = result.unwrap();
+        assert_eq!(specs[0].source, None); // No FROM clause
+    }
+
+    #[test]
+    fn test_with_select_visualise_as() {
+        let query = r#"
+            WITH cte AS (SELECT * FROM x)
+            SELECT * FROM cte
+            VISUALISE AS PLOT
+            WITH point USING x = a, y = b
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+
+        let specs = result.unwrap();
+        assert_eq!(specs[0].source, None); // No FROM clause in VISUALISE
+    }
+
+    #[test]
+    fn test_error_with_select_and_visualise_from() {
+        let query = r#"
+            WITH cte AS (SELECT * FROM x)
+            SELECT * FROM cte
+            VISUALISE FROM cte AS PLOT
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Cannot use VISUALISE FROM when the last SQL statement is SELECT"));
+    }
+
+    // ========================================
+    // Complex SQL Edge Cases
+    // ========================================
+
+    #[test]
+    fn test_deeply_nested_subqueries() {
+        let query = r#"
+            SELECT * FROM (SELECT * FROM (SELECT 1 as x, 2 as y))
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_multiple_values_rows() {
+        let query = r#"
+            SELECT * FROM (VALUES (1, 2), (3, 4), (5, 6)) AS t(x, y)
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_multiple_ctes_no_select_with_visualise_from() {
+        let query = r#"
+            WITH a AS (SELECT 1 as x), b AS (SELECT 2 as y), c AS (SELECT 3 as z)
+            VISUALISE FROM c AS PLOT WITH point USING x = z, y = 1
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+
+        let specs = result.unwrap();
+        assert_eq!(specs[0].source, Some("c".to_string()));
+    }
+
+    #[test]
+    fn test_union_with_visualise_as() {
+        let query = r#"
+            SELECT x, y FROM a UNION SELECT x, y FROM b
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_error_union_with_visualise_from() {
+        let query = r#"
+            SELECT x FROM a UNION SELECT x FROM b
+            VISUALISE FROM c AS PLOT
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Cannot use VISUALISE FROM"));
+    }
+
+    #[test]
+    fn test_subquery_in_where_clause() {
+        let query = r#"
+            SELECT * FROM data WHERE x IN (SELECT y FROM other)
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_join_with_visualise_as() {
+        let query = r#"
+            SELECT a.x, b.y FROM a LEFT JOIN b ON a.id = b.id
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_window_function_with_visualise_as() {
+        let query = r#"
+            SELECT x, y, ROW_NUMBER() OVER (ORDER BY x) as row_num FROM data
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cte_with_join_then_visualise_from() {
+        let query = r#"
+            WITH joined AS (
+                SELECT a.x, b.y FROM a JOIN b ON a.id = b.id
+            )
+            VISUALISE FROM joined AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_recursive_cte_with_visualise_from() {
+        let query = r#"
+            WITH RECURSIVE series AS (
+                SELECT 1 as n
+                UNION ALL
+                SELECT n + 1 FROM series WHERE n < 10
+            )
+            VISUALISE FROM series AS PLOT WITH line USING x = n, y = n
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_visualise_keyword_in_string_literal() {
+        let query = r#"
+            SELECT 'VISUALISE AS PLOT' as text, 1 as x, 2 as y
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_group_by_having_with_visualise_as() {
+        let query = r#"
+            SELECT category, SUM(value) as total FROM data
+            GROUP BY category
+            HAVING SUM(value) > 100
+            VISUALISE AS PLOT WITH bar USING x = category, y = total
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_order_by_limit_with_visualise_as() {
+        let query = r#"
+            SELECT * FROM data
+            ORDER BY x DESC
+            LIMIT 100
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_case_expression_with_visualise_as() {
+        let query = r#"
+            SELECT x,
+                   CASE WHEN x > 0 THEN 'positive' ELSE 'negative' END as sign
+            FROM data
+            VISUALISE AS PLOT WITH point USING x = x, color = sign
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_intersect_with_visualise_as() {
+        let query = r#"
+            SELECT x FROM a INTERSECT SELECT x FROM b
+            VISUALISE AS PLOT WITH histogram USING x = x
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_error_intersect_with_visualise_from() {
+        let query = r#"
+            SELECT x FROM a INTERSECT SELECT x FROM b
+            VISUALISE FROM c AS PLOT
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_except_with_visualise_as() {
+        let query = r#"
+            SELECT x FROM a EXCEPT SELECT x FROM b
+            VISUALISE AS PLOT WITH histogram USING x = x
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_with_semicolon_between_cte_and_visualise_from() {
+        let query = r#"
+            WITH cte AS (SELECT 1 as x, 2 as y);
+            VISUALISE FROM cte AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_multiple_statements_with_semicolons_and_visualise_from() {
+        let query = r#"
+            CREATE TABLE temp AS SELECT 1 as x;
+            INSERT INTO temp VALUES (2);
+            WITH final AS (SELECT * FROM temp)
+            VISUALISE FROM final AS PLOT
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_subquery_with_aggregation() {
+        let query = r#"
+            SELECT * FROM (
+                SELECT category, AVG(value) as avg_value
+                FROM data
+                GROUP BY category
+            )
+            VISUALISE AS PLOT WITH bar USING x = category, y = avg_value
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_lateral_join_with_visualise_as() {
+        let query = r#"
+            SELECT a.*, b.*
+            FROM a, LATERAL (SELECT * FROM b WHERE b.id = a.id) AS b
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_values_without_table_alias() {
+        let query = r#"
+            SELECT * FROM (VALUES (1, 2))
+            VISUALISE AS PLOT WITH point USING x = column0, y = column1
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_nested_ctes() {
+        let query = r#"
+            WITH outer_cte AS (
+                WITH inner_cte AS (SELECT 1 as x)
+                SELECT x, x * 2 as y FROM inner_cte
+            )
+            VISUALISE FROM outer_cte AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cross_join_with_visualise_from() {
+        let query = r#"
+            WITH result AS (
+                SELECT a.x, b.y FROM a CROSS JOIN b
+            )
+            VISUALISE FROM result AS PLOT
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_distinct_with_visualise_as() {
+        let query = r#"
+            SELECT DISTINCT x, y FROM data
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_all_with_visualise_as() {
+        let query = r#"
+            SELECT ALL x, y FROM data
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_exists_subquery_with_visualise_as() {
+        let query = r#"
+            SELECT * FROM a WHERE EXISTS (SELECT 1 FROM b WHERE b.id = a.id)
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_not_exists_subquery_with_visualise_as() {
+        let query = r#"
+            SELECT * FROM a WHERE NOT EXISTS (SELECT 1 FROM b WHERE b.id = a.id)
+            VISUALISE AS PLOT WITH point USING x = x, y = y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    // ========================================
+    // Negative Test Cases - Should Error
+    // ========================================
+
+    #[test]
+    fn test_error_create_with_select_and_visualise_from() {
+        let query = r#"
+            CREATE TABLE x AS SELECT 1;
+            SELECT * FROM x
+            VISUALISE FROM y AS PLOT
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Cannot use VISUALISE FROM"));
+    }
+
+    #[test]
+    fn test_error_insert_with_select_and_visualise_from() {
+        let query = r#"
+            INSERT INTO x SELECT * FROM y;
+            SELECT * FROM x
+            VISUALISE FROM z AS PLOT
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_error_subquery_select_with_visualise_from() {
+        let query = r#"
+            SELECT * FROM (SELECT * FROM data)
+            VISUALISE FROM other AS PLOT
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_error_join_select_with_visualise_from() {
+        let query = r#"
+            SELECT a.* FROM a JOIN b ON a.id = b.id
+            VISUALISE FROM c AS PLOT
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
     }
 }

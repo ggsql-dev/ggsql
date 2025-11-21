@@ -60,20 +60,17 @@ pub use splitter::split_query;
 /// Takes a complete vvSQL query (SQL + VISUALISE) and returns a vector of
 /// parsed specifications (one per VISUALISE statement).
 pub fn parse_query(query: &str) -> Result<Vec<VizSpec>> {
-    // Step 1: Split the query into SQL and VISUALISE portions
-    let (_sql_part, viz_part) = splitter::split_query(query)?;
+    // Parse the full query using tree-sitter (includes SQL + VISUALISE portions)
+    let tree = parse_full_query(query)?;
 
-    // Step 2: Parse the visualization portion using tree-sitter
-    let tree = parse_viz_portion(&viz_part)?;
-
-    // Step 3: Build AST from the tree-sitter parse tree
-    let specs = builder::build_ast(&tree, &viz_part)?;
+    // Build AST from the tree-sitter parse tree
+    let specs = builder::build_ast(&tree, query)?;
 
     Ok(specs)
 }
 
-/// Parse just the visualization portion using tree-sitter
-fn parse_viz_portion(viz_query: &str) -> Result<Tree> {
+/// Parse the full vvSQL query (SQL + VISUALISE) using tree-sitter
+fn parse_full_query(query: &str) -> Result<Tree> {
     let mut parser = tree_sitter::Parser::new();
 
     // Set the tree-sitter-vvsql language
@@ -81,10 +78,10 @@ fn parse_viz_portion(viz_query: &str) -> Result<Tree> {
         .set_language(&tree_sitter_vvsql::language())
         .map_err(|e| VvsqlError::ParseError(format!("Failed to set language: {}", e)))?;
 
-    // Parse the visualization query directly (no SQL prepending needed)
+    // Parse the full query (SQL + VISUALISE portions together)
     let tree = parser
-        .parse(viz_query, None)
-        .ok_or_else(|| VvsqlError::ParseError("Failed to parse visualization query".to_string()))?;
+        .parse(query, None)
+        .ok_or_else(|| VvsqlError::ParseError("Failed to parse query".to_string()))?;
 
     // Check for parse errors
     if tree.root_node().has_error() {
@@ -323,5 +320,30 @@ mod tests {
         // Map with 1 layer
         assert_eq!(specs[2].viz_type, VizType::Map);
         assert_eq!(specs[2].layers.len(), 1);
+    }
+
+    #[test]
+    fn test_values_subquery() {
+        let query = "SELECT * FROM (VALUES (1, 2)) AS t(x, y) VISUALISE AS PLOT WITH point USING x = x, y = y";
+
+        // First check if tree-sitter can parse it
+        let tree = parse_full_query(query);
+        if let Err(ref e) = tree {
+            eprintln!("Parse error: {}", e);
+        }
+
+        // Print the tree
+        if let Ok(ref t) = tree {
+            let root = t.root_node();
+            eprintln!("Root kind: {}", root.kind());
+            eprintln!("Has error: {}", root.has_error());
+            eprintln!("Tree: {}", root.to_sexp());
+        }
+
+        assert!(tree.is_ok(), "Failed to parse VALUES subquery: {:?}", tree);
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].viz_type, VizType::Plot);
     }
 }

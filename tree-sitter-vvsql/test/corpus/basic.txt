@@ -499,3 +499,180 @@ label title = 'Test'
         (label_assignment
           (label_type)
           (string))))))
+================================================================================
+VISUALISE FROM with CTE
+================================================================================
+
+WITH cte AS (SELECT * FROM x)
+VISUALISE FROM cte AS PLOT
+WITH point USING x = a, y = b
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (with_statement
+        (cte_definition
+          (identifier)
+          (select_statement
+            (select_body))))))
+  (visualise_statement
+    (identifier)
+    (viz_type)
+    (viz_clause
+      (with_clause
+        (geom_type)
+        (aesthetic_mapping
+          (aesthetic_name)
+          (aesthetic_value
+            (column_reference
+              (identifier))))
+        (aesthetic_mapping
+          (aesthetic_name)
+          (aesthetic_value
+            (column_reference
+              (identifier))))))))
+
+================================================================================
+VISUALISE FROM with table
+================================================================================
+
+VISUALISE FROM mtcars AS PLOT
+WITH point USING x = mpg, y = hp
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (identifier)
+    (viz_type)
+    (viz_clause
+      (with_clause
+        (geom_type)
+        (aesthetic_mapping
+          (aesthetic_name)
+          (aesthetic_value
+            (column_reference
+              (identifier))))
+        (aesthetic_mapping
+          (aesthetic_name)
+          (aesthetic_value
+            (column_reference
+              (identifier))))))))
+
+================================================================================
+Multiple SQL statements with VISUALISE FROM
+================================================================================
+
+CREATE TABLE x AS SELECT 1;
+WITH cte AS (SELECT * FROM x)
+VISUALISE FROM cte AS PLOT
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (create_statement))
+    (sql_statement
+      (with_statement
+        (cte_definition
+          (identifier)
+          (select_statement
+            (select_body))))))
+  (visualise_statement
+    (identifier)
+    (viz_type)))
+
+================================================================================
+SELECT followed by VISUALISE AS (traditional syntax)
+================================================================================
+
+SELECT * FROM x
+VISUALISE AS PLOT
+WITH bar USING x = a, y = b
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body))))
+  (visualise_statement
+    (viz_type)
+    (viz_clause
+      (with_clause
+        (geom_type)
+        (aesthetic_mapping
+          (aesthetic_name)
+          (aesthetic_value
+            (column_reference
+              (identifier))))
+        (aesthetic_mapping
+          (aesthetic_name)
+          (aesthetic_value
+            (column_reference
+              (identifier))))))))
+
+================================================================================
+WITH statement followed by SELECT and VISUALISE AS
+================================================================================
+
+WITH cte AS (SELECT * FROM x) SELECT * FROM cte
+VISUALISE AS PLOT
+WITH point USING x = a, y = b
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (with_statement
+        (cte_definition
+          (identifier)
+          (select_statement
+            (select_body)))
+        (select_statement
+          (select_body
+            (identifier))))))
+  (visualise_statement
+    (viz_type)
+    (viz_clause
+      (with_clause
+        (geom_type)
+        (aesthetic_mapping
+          (aesthetic_name)
+          (aesthetic_value
+            (column_reference
+              (identifier))))
+        (aesthetic_mapping
+          (aesthetic_name)
+          (aesthetic_value
+            (column_reference
+              (identifier))))))))
+
+================================================================================
+Multiple statements with semicolons
+================================================================================
+
+CREATE TABLE x AS SELECT 1;
+WITH cte AS (SELECT * FROM x);
+VISUALISE FROM cte AS PLOT
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (create_statement))
+    (sql_statement
+      (with_statement
+        (cte_definition
+          (identifier)
+          (select_statement
+            (select_body))))))
+  (visualise_statement
+    (identifier)
+    (viz_type)))

@@ -10,6 +10,7 @@ This document provides a collection of basic examples demonstrating how to use v
 - [Coordinate Systems](#coordinate-systems)
 - [Labels and Themes](#labels-and-themes)
 - [Faceting](#faceting)
+- [Common Table Expressions (CTEs)](#common-table-expressions-ctes)
 - [Advanced Examples](#advanced-examples)
 
 ---
@@ -238,6 +239,191 @@ VISUALISE AS PLOT
 WITH line USING x = date, y = value
 FACET WRAP category USING scales = 'free_y'
 ```
+
+---
+
+## Common Table Expressions (CTEs)
+
+vvSQL supports two patterns for working with CTEs:
+
+1. **Traditional Pattern**: `WITH ... SELECT ... VISUALISE AS`
+2. **Shorthand Pattern**: `WITH ... VISUALISE FROM <cte> AS` (injected SELECT)
+
+### Simple CTE with VISUALISE FROM
+
+The shorthand syntax automatically injects `SELECT * FROM <cte>`:
+
+```sql
+WITH monthly_sales AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        SUM(revenue) as total_revenue
+    FROM sales
+    GROUP BY DATE_TRUNC('month', sale_date)
+)
+VISUALISE FROM monthly_sales AS PLOT
+WITH line USING x = month, y = total_revenue
+SCALE x USING type = 'date'
+LABEL title = 'Monthly Revenue Trends',
+      x = 'Month',
+      y = 'Revenue ($)'
+```
+
+### Traditional CTE with SELECT
+
+Use the traditional pattern when you need to filter or transform CTE results:
+
+```sql
+WITH monthly_sales AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        region,
+        SUM(revenue) as total_revenue
+    FROM sales
+    GROUP BY DATE_TRUNC('month', sale_date), region
+)
+SELECT * FROM monthly_sales WHERE region = 'North'
+VISUALISE AS PLOT
+WITH line USING x = month, y = total_revenue
+SCALE x USING type = 'date'
+```
+
+### Multiple CTEs
+
+Chain multiple CTEs and visualize from any of them:
+
+```sql
+WITH daily_sales AS (
+    SELECT sale_date, region, SUM(revenue) as revenue
+    FROM sales
+    GROUP BY sale_date, region
+),
+regional_totals AS (
+    SELECT region, SUM(revenue) as total
+    FROM daily_sales
+    GROUP BY region
+)
+VISUALISE FROM regional_totals AS PLOT
+WITH bar USING x = region, y = total, fill = region
+COORD flip
+LABEL title = 'Total Revenue by Region',
+      x = 'Region',
+      y = 'Total Revenue ($)'
+```
+
+### CTE with JOIN
+
+CTEs can contain complex queries including JOINs:
+
+```sql
+WITH product_metrics AS (
+    SELECT
+        p.product_name,
+        p.category,
+        SUM(s.quantity) as total_sold,
+        SUM(s.revenue) as total_revenue
+    FROM products p
+    JOIN sales s ON p.product_id = s.product_id
+    WHERE s.sale_date >= '2024-01-01'
+    GROUP BY p.product_name, p.category
+)
+VISUALISE FROM product_metrics AS PLOT
+WITH point USING x = total_sold, y = total_revenue, color = category
+LABEL title = 'Product Performance',
+      x = 'Units Sold',
+      y = 'Revenue ($)'
+```
+
+### Recursive CTE
+
+Recursive CTEs work with VISUALISE FROM:
+
+```sql
+WITH RECURSIVE series AS (
+    SELECT 1 as n, 1 as value
+    UNION ALL
+    SELECT n + 1, value * 2
+    FROM series
+    WHERE n < 10
+)
+VISUALISE FROM series AS PLOT
+WITH line USING x = n, y = value
+WITH point USING x = n, y = value
+SCALE y USING type = 'log10'
+LABEL title = 'Exponential Growth',
+      x = 'Step',
+      y = 'Value (log scale)'
+```
+
+### CTE with Window Functions
+
+Calculate running totals or rankings in CTEs:
+
+```sql
+WITH ranked_products AS (
+    SELECT
+        product_name,
+        category,
+        revenue,
+        ROW_NUMBER() OVER (PARTITION BY category ORDER BY revenue DESC) as rank
+    FROM product_sales
+)
+SELECT * FROM ranked_products WHERE rank <= 5
+VISUALISE AS PLOT
+WITH bar USING x = product_name, y = revenue, color = category
+FACET WRAP category USING scales = 'free_x'
+COORD flip
+LABEL title = 'Top 5 Products per Category',
+      x = 'Product',
+      y = 'Revenue ($)'
+```
+
+### Temporal Analysis with CTEs
+
+Create time-based aggregations:
+
+```sql
+WITH daily_metrics AS (
+    SELECT
+        DATE_TRUNC('day', timestamp) as day,
+        AVG(temperature) as avg_temp,
+        MAX(temperature) as max_temp,
+        MIN(temperature) as min_temp
+    FROM sensor_data
+    WHERE timestamp >= NOW() - INTERVAL '30 days'
+    GROUP BY DATE_TRUNC('day', timestamp)
+)
+VISUALISE FROM daily_metrics AS PLOT
+WITH ribbon USING x = day, ymin = min_temp, ymax = max_temp, fill = 'lightblue', alpha = 0.3
+WITH line USING x = day, y = avg_temp, color = 'blue', size = 2
+SCALE x USING type = 'date'
+LABEL title = 'Temperature Range (Last 30 Days)',
+      x = 'Date',
+      y = 'Temperature (°C)'
+```
+
+### Important Rules
+
+**✅ Valid Combinations:**
+- `WITH cte AS (...) VISUALISE FROM cte AS PLOT` - Shorthand (SELECT injected)
+- `WITH cte AS (...) SELECT * FROM cte VISUALISE AS PLOT` - Traditional
+- `CREATE TABLE x ...; WITH cte AS (...) VISUALISE FROM cte AS PLOT` - Multiple statements
+
+**❌ Invalid Combinations:**
+- `WITH cte AS (...) SELECT * FROM cte VISUALISE FROM cte AS PLOT` - Cannot mix SELECT with VISUALISE FROM
+- `SELECT * FROM x VISUALISE FROM y AS PLOT` - Cannot use VISUALISE FROM after SELECT
+
+**Why VISUALISE FROM?**
+
+The shorthand syntax (`VISUALISE FROM`) is useful when:
+1. You want to visualize an entire CTE without filtering
+2. You're working with tables or views directly
+3. You want concise syntax for simple visualizations
+
+Use the traditional pattern (`SELECT ... VISUALISE AS`) when:
+1. You need to filter or transform CTE results
+2. You're using set operations (UNION, INTERSECT, EXCEPT)
+3. You need complex SELECT logic before visualization
 
 ---
 

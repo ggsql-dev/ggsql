@@ -24,9 +24,79 @@ THEME minimal
 - 9 React components (4 main + 5 shadcn/ui components)
 - Full bindings: Rust, C, Python, Node.js with tree-sitter integration
 - Syntax highlighting support via Tree-sitter queries
-- 111 total tests (28 for COORD clause)
+- 148 total tests (60 for parser/builder, including 32 comprehensive edge cases)
 - End-to-end working pipeline: SQL → Data → Visualization
 - Coordinate transformations: Cartesian (xlim/ylim), Flip, Polar
+- VISUALISE FROM shorthand syntax with automatic SELECT injection
+
+---
+
+## VISUALISE FROM Feature
+
+vvSQL supports two patterns for creating visualizations:
+
+### Traditional Pattern: SELECT ... VISUALISE AS
+
+The original syntax where SQL and visualization are separated by `VISUALISE AS`:
+
+```sql
+SELECT * FROM sales WHERE year = 2024
+VISUALISE AS PLOT
+WITH line USING x = date, y = revenue
+```
+
+### Shorthand Pattern: VISUALISE FROM ... AS
+
+A concise syntax that automatically injects `SELECT * FROM <source>`:
+
+```sql
+-- Direct table visualization
+VISUALISE FROM sales AS PLOT
+WITH bar USING x = region, y = total
+
+-- CTE visualization (no trailing SELECT)
+WITH monthly_totals AS (
+    SELECT DATE_TRUNC('month', sale_date) as month, SUM(revenue) as total
+    FROM sales
+    GROUP BY month
+)
+VISUALISE FROM monthly_totals AS PLOT
+WITH line USING x = month, y = total
+```
+
+**Behind the scenes**: The splitter automatically injects `SELECT * FROM <source>` before passing to the database.
+
+### Validation Rules
+
+The parser enforces that `VISUALISE FROM` cannot be combined with trailing SELECT statements:
+
+**✅ Valid:**
+- `VISUALISE FROM table AS PLOT` - Direct table (injected SELECT)
+- `WITH cte AS (...) VISUALISE FROM cte AS PLOT` - CTE without trailing SELECT
+- `SELECT ... VISUALISE AS PLOT` - Traditional pattern
+- `WITH cte AS (...) SELECT * FROM cte VISUALISE AS PLOT` - CTE with explicit SELECT
+
+**❌ Invalid (Parse Error):**
+- `SELECT * FROM x VISUALISE FROM y AS PLOT` - Cannot mix SELECT with VISUALISE FROM
+- `WITH cte AS (...) SELECT * FROM cte VISUALISE FROM cte AS PLOT` - Trailing SELECT conflicts
+
+**Rationale**: Prevents ambiguity about which data source to visualize. The parser validates this by checking if the last SQL statement is a SELECT before allowing VISUALISE FROM.
+
+### Implementation Details
+
+**1. Grammar Changes** (`tree-sitter-vvsql/grammar.js`):
+- Line 71-77: Updated `with_statement` to include `optional($.select_statement)`, allowing WITH to be followed by SELECT as a compound statement
+- Lines 158-172: Made `subquery` rule fully recursive to support complex SQL (VALUES, nested subqueries)
+
+**2. Query Splitter** (`src/parser/splitter.rs`):
+- Lines 60-92: Checks for VISUALISE FROM and injects `SELECT * FROM <source>`
+- Handles semicolons correctly: adds semicolon before injected SELECT if needed
+- Special case for WITH statements: no semicolon needed between `WITH cte AS (...) SELECT * FROM cte`
+
+**3. AST Builder Validation** (`src/parser/builder.rs`):
+- Lines 43-50: Validates VISUALISE FROM usage after parsing
+- Lines 1021-1065: Recursive validation to detect trailing SELECT in compound statements
+- `with_statement_has_trailing_select()` helper distinguishes internal CTEs from trailing SELECT
 
 ---
 
@@ -97,36 +167,105 @@ THEME minimal
 
 #### Query Splitter (`splitter.rs`)
 
-- Uses regex to find `VISUALISE AS` or `VISUALIZE AS` (case-insensitive)
-- Splits query into SQL portion and visualization portion
-- Handles multiple VISUALISE statements in a single query
-- **Future**: Tree-sitter-based splitting for better string/comment handling
+- Uses tree-sitter to parse the full query and find VISUALISE statements
+- Splits query at byte offset of first VISUALISE statement
+- Handles VISUALISE FROM by injecting `SELECT * FROM <source>`
+- Robust to parse errors in SQL portion (complex SQL we don't fully parse)
+- Properly handles semicolons between SQL statements
+
+**Key Features:**
+1. **Byte offset splitting**: Uses character positions instead of parse tree node boundaries
+2. **SELECT injection**: Automatically adds `SELECT * FROM <source>` when VISUALISE FROM is used
+3. **Semicolon handling**: Adds semicolons correctly between statements, with special case for WITH
 
 ```rust
 pub fn split_query(query: &str) -> Result<(String, String)> {
-    let pattern = Regex::new(r"(?i)\bVISUALI[SZ]E\s+AS\b")?;
-    if let Some(mat) = pattern.find(query) {
-        let sql_part = query[..mat.start()].trim().to_string();
-        let viz_part = query[mat.start()..].trim().to_string();
-        Ok((sql_part, viz_part))
+    // Parse with tree-sitter to find VISUALISE statements
+    let tree = parser.parse(query, None)?;
+    let root = tree.root_node();
+
+    // Find first VISUALISE statement by byte offset
+    let first_viz_start: Option<usize> = root.children(&mut root.walk())
+        .find(|n| n.kind() == "visualise_statement")
+        .map(|n| n.start_byte());
+
+    // Split at byte offset (robust to parse errors)
+    let (sql_text, viz_text) = if let Some(viz_start) = first_viz_start {
+        let sql_part = &query[..viz_start];
+        let viz_part = &query[viz_start..];
+        (sql_part.trim().to_string(), viz_part.trim().to_string())
     } else {
-        Ok((query.to_string(), String::new()))
+        (query.to_string(), String::new())
+    };
+
+    // Check for VISUALISE FROM and inject SELECT if needed
+    let mut modified_sql = sql_text.clone();
+    for child in root.children(&mut root.walk()) {
+        if child.kind() == "visualise_statement" {
+            if let Some(from_identifier) = extract_from_identifier(&child, query) {
+                // Inject SELECT * FROM <source>
+                if modified_sql.trim().is_empty() {
+                    modified_sql = format!("SELECT * FROM {}", from_identifier);
+                } else {
+                    // Handle semicolons correctly
+                    let trimmed = modified_sql.trim();
+                    let last_is_with = trimmed.to_uppercase().starts_with("WITH");
+
+                    if last_is_with {
+                        // WITH followed by SELECT - no semicolon
+                        modified_sql = format!("{} SELECT * FROM {}", trimmed, from_identifier);
+                    } else if trimmed.ends_with(';') {
+                        // Already has semicolon
+                        modified_sql = format!("{} SELECT * FROM {}", trimmed, from_identifier);
+                    } else {
+                        // Add semicolon before SELECT
+                        modified_sql = format!("{}; SELECT * FROM {}", trimmed, from_identifier);
+                    }
+                }
+                break;
+            }
+        }
     }
+
+    Ok((modified_sql, viz_text))
 }
 ```
 
+**Why byte offset splitting?**
+- Complex SQL queries may have parse errors (we don't fully parse SQL)
+- Byte offset splitting works even when SQL portion has ERROR nodes
+- More robust than relying on clean parse tree node boundaries
+
 #### Tree-sitter Integration (`mod.rs`)
 
-- Uses `tree-sitter-vvsql` grammar (281 lines, simplified approach)
-- Parses visualization portion into concrete syntax tree (CST)
+- Uses `tree-sitter-vvsql` grammar (293 lines, simplified approach)
+- Parses **full query** (SQL + VISUALISE) into concrete syntax tree (CST)
 - Grammar supports: PLOT/TABLE/MAP types, WITH/SCALE/FACET/COORD/LABEL/GUIDE/THEME clauses
 - British and American spellings: `VISUALISE` / `VISUALIZE`
+- **SQL portion parsing**: Basic SQL structure (SELECT, WITH, CREATE, INSERT, subqueries)
+- **Recursive subquery support**: Fully recursive grammar for complex SQL
+
+**Grammar Structure** (`tree-sitter-vvsql/grammar.js`):
+
+Key grammar rules:
+- `query`: Root node containing SQL + VISUALISE portions
+- `sql_portion`: Zero or more SQL statements before VISUALISE
+- `with_statement`: WITH clause with optional trailing SELECT (compound statement)
+- `subquery`: Fully recursive subquery rule supporting nested parentheses
+- `visualise_statement`: VISUALISE AS/FROM clause with viz_type and clauses
+
+**Critical Grammar Features**:
+1. **Compound WITH statements**: `WITH cte AS (...) SELECT * FROM cte` parses as single statement
+2. **Recursive subqueries**: `SELECT * FROM (SELECT * FROM (VALUES (1, 2)))` fully supported
+3. **VISUALISE FROM extraction**: Grammar identifies FROM identifier for SELECT injection
 
 ```rust
 pub fn parse_query(query: &str) -> Result<Vec<VizSpec>> {
-    let (_sql_part, viz_part) = splitter::split_query(query)?;
-    let tree = parse_viz_portion(&viz_part)?;
-    let specs = builder::build_ast(&tree, &viz_part)?;
+    // Parse full query (SQL + VISUALISE) with tree-sitter
+    let tree = parse_full_query(query)?;
+
+    // Build AST from parse tree
+    let specs = builder::build_ast(&tree, query)?;
     Ok(specs)
 }
 ```
@@ -135,7 +274,76 @@ pub fn parse_query(query: &str) -> Result<Vec<VizSpec>> {
 
 - Converts tree-sitter CST → typed AST (`VizSpec` structure)
 - Handles multiple visualization specifications per query
+- **Validates VISUALISE FROM semantics**: Checks for SELECT+VISUALISE FROM conflicts
 - Validates grammar structure during parsing
+
+**Validation Logic**:
+
+The builder performs semantic validation that cannot be done in the grammar:
+
+1. **Check last SQL statement type**: Determines if query ends with SELECT
+2. **Recursive WITH validation**: Distinguishes between internal CTEs and trailing SELECT
+3. **VISUALISE FROM validation**: Errors if `VISUALISE FROM` used after SELECT statement
+
+```rust
+pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<VizSpec>> {
+    let root = tree.root_node();
+
+    // Extract SQL portion and check if last statement is SELECT
+    let sql_portion_node = root.children(&mut root.walk())
+        .find(|n| n.kind() == "sql_portion");
+
+    let last_is_select = if let Some(sql_node) = sql_portion_node {
+        check_last_statement_is_select(&sql_node)
+    } else {
+        false
+    };
+
+    // Build VizSpec for each VISUALISE statement
+    let mut specs = Vec::new();
+    for child in root.children(&mut root.walk()) {
+        if child.kind() == "visualise_statement" {
+            let spec = build_visualise_statement(&child, source)?;
+
+            // Validate VISUALISE FROM usage
+            if spec.source.is_some() && last_is_select {
+                return Err(VvsqlError::ParseError(
+                    "Cannot use VISUALISE FROM when the last SQL statement is SELECT. \
+                     Use either 'SELECT ... VISUALISE AS' or remove the SELECT and use \
+                     'VISUALISE FROM ... AS'.".to_string()
+                ));
+            }
+
+            specs.push(spec);
+        }
+    }
+
+    Ok(specs)
+}
+
+/// Check if a with_statement has a trailing SELECT (after the CTE definitions)
+fn with_statement_has_trailing_select(with_node: &Node) -> bool {
+    let mut cursor = with_node.walk();
+    let mut seen_cte_definition = false;
+
+    for child in with_node.children(&mut cursor) {
+        if child.kind() == "cte_definition" {
+            seen_cte_definition = true;
+        } else if child.kind() == "select_statement" && seen_cte_definition {
+            // This is a SELECT after CTE definitions (trailing SELECT)
+            return true;
+        }
+    }
+
+    false
+}
+```
+
+**Why Recursive Validation?**
+
+The grammar treats `WITH cte AS (SELECT 1)` as a single statement where the internal SELECT is part of the CTE definition. The validation must distinguish between:
+- `WITH cte AS (SELECT 1)` - No trailing SELECT, VISUALISE FROM allowed
+- `WITH cte AS (SELECT 1) SELECT * FROM cte` - Has trailing SELECT, VISUALISE FROM not allowed
 
 #### AST Types (`ast.rs`)
 
@@ -144,6 +352,7 @@ Core data structures representing visualization specifications:
 ```rust
 pub struct VizSpec {
     pub viz_type: VizType,           // PLOT, TABLE, MAP
+    pub source: Option<String>,      // FROM source (for VISUALISE FROM)
     pub layers: Vec<Layer>,          // WITH clauses
     pub scales: Vec<Scale>,          // SCALE clauses
     pub facet: Option<Facet>,        // FACET clause

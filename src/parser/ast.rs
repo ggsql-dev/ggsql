@@ -8,6 +8,7 @@
 //!
 //! ```text
 //! VizSpec
+//! ├─ source: Option<String>    (optional, from VISUALISE FROM clause)
 //! ├─ layers: Vec<Layer>        (1+ LayerNode, one per WITH clause)
 //! ├─ scales: Vec<Scale>        (0+ ScaleNode, one per SCALE clause)
 //! ├─ facet: Option<Facet>      (optional, from FACET clause)
@@ -25,6 +26,8 @@ use std::collections::HashMap;
 pub struct VizSpec {
     /// Visualization output type (PLOT, TABLE, etc.)
     pub viz_type: VizType,
+    /// FROM source name (CTE or table) when using VISUALISE FROM syntax
+    pub source: Option<String>,
     /// Visual layers (one per WITH clause)
     pub layers: Vec<Layer>,
     /// Scale configurations (one per SCALE clause)
@@ -319,6 +322,7 @@ impl VizSpec {
     pub fn new(viz_type: VizType) -> Self {
         Self {
             viz_type,
+            source: None,
             layers: Vec::new(),
             scales: Vec::new(),
             facet: None,
