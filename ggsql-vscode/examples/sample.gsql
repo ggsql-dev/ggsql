@@ -1,0 +1,239 @@
+-- ggSQL Example Queries
+-- Demonstrates syntax highlighting for all major features
+
+-- ============================================================================
+-- Example 1: Basic Scatter Plot with File Path
+-- ============================================================================
+VISUALISE FROM 'mtcars.csv' AS PLOT
+WITH point USING x = hp, y = mpg, color = cyl
+LABEL title = 'Horsepower vs Fuel Efficiency',
+      x = 'Horsepower',
+      y = 'Miles per Gallon'
+THEME minimal
+
+-- ============================================================================
+-- Example 2: Multi-Layer Visualization with CTE
+-- ============================================================================
+WITH monthly_sales AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        region,
+        SUM(quantity) as total_quantity,
+        SUM(revenue) as total_revenue
+    FROM sales
+    WHERE sale_date >= '2024-01-01'
+    GROUP BY DATE_TRUNC('month', sale_date), region
+)
+VISUALISE FROM monthly_sales AS PLOT
+WITH line USING x = month, y = total_quantity, color = region
+WITH point USING x = month, y = total_quantity, color = region, size = 3
+SCALE x USING type = 'date'
+SCALE color USING palette = 'viridis'
+FACET WRAP region USING scales = 'free_y'
+LABEL title = 'Sales Trends by Region',
+      x = 'Month',
+      y = 'Total Quantity',
+      caption = 'Data from 2024'
+THEME classic
+
+-- ============================================================================
+-- Example 3: Bar Chart with Coordinate Transformation
+-- ============================================================================
+SELECT category, SUM(value) as total
+FROM products
+WHERE year = 2024
+GROUP BY category
+ORDER BY total DESC
+LIMIT 10
+VISUALISE AS PLOT
+WITH bar USING x = category, y = total, fill = category
+COORD flip
+LABEL title = 'Top 10 Product Categories',
+      x = 'Category',
+      y = 'Total Sales'
+GUIDE fill USING type = 'none'
+THEME dark
+
+-- ============================================================================
+-- Example 4: Polar Coordinates (Pie Chart)
+-- ============================================================================
+SELECT region, COUNT(*) as count
+FROM customers
+GROUP BY region
+VISUALISE AS PLOT
+WITH bar USING x = region, y = count, fill = region
+COORD polar USING theta = y
+LABEL title = 'Customer Distribution by Region'
+
+-- ============================================================================
+-- Example 5: Faceted Histogram
+-- ============================================================================
+SELECT age, gender, income
+FROM demographics
+WHERE age BETWEEN 18 AND 80
+VISUALISE AS PLOT
+WITH histogram USING x = age, fill = gender
+SCALE x USING type = 'linear', limits = [18, 80]
+FACET WRAP gender USING scales = 'fixed'
+LABEL title = 'Age Distribution by Gender',
+      x = 'Age',
+      y = 'Count'
+
+-- ============================================================================
+-- Example 6: Time Series with Custom Scale
+-- ============================================================================
+WITH daily_metrics AS (
+    SELECT
+        timestamp::DATE as date,
+        AVG(temperature) as avg_temp,
+        MAX(temperature) as max_temp,
+        MIN(temperature) as min_temp
+    FROM sensor_data
+    WHERE timestamp >= NOW() - INTERVAL '30 days'
+    GROUP BY timestamp::DATE
+)
+SELECT * FROM daily_metrics
+VISUALISE AS PLOT
+WITH ribbon USING x = date, ymin = min_temp, ymax = max_temp, fill = 'lightblue', alpha = 0.3
+WITH line USING x = date, y = avg_temp, color = 'blue', size = 2
+SCALE x USING type = 'date'
+SCALE y USING type = 'linear', limits = [0, 100]
+COORD cartesian USING xlim = ['2024-01-01', '2024-12-31']
+LABEL title = 'Temperature Range (Last 30 Days)',
+      x = 'Date',
+      y = 'Temperature (°C)',
+      caption = 'Source: Weather Station Alpha'
+THEME minimal
+
+-- ============================================================================
+-- Example 7: Complex Join with Multiple Aesthetics
+-- ============================================================================
+SELECT
+    p.product_name,
+    p.category,
+    s.sale_date,
+    s.quantity,
+    s.revenue,
+    e.employee_name
+FROM products p
+JOIN sales s ON p.product_id = s.product_id
+JOIN employees e ON s.employee_id = e.employee_id
+WHERE s.sale_date >= '2024-01-01'
+VISUALISE AS PLOT
+WITH point USING
+    x = sale_date,
+    y = revenue,
+    color = category,
+    size = quantity,
+    shape = category
+SCALE x USING type = 'date'
+SCALE y USING type = 'log10'
+SCALE color USING domain = ['Electronics', 'Clothing', 'Food', 'Books']
+FACET category BY employee_name USING scales = 'free_y'
+LABEL title = 'Sales Performance Analysis',
+      x = 'Sale Date',
+      y = 'Revenue (log scale)',
+      color = 'Product Category',
+      size = 'Quantity Sold'
+GUIDE color USING
+    type = 'legend',
+    position = 'right',
+    title = 'Categories'
+THEME grey
+
+-- ============================================================================
+-- Example 8: Area Chart with Stacking
+-- ============================================================================
+WITH quarterly_breakdown AS (
+    SELECT
+        DATE_TRUNC('quarter', sale_date) as quarter,
+        category,
+        SUM(revenue) as revenue
+    FROM sales
+    WHERE sale_date >= '2023-01-01'
+    GROUP BY DATE_TRUNC('quarter', sale_date), category
+)
+VISUALISE FROM quarterly_breakdown AS PLOT
+WITH area USING x = quarter, y = revenue, fill = category, alpha = 0.7
+SCALE x USING type = 'date'
+SCALE fill USING palette = 'plasma', domain = ['A', 'B', 'C', 'D']
+LABEL title = 'Quarterly Revenue by Category',
+      x = 'Quarter',
+      y = 'Revenue ($)',
+      subtitle = 'Stacked Area Chart'
+
+-- ============================================================================
+-- Example 9: Boxplot with Violin Overlay
+-- ============================================================================
+SELECT category, price, rating
+FROM products
+WHERE rating IS NOT NULL
+VISUALISE AS PLOT
+WITH boxplot USING x = category, y = price
+WITH violin USING x = category, y = price, alpha = 0.3
+COORD cartesian USING ylim = [0, 500]
+LABEL title = 'Price Distribution by Category',
+      x = 'Product Category',
+      y = 'Price ($)'
+THEME bw
+
+-- ============================================================================
+-- Example 10: Annotated Scatter Plot
+-- ============================================================================
+SELECT
+    product_name,
+    price,
+    rating,
+    sales_count
+FROM products
+WHERE featured = TRUE
+VISUALISE AS PLOT
+WITH point USING x = price, y = rating, size = sales_count, color = sales_count
+WITH text USING x = price, y = rating, label = product_name
+SCALE color USING palette = 'viridis'
+SCALE size USING limits = [0, 10000]
+COORD cartesian USING xlim = [0, 1000], ylim = [0, 5]
+LABEL title = 'Featured Products: Price vs Rating',
+      x = 'Price ($)',
+      y = 'Customer Rating',
+      size = 'Total Sales'
+GUIDE size USING type = 'legend', position = 'bottom'
+
+-- ============================================================================
+-- Example 11: Multiple VISUALISE Statements
+-- ============================================================================
+WITH sales_summary AS (
+    SELECT region, category, SUM(revenue) as total
+    FROM sales
+    GROUP BY region, category
+)
+-- First visualization: by region
+VISUALISE FROM sales_summary AS PLOT
+WITH bar USING x = region, y = total, fill = region
+LABEL title = 'Sales by Region'
+-- Second visualization: by category
+VISUALISE FROM sales_summary AS PLOT
+WITH bar USING x = category, y = total, fill = category
+COORD flip
+LABEL title = 'Sales by Category'
+
+-- ============================================================================
+-- Comments and String Handling
+-- ============================================================================
+/*
+   Multi-line block comment
+   Testing comment syntax highlighting
+   across multiple lines
+*/
+
+SELECT
+    'VISUALISE AS PLOT' as text,  -- String containing ggSQL keywords
+    "This is a string" as quoted,
+    123 as number,
+    45.67 as decimal,
+    -99.9 as negative,
+    NULL as null_value,
+    TRUE as bool_true,
+    FALSE as bool_false
+FROM test_data
+VISUALISE AS TABLE

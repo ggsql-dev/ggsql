@@ -1,0 +1,53 @@
+{
+  "name": "ggsql",
+  "displayName": "ggSQL",
+  "description": "Syntax highlighting for ggSQL - SQL with declarative visualization",
+  "version": "0.1.0",
+  "publisher": "ggsql",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "ggsql",
+    "sql",
+    "visualization",
+    "grammar-of-graphics",
+    "data-viz"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/georgestagg/ggsql"
+  },
+  "license": "MIT",
+  "contributes": {
+    "languages": [
+      {
+        "id": "ggsql",
+        "aliases": [
+          "ggSQL",
+          "ggsql"
+        ],
+        "extensions": [
+          ".ggsql",
+          ".ggsql.sql",
+          ".gsql"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icon.png",
+          "dark": "./icon.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "ggsql",
+        "scopeName": "source.ggsql",
+        "path": "./syntaxes/ggsql.tmLanguage.json"
+      }
+    ]
+  }
+}
