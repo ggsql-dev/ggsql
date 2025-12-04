@@ -71,7 +71,6 @@ venv.bak/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-*.quarto_ipynb
 
 # PyCharm
 .idea/
