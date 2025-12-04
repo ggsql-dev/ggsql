@@ -72,6 +72,18 @@ impl VegaLiteWriter {
         use DataType::*;
 
         match series.dtype() {
+            Int8 => {
+                let ca = series.i8().map_err(|e| {
+                    GgsqlError::WriterError(format!("Failed to cast to i8: {}", e))
+                })?;
+                Ok(ca.get(idx).map(|v| json!(v)).unwrap_or(Value::Null))
+            }
+            Int16 => {
+                let ca = series.i16().map_err(|e| {
+                    GgsqlError::WriterError(format!("Failed to cast to i16: {}", e))
+                })?;
+                Ok(ca.get(idx).map(|v| json!(v)).unwrap_or(Value::Null))
+            }
             Int32 => {
                 let ca = series.i32().map_err(|e| {
                     GgsqlError::WriterError(format!("Failed to cast to i32: {}", e))
@@ -113,6 +125,55 @@ impl VegaLiteWriter {
                     } else {
                         Ok(json!(val))
                     }
+                } else {
+                    Ok(Value::Null)
+                }
+            }
+            Date => {
+                // Convert days since epoch to ISO date string: "YYYY-MM-DD"
+                let ca = series.date().map_err(|e| {
+                    GgsqlError::WriterError(format!("Failed to cast to date: {}", e))
+                })?;
+                if let Some(days) = ca.get(idx) {
+                    let unix_epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+                    let date = unix_epoch + chrono::Duration::days(days as i64);
+                    Ok(json!(date.format("%Y-%m-%d").to_string()))
+                } else {
+                    Ok(Value::Null)
+                }
+            }
+            Datetime(time_unit, _) => {
+                // Convert timestamp to ISO datetime: "YYYY-MM-DDTHH:MM:SS.sssZ"
+                let ca = series.datetime().map_err(|e| {
+                    GgsqlError::WriterError(format!("Failed to cast to datetime: {}", e))
+                })?;
+                if let Some(timestamp) = ca.get(idx) {
+                    // Convert to microseconds based on time unit
+                    let micros = match time_unit {
+                        TimeUnit::Microseconds => timestamp,
+                        TimeUnit::Milliseconds => timestamp * 1_000,
+                        TimeUnit::Nanoseconds => timestamp / 1_000,
+                    };
+                    let secs = micros / 1_000_000;
+                    let nsecs = ((micros % 1_000_000) * 1000) as u32;
+                    let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, nsecs)
+                        .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0).unwrap());
+                    Ok(json!(dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()))
+                } else {
+                    Ok(Value::Null)
+                }
+            }
+            Time => {
+                // Convert nanoseconds since midnight to ISO time: "HH:MM:SS.sss"
+                let ca = series.time().map_err(|e| {
+                    GgsqlError::WriterError(format!("Failed to cast to time: {}", e))
+                })?;
+                if let Some(nanos) = ca.get(idx) {
+                    let hours = nanos / 3_600_000_000_000;
+                    let minutes = (nanos % 3_600_000_000_000) / 60_000_000_000;
+                    let seconds = (nanos % 60_000_000_000) / 1_000_000_000;
+                    let millis = (nanos % 1_000_000_000) / 1_000_000;
+                    Ok(json!(format!("{:02}:{:02}:{:02}.{:03}", hours, minutes, seconds, millis)))
                 } else {
                     Ok(Value::Null)
                 }
@@ -2589,5 +2650,156 @@ mod tests {
         // Should produce same result as default
         assert_eq!(vl_spec["mark"], "arc");
         assert_eq!(vl_spec["encoding"]["theta"]["field"], "value");
+    }
+
+    #[test]
+    fn test_date_series_to_iso_format() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new(VizType::Plot);
+        let layer = Layer::new(Geom::Point)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()));
+        spec.layers.push(layer);
+
+        // Create DataFrame with Date type
+        let dates = Series::new("date".into(), &[0i32, 1, 2]) // Days since epoch
+            .cast(&DataType::Date)
+            .unwrap();
+        let values = Series::new("value".into(), &[10, 20, 30]);
+        let df = DataFrame::new(vec![dates, values]).unwrap();
+
+        let json_str = writer.write(&spec, &df).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that dates are formatted as ISO strings in data
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        assert_eq!(data_values[0]["date"], "1970-01-01");
+        assert_eq!(data_values[1]["date"], "1970-01-02");
+        assert_eq!(data_values[2]["date"], "1970-01-03");
+    }
+
+    #[test]
+    fn test_datetime_series_to_iso_format() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new(VizType::Plot);
+        let layer = Layer::new(Geom::Point)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("datetime".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()));
+        spec.layers.push(layer);
+
+        // Create DataFrame with Datetime type (microseconds since epoch)
+        let datetimes = Series::new("datetime".into(), &[0i64, 1_000_000, 2_000_000])
+            .cast(&DataType::Datetime(TimeUnit::Microseconds, None))
+            .unwrap();
+        let values = Series::new("value".into(), &[10, 20, 30]);
+        let df = DataFrame::new(vec![datetimes, values]).unwrap();
+
+        let json_str = writer.write(&spec, &df).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that datetimes are formatted as ISO strings in data
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        assert_eq!(data_values[0]["datetime"], "1970-01-01T00:00:00.000Z");
+        assert_eq!(data_values[1]["datetime"], "1970-01-01T00:00:01.000Z");
+        assert_eq!(data_values[2]["datetime"], "1970-01-01T00:00:02.000Z");
+    }
+
+    #[test]
+    fn test_time_series_to_iso_format() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new(VizType::Plot);
+        let layer = Layer::new(Geom::Point)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("time".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()));
+        spec.layers.push(layer);
+
+        // Create DataFrame with Time type (nanoseconds since midnight)
+        let times = Series::new("time".into(), &[0i64, 3_600_000_000_000, 7_200_000_000_000])
+            .cast(&DataType::Time)
+            .unwrap();
+        let values = Series::new("value".into(), &[10, 20, 30]);
+        let df = DataFrame::new(vec![times, values]).unwrap();
+
+        let json_str = writer.write(&spec, &df).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that times are formatted as ISO time strings in data
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        assert_eq!(data_values[0]["time"], "00:00:00.000");
+        assert_eq!(data_values[1]["time"], "01:00:00.000");
+        assert_eq!(data_values[2]["time"], "02:00:00.000");
+    }
+
+    #[test]
+    fn test_automatic_temporal_type_inference() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new(VizType::Plot);
+        let layer = Layer::new(Geom::Line)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("revenue".to_string()));
+        spec.layers.push(layer);
+
+        // Create DataFrame with Date type - NO explicit SCALE x USING type = 'date' needed!
+        let dates = Series::new("date".into(), &[0i32, 1, 2, 3, 4])
+            .cast(&DataType::Date)
+            .unwrap();
+        let revenue = Series::new("revenue".into(), &[100, 120, 110, 130, 125]);
+        let df = DataFrame::new(vec![dates, revenue]).unwrap();
+
+        let json_str = writer.write(&spec, &df).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // CRITICAL TEST: x-axis should automatically be inferred as "temporal" type
+        assert_eq!(vl_spec["encoding"]["x"]["type"], "temporal");
+        assert_eq!(vl_spec["encoding"]["y"]["type"], "quantitative");
+
+        // Dates should be formatted as ISO strings
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        assert_eq!(data_values[0]["date"], "1970-01-01");
+        assert_eq!(data_values[1]["date"], "1970-01-02");
+    }
+
+    #[test]
+    fn test_datetime_automatic_temporal_inference() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new(VizType::Plot);
+        let layer = Layer::new(Geom::Area)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("timestamp".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()));
+        spec.layers.push(layer);
+
+        // Create DataFrame with Datetime type
+        let timestamps = Series::new("timestamp".into(), &[0i64, 86_400_000_000, 172_800_000_000])
+            .cast(&DataType::Datetime(TimeUnit::Microseconds, None))
+            .unwrap();
+        let values = Series::new("value".into(), &[50, 75, 60]);
+        let df = DataFrame::new(vec![timestamps, values]).unwrap();
+
+        let json_str = writer.write(&spec, &df).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // x-axis should automatically be inferred as "temporal" type
+        assert_eq!(vl_spec["encoding"]["x"]["type"], "temporal");
+
+        // Timestamps should be formatted as ISO datetime strings
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        assert_eq!(data_values[0]["timestamp"], "1970-01-01T00:00:00.000Z");
+        assert_eq!(data_values[1]["timestamp"], "1970-01-02T00:00:00.000Z");
+        assert_eq!(data_values[2]["timestamp"], "1970-01-03T00:00:00.000Z");
     }
 }

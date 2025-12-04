@@ -3,7 +3,7 @@
 //! Provides a reader for DuckDB databases with direct Polars DataFrame integration.
 
 use crate::reader::{connection::ConnectionInfo, Reader};
-use crate::{DataFrame, Result, GgsqlError};
+use crate::{DataFrame, GgsqlError, Result};
 use duckdb::{params, Connection};
 
 /// DuckDB database reader
@@ -29,53 +29,6 @@ pub struct DuckDBReader {
 }
 
 impl DuckDBReader {
-    /// Helper function to convert a DuckDB value to a string
-    fn value_to_string(row: &duckdb::Row, idx: usize) -> String {
-        use duckdb::types::ValueRef;
-
-        // Use get_ref to avoid panics on type mismatches
-        match row.get_ref(idx) {
-            Ok(ValueRef::Null) => String::new(),
-            Ok(ValueRef::Boolean(b)) => b.to_string(),
-            Ok(ValueRef::TinyInt(i)) => i.to_string(),
-            Ok(ValueRef::SmallInt(i)) => i.to_string(),
-            Ok(ValueRef::Int(i)) => i.to_string(),
-            Ok(ValueRef::BigInt(i)) => i.to_string(),
-            Ok(ValueRef::HugeInt(i)) => i.to_string(),
-            Ok(ValueRef::UTinyInt(i)) => i.to_string(),
-            Ok(ValueRef::USmallInt(i)) => i.to_string(),
-            Ok(ValueRef::UInt(i)) => i.to_string(),
-            Ok(ValueRef::UBigInt(i)) => i.to_string(),
-            Ok(ValueRef::Float(f)) => f.to_string(),
-            Ok(ValueRef::Double(f)) => f.to_string(),
-            Ok(ValueRef::Decimal(d)) => d.to_string(),
-            Ok(ValueRef::Text(s)) => String::from_utf8_lossy(s).to_string(),
-            Ok(ValueRef::Blob(b)) => format!("{:?}", b), // Debug format for binary data
-            Ok(ValueRef::Date32(d)) => {
-                // Convert days since Unix epoch to ISO date string (YYYY-MM-DD)
-                // DuckDB Date32 represents days since 1970-01-01
-                let days = d;
-                let unix_epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
-                let date = unix_epoch + chrono::Duration::days(days as i64);
-                date.format("%Y-%m-%d").to_string()
-            }
-            Ok(ValueRef::Time64(_, t)) => t.to_string(),
-            Ok(ValueRef::Timestamp(_, ts)) => {
-                // Convert microseconds since Unix epoch to ISO datetime string
-                // DuckDB Timestamp represents microseconds since 1970-01-01 00:00:00 UTC
-                let secs = ts / 1_000_000;
-                let nsecs = ((ts % 1_000_000) * 1000) as u32;
-                let unix_epoch = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, nsecs)
-                    .unwrap_or_else(|| {
-                        chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0).unwrap()
-                    });
-                unix_epoch.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
-            }
-            // Fallback for any other types or errors
-            _ => String::new(),
-        }
-    }
-
     /// Create a new DuckDB reader from a connection string
     ///
     /// # Arguments
@@ -121,89 +74,318 @@ impl DuckDBReader {
     }
 }
 
+/// Helper struct for building typed columns from rows
+enum ColumnBuilder {
+    TinyInt(Vec<Option<i8>>),
+    SmallInt(Vec<Option<i16>>),
+    Int(Vec<Option<i32>>),
+    BigInt(Vec<Option<i64>>),
+    UTinyInt(Vec<Option<i16>>),  // Cast to i16
+    USmallInt(Vec<Option<i32>>), // Cast to i32
+    UInt(Vec<Option<i64>>),      // Cast to i64
+    UBigInt(Vec<Option<u64>>),   // Keep as u64, check overflow
+    Float(Vec<Option<f32>>),
+    Double(Vec<Option<f64>>),
+    Boolean(Vec<Option<bool>>),
+    Text(Vec<Option<String>>),
+    Date32(Vec<Option<i32>>),
+    Timestamp(Vec<Option<i64>>),
+    Time64(Vec<Option<i64>>),
+    Decimal(Vec<Option<f64>>),     // Convert to Float64
+    HugeInt(Vec<Option<i128>>),    // Will check overflow
+    Blob(Vec<Option<String>>),     // Convert to String
+    Fallback(Vec<Option<String>>), // Fallback for unsupported types
+}
+
+impl ColumnBuilder {
+    fn new(duckdb_type: duckdb::types::Type) -> Self {
+        use duckdb::types::Type;
+        match duckdb_type {
+            Type::TinyInt => ColumnBuilder::TinyInt(Vec::new()),
+            Type::SmallInt => ColumnBuilder::SmallInt(Vec::new()),
+            Type::Int => ColumnBuilder::Int(Vec::new()),
+            Type::BigInt => ColumnBuilder::BigInt(Vec::new()),
+            Type::UTinyInt => ColumnBuilder::UTinyInt(Vec::new()),
+            Type::USmallInt => ColumnBuilder::USmallInt(Vec::new()),
+            Type::UInt => ColumnBuilder::UInt(Vec::new()),
+            Type::UBigInt => ColumnBuilder::UBigInt(Vec::new()),
+            Type::Float => ColumnBuilder::Float(Vec::new()),
+            Type::Double => ColumnBuilder::Double(Vec::new()),
+            Type::Boolean => ColumnBuilder::Boolean(Vec::new()),
+            Type::Text => ColumnBuilder::Text(Vec::new()),
+            Type::Date32 => ColumnBuilder::Date32(Vec::new()),
+            Type::Timestamp => ColumnBuilder::Timestamp(Vec::new()),
+            Type::Time64 => ColumnBuilder::Time64(Vec::new()),
+            Type::Decimal => ColumnBuilder::Decimal(Vec::new()),
+            Type::HugeInt => ColumnBuilder::HugeInt(Vec::new()),
+            Type::Blob => ColumnBuilder::Blob(Vec::new()),
+            _ => ColumnBuilder::Fallback(Vec::new()),
+        }
+    }
+
+    fn add_value(&mut self, row: &duckdb::Row, col_idx: usize) -> Result<()> {
+        use ColumnBuilder::*;
+        match self {
+            TinyInt(ref mut values) => values.push(row.get(col_idx).ok()),
+            SmallInt(ref mut values) => values.push(row.get(col_idx).ok()),
+            Int(ref mut values) => values.push(row.get(col_idx).ok()),
+            BigInt(ref mut values) => values.push(row.get(col_idx).ok()),
+            UTinyInt(ref mut values) => {
+                let val: Option<u8> = row.get(col_idx).ok();
+                values.push(val.map(|v| v as i16));
+            }
+            USmallInt(ref mut values) => {
+                let val: Option<u16> = row.get(col_idx).ok();
+                values.push(val.map(|v| v as i32));
+            }
+            UInt(ref mut values) => {
+                let val: Option<u32> = row.get(col_idx).ok();
+                values.push(val.map(|v| v as i64));
+            }
+            UBigInt(ref mut values) => values.push(row.get(col_idx).ok()),
+            Float(ref mut values) => values.push(row.get(col_idx).ok()),
+            Double(ref mut values) => values.push(row.get(col_idx).ok()),
+            Boolean(ref mut values) => values.push(row.get(col_idx).ok()),
+            Text(ref mut values) => values.push(row.get(col_idx).ok()),
+            Date32(ref mut values) => values.push(row.get(col_idx).ok()),
+            Timestamp(ref mut values) => values.push(row.get(col_idx).ok()),
+            Time64(ref mut values) => values.push(row.get(col_idx).ok()),
+            Decimal(ref mut values) => {
+                use duckdb::types::ValueRef;
+                let val = match row.get_ref(col_idx) {
+                    Ok(ValueRef::Decimal(d)) => {
+                        // Convert Decimal to string, then parse as f64
+                        let decimal_str = d.to_string();
+                        decimal_str.parse::<f64>().ok()
+                    }
+                    Ok(ValueRef::Null) => None,
+                    Ok(ValueRef::TinyInt(i)) => Some(i as f64),
+                    Ok(ValueRef::SmallInt(i)) => Some(i as f64),
+                    Ok(ValueRef::Int(i)) => Some(i as f64),
+                    Ok(ValueRef::BigInt(i)) => Some(i as f64),
+                    Ok(ValueRef::HugeInt(i)) => Some(i as f64),
+                    Ok(ValueRef::UTinyInt(i)) => Some(i as f64),
+                    Ok(ValueRef::USmallInt(i)) => Some(i as f64),
+                    Ok(ValueRef::UInt(i)) => Some(i as f64),
+                    Ok(ValueRef::UBigInt(i)) => Some(i as f64),
+                    Ok(ValueRef::Float(f)) => Some(f as f64),
+                    Ok(ValueRef::Double(f)) => Some(f),
+                    _ => None,
+                };
+                values.push(val);
+            }
+            HugeInt(ref mut values) => values.push(row.get(col_idx).ok()),
+            Blob(ref mut values) => {
+                // Blob: try to get as String, or use empty string
+                let val: Option<String> = row.get(col_idx).ok();
+                values.push(val.or(Some(String::new())));
+            }
+            Fallback(ref mut values) => {
+                // Fallback: try to get as String, or use empty string
+                let val: Option<String> = row.get(col_idx).ok();
+                values.push(val.or(Some(String::new())));
+            }
+        }
+        Ok(())
+    }
+
+    fn build(self, column_name: &str) -> Result<polars::prelude::Series> {
+        use polars::prelude::*;
+        use ColumnBuilder::*;
+
+        Ok(match self {
+            TinyInt(values) => Series::new(column_name.into(), values),
+            SmallInt(values) => Series::new(column_name.into(), values),
+            Int(values) => Series::new(column_name.into(), values),
+            BigInt(values) => Series::new(column_name.into(), values),
+            UTinyInt(values) => Series::new(column_name.into(), values),
+            USmallInt(values) => Series::new(column_name.into(), values),
+            UInt(values) => Series::new(column_name.into(), values),
+            UBigInt(values) => {
+                // Check if all values fit in i64
+                let all_fit = values
+                    .iter()
+                    .all(|opt_val| opt_val.map(|val| val <= i64::MAX as u64).unwrap_or(true));
+
+                if all_fit {
+                    let i64_values: Vec<Option<i64>> = values
+                        .into_iter()
+                        .map(|opt_val| opt_val.map(|val| val as i64))
+                        .collect();
+                    Series::new(column_name.into(), i64_values)
+                } else {
+                    eprintln!(
+                        "Warning: UBigInt overflow in column '{}', converting to string",
+                        column_name
+                    );
+                    let string_values: Vec<Option<String>> = values
+                        .into_iter()
+                        .map(|opt_val| opt_val.map(|val| val.to_string()))
+                        .collect();
+                    Series::new(column_name.into(), string_values)
+                }
+            }
+            Float(values) => Series::new(column_name.into(), values),
+            Double(values) => Series::new(column_name.into(), values),
+            Boolean(values) => Series::new(column_name.into(), values),
+            Text(values) => Series::new(column_name.into(), values),
+            Date32(values) => {
+                let series = Series::new(column_name.into(), values);
+                series
+                    .cast(&DataType::Date)
+                    .map_err(|e| GgsqlError::ReaderError(format!("Date cast failed: {}", e)))?
+            }
+            Timestamp(values) => {
+                let series = Series::new(column_name.into(), values);
+                series
+                    .cast(&DataType::Datetime(TimeUnit::Microseconds, None))
+                    .map_err(|e| GgsqlError::ReaderError(format!("Timestamp cast failed: {}", e)))?
+            }
+            Time64(values) => {
+                let series = Series::new(column_name.into(), values);
+                series
+                    .cast(&DataType::Time)
+                    .map_err(|e| GgsqlError::ReaderError(format!("Time cast failed: {}", e)))?
+            }
+            Decimal(values) => Series::new(column_name.into(), values),
+            HugeInt(values) => {
+                // Check if all values fit in i64
+                let all_fit = values.iter().all(|opt_val| {
+                    opt_val
+                        .map(|val| val >= i64::MIN as i128 && val <= i64::MAX as i128)
+                        .unwrap_or(true)
+                });
+
+                if all_fit {
+                    let i64_values: Vec<Option<i64>> = values
+                        .into_iter()
+                        .map(|opt_val| opt_val.map(|val| val as i64))
+                        .collect();
+                    Series::new(column_name.into(), i64_values)
+                } else {
+                    eprintln!(
+                        "Warning: HugeInt overflow in column '{}', converting to string",
+                        column_name
+                    );
+                    let string_values: Vec<Option<String>> = values
+                        .into_iter()
+                        .map(|opt_val| opt_val.map(|val| val.to_string()))
+                        .collect();
+                    Series::new(column_name.into(), string_values)
+                }
+            }
+            Blob(values) => {
+                eprintln!(
+                    "Warning: Converting Blob column '{}' to string (debug format)",
+                    column_name
+                );
+                Series::new(column_name.into(), values)
+            }
+            Fallback(values) => {
+                eprintln!(
+                    "Warning: Using fallback string conversion for column '{}'",
+                    column_name
+                );
+                Series::new(column_name.into(), values)
+            }
+        })
+    }
+}
+
 impl Reader for DuckDBReader {
     fn execute(&self, sql: &str) -> Result<DataFrame> {
-        // Execute query using DuckDB's rows API and manually build DataFrame
+        use polars::prelude::*;
+
+        // Prepare and execute statement to get schema
         let mut stmt = self
             .conn
             .prepare(sql)
             .map_err(|e| GgsqlError::ReaderError(format!("Failed to prepare SQL: {}", e)))?;
 
-        // Execute the query
-        let mut rows = stmt
-            .query(params![])
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute query: {}", e)))?;
+        // Execute to populate schema info
+        stmt.execute(params![])
+            .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute SQL: {}", e)))?;
 
-        // Collect all rows into vectors and extract column names from first row
-        let mut row_data: Vec<Vec<String>> = Vec::new();
-        let mut column_names: Vec<String> = Vec::new();
-        let column_count: usize;
+        // Get column metadata BEFORE creating iterator
+        let column_count = stmt.column_count();
+        if column_count == 0 {
+            return Err(GgsqlError::ReaderError(
+                "Query returned no columns".to_string(),
+            ));
+        }
 
-        // Process first row to get column information
-        if let Some(first_row) = rows
-            .next()
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to fetch first row: {}", e)))?
-        {
-            // Get column count from the row
-            column_count = first_row.as_ref().column_count();
+        let mut column_names = Vec::new();
+        let mut column_types = Vec::new();
+        for i in 0..column_count {
+            column_names.push(
+                stmt.column_name(i)
+                    .map_err(|e| {
+                        GgsqlError::ReaderError(format!("Failed to get column name: {}", e))
+                    })?
+                    .to_string(),
+            );
+            let data_type = stmt.column_type(i);
+            let duckdb_type = duckdb::types::Type::from(&data_type);
+            column_types.push(duckdb_type);
+        }
 
-            if column_count == 0 {
-                return Err(GgsqlError::ReaderError(
-                    "Query returned no columns".to_string(),
-                ));
-            }
+        // Initialize storage for each column
+        let column_builders: Vec<ColumnBuilder> = column_types
+            .iter()
+            .map(|t| ColumnBuilder::new(t.clone()))
+            .collect();
 
-            // Get column names from the row
-            for i in 0..column_count {
-                column_names.push(
-                    first_row
-                        .as_ref()
-                        .column_name(i)
-                        .map_err(|e| {
-                            GgsqlError::ReaderError(format!("Failed to get column name: {}", e))
-                        })?
-                        .to_string(),
-                );
-            }
+        // Collect all values using query_map (which borrows stmt mutably during iteration)
+        let builders_cell = std::cell::RefCell::new(column_builders);
+        let row_count_cell = std::cell::RefCell::new(0usize);
+        let error_cell = std::cell::RefCell::new(None);
 
-            // Extract data from first row
-            let mut first_row_vec = Vec::new();
-            for i in 0..column_count {
-                let val = Self::value_to_string(&first_row, i);
-                first_row_vec.push(val);
-            }
-            row_data.push(first_row_vec);
-        } else {
+        let _ = stmt
+            .query_map(params![], |row| {
+                // Handle errors by storing them in error_cell
+                if error_cell.borrow().is_some() {
+                    return Ok(());
+                }
+
+                let mut builders = builders_cell.borrow_mut();
+                for col_idx in 0..column_count {
+                    if let Err(e) = builders[col_idx].add_value(row, col_idx) {
+                        *error_cell.borrow_mut() = Some(e);
+                        return Ok(());
+                    }
+                }
+                *row_count_cell.borrow_mut() += 1;
+                Ok(())
+            })
+            .map_err(|e| GgsqlError::ReaderError(format!("Failed to iterate rows: {}", e)))?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| GgsqlError::ReaderError(format!("Failed to process rows: {}", e)))?;
+
+        // Check if there was an error during processing
+        if let Some(err) = error_cell.into_inner() {
+            return Err(err);
+        }
+
+        let row_count = *row_count_cell.borrow();
+        if row_count == 0 {
             return Err(GgsqlError::ReaderError(
                 "Query returned no rows".to_string(),
             ));
         }
 
-        // Collect remaining rows
-        while let Some(row) = rows
-            .next()
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to fetch row: {}", e)))?
-        {
-            let mut row_vec = Vec::new();
-            for i in 0..column_count {
-                let val = Self::value_to_string(&row, i);
-                row_vec.push(val);
-            }
-            row_data.push(row_vec);
+        // Build Series from column builders
+        let column_builders = builders_cell.into_inner();
+        let mut columns = Vec::new();
+        for (col_idx, builder) in column_builders.into_iter().enumerate() {
+            let series = builder.build(&column_names[col_idx])?;
+            columns.push(series);
         }
 
-        // Convert to Polars DataFrame
-        use polars::prelude::*;
+        // Create DataFrame from typed columns
+        let df = DataFrame::new(columns)
+            .map_err(|e| GgsqlError::ReaderError(format!("Failed to create DataFrame: {}", e)))?;
 
-        let mut series_vec = Vec::new();
-        for (col_idx, col_name) in column_names.iter().enumerate() {
-            let col_data: Vec<String> = row_data.iter().map(|row| row[col_idx].clone()).collect();
-            let series = Series::new(col_name.into(), col_data);
-            series_vec.push(series);
-        }
-
-        DataFrame::new(series_vec)
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to create DataFrame: {}", e)))
+        Ok(df)
     }
 
     fn validate_columns(&self, sql: &str, columns: &[String]) -> Result<()> {
