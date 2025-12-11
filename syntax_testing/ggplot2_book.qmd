@@ -11,7 +11,10 @@ Danielle Navarro, and Thomas Lin Pedersen.
 
 All code blocks have been expanded to be self-contained and semantic duplicates have been removed.
 
-
+```{r}
+library(tidyverse)
+library(patchwork)
+```
 
 ## annotations.qmd
 
@@ -452,366 +455,6 @@ base + coord_polar(theta = "y")
 base + coord_polar()
 ```
 
-
-## ext-springs.qmd
-
-```{r}
-circle <- tibble(
-  radians = seq(0, 2 * pi, length.out = 100),
-  x = cos(radians),
-  y = sin(radians),
-  index = 1:100,
-  type = "circle"
-)
-
-ggplot(circle, aes(x = x, y = y, alpha = -index)) + 
-  geom_path(show.legend = FALSE) + 
-  coord_equal()
-```
-
-```{r}
-spring <- circle %>% 
-  mutate(
-    motion = seq(0, 1, length.out = 100),
-    x = x + motion,
-    type = "spring"
-  )
-
-ggplot(spring, aes(x = x, y = y, alpha = -index)) + 
-  geom_path(show.legend = FALSE) + 
-  coord_equal()
-```
-
-```{r}
-spring <- create_spring(
-  x = 4, y = 2, xend = 10, yend = 6,
-  diameter = 2, tension = 0.6, n = 50
-)
-
-ggplot(spring) + 
-  geom_path(aes(x = x, y = y)) + 
-  coord_equal()
-```
-
-```{r}
-df <- tibble(
-  x = runif(5, max = 10),
-  y = runif(5, max = 10),
-  xend = runif(5, max = 10),
-  yend = runif(5, max = 10),
-  class = sample(letters[1:2], 5, replace = TRUE)
-)
-
-ggplot(df) + 
-  geom_spring(aes(x = x, y = y, xend = xend, yend = yend)) +
-  coord_equal()
-```
-
-```{r}
-#| fig-width: 8
-#| fig-height: 4
-ggplot(df) + 
-  geom_spring(
-    aes(x, y, xend = xend, yend = yend, colour = class),
-    linewidth = 1
-  ) +
-  coord_equal() + 
-  facet_wrap(~ class)
-```
-
-```{r}
-#| fig-width: 8
-#| fig-height: 4
-ggplot(df) + 
-  stat_spring(
-    aes(x, y, xend = xend, yend = yend, colour = class),
-    geom = "point", 
-    n = 15
-  ) +
-  coord_equal() + 
-  facet_wrap(~ class)
-```
-
-```{r}
-df <- tibble(
-  x = runif(5, max = 10),
-  y = runif(5, max = 10),
-  xend = runif(5, max = 10),
-  yend = runif(5, max = 10),
-  class = sample(letters[1:2], 5, replace = TRUE),
-  tension = runif(5),
-  diameter = runif(5, 0.5, 1.5)
-)
-
-ggplot(df, aes(x, y, xend = xend, yend = yend)) + 
-  geom_spring(aes(tension = tension, diameter = diameter))
-```
-
-```{r}
-ggplot(df, aes(x, y, xend = xend, yend = yend)) + 
-  geom_spring(diameter = 0.5)
-```
-
-```{r}
-#| layout-ncol: 2
-#| fig-width: 4
-ggplot(df, aes(x, y, xend = xend, yend = yend)) + 
-  geom_spring(aes(tension = tension, diameter = diameter))
-ggplot(df, aes(x, y, xend = xend, yend = yend)) + 
-  geom_spring(diameter = 0.5)
-```
-
-```{r}
-ggplot() + 
-  geom_spring(aes(x = 0, y = 0, xend = 3, yend = 20))
-```
-
-```{r}
-ggplot() + 
-  geom_spring(aes(x = 0, y = 0, xend = 100, yend = 80))
-```
-
-```{r}
-p <- ggplot(mpg, aes(displ, hwy)) + geom_point()
-grob_table <- ggplotGrob(p)
-grob_table
-```
-
-```{r}
-ggplot(df) + 
-  geom_spring(aes(
-    x = x * 100, 
-    y = y, 
-    xend = xend, 
-    yend = yend, 
-    diameter = diameter, 
-    tension = tension
-  ))
-```
-
-```{r}
-ggplot(df) + 
-  geom_spring(aes(
-    x = x, 
-    y = y, 
-    xend = xend, 
-    yend = yend, 
-    tension = tension, 
-    diameter = diameter
-  )) + 
-  scale_tension(range = c(0.1, 5)) 
-```
-
-```{r}
-ggplot(df) + 
-  geom_spring(aes(
-    x = x, 
-    y = y, 
-    xend = xend, 
-    yend = yend, 
-    tension = tension, 
-    diameter = diameter
-  )) + 
-  scale_tension(range = c(0.1, 5)) +
-  theme(legend.key.size = unit(1, "cm"))
-```
-
-```{r}
-ggplot(df) + 
-  geom_spring(aes(
-    x = x, 
-    y = y, 
-    xend = xend, 
-    yend = yend, 
-    colour = class
-  )) + 
-  theme(legend.key.size = unit(1, "cm"))
-```
-
-
-## extensions.qmd
-
-```{r}
-#| layout-ncol: 3
-#| fig-width: 3
-theme_background <- function(background = "white", ...) {
-  theme_minimal(...) %+replace%
-    theme(
-      plot.background = element_rect(
-        fill = background,
-        colour = background
-      ),
-      complete = TRUE
-    )
-}
-
-base <- ggplot(mpg, aes(displ, hwy)) + geom_point()
-base + theme_minimal(base_size = 14)
-base + theme_background(base_size = 14)
-base + theme_background(base_size = 14, background = "grey70")
-```
-
-```{r}
-#| layout-ncol: 3
-#| fig-width: 3
-theme_background <- function(background = "white", ...) {
-  theme_minimal(...) %+replace%
-    theme(
-      plot.background = element_rect(
-        fill = background,
-        colour = background
-      ),
-      complete = TRUE
-    )
-}
-
-base <- ggplot(mpg, aes(displ, hwy)) + geom_point()
-base + theme_minimal(base_size = 14)
-base + theme_background(base_size = 14)
-base + theme_background(base_size = 14, background = "grey70")
-
-#| layout-ncol: 3
-#| fig-width: 3
-base + theme_classic() + theme(axis.line = element_blank())
-base + theme_predictable() + theme(axis.line = element_blank())
-base + theme_surprising() + theme(axis.line = element_blank())
-```
-
-```{r}
-#| layout-ncol: 3
-#| fig-width: 3
-theme_background <- function(background = "white", ...) {
-  theme_minimal(...) %+replace%
-    theme(
-      plot.background = element_rect(
-        fill = background,
-        colour = background
-      ),
-      complete = TRUE
-    )
-}
-
-base <- ggplot(mpg, aes(displ, hwy)) + geom_point()
-base + theme_minimal(base_size = 14)
-base + theme_background(base_size = 14)
-base + theme_background(base_size = 14, background = "grey70")
-
-#| echo: false
-#| layout-ncol: 2
-#| fig-width: 4
-# DJN: I'm not sure why, because I can't reproduce the bug elsewhere, but the
-# call to register_theme_element() updates ggplot2:::ggplot_global$element_tree
-# only within *that* chunk, so subsequent chunks don't have ggxyz.panel.annotation
-# in the element tree. For now, this is a hacky fix:
-register_theme_elements(
-  ggxyz.panel.annotation = element_text(
-    color = "blue", 
-    hjust = 0.95, 
-    vjust = 0.05
-  ),
-  element_tree = list(
-    ggxyz.panel.annotation = el_def(
-      class = "element_text", 
-      inherit = "text"
-    )
-  )
-)
-base + coord_annotate("annotation in blue")
-base + coord_annotate("annotation in blue") + theme_dark()
-```
-
-```{r}
-#| layout-ncol: 2
-#| fig-width: 4
-ggplot(mpg, aes(displ, hwy)) + 
-  geom_point() + 
-  stat_chull(fill = NA, colour = "black")
-
-ggplot(mpg, aes(displ, hwy, colour = drv)) + 
-  geom_point() + 
-  stat_chull(fill = NA)
-```
-
-```{r}
-ggplot(mpg, aes(displ, colour = drv)) + 
-  stat_density_common()
-```
-
-```{r}
-ggplot(mpg, aes(displ, hwy)) + 
-  geom_chull() +
-  geom_point()
-```
-
-```{r}
-#| fig-width: 8
-#| fig-height: 2
-df <- data.frame(
-  x = 1:10,
-  y = 0,
-  angle = seq(from = 0, to = 2 * pi, length.out = 10),
-  radius = seq(from = 0, to = 2, length.out = 10)
-)
-ggplot(df, aes(x, y)) +
-  geom_spike(aes(angle = angle, radius = radius)) + 
-  coord_equal()
-```
-
-```{r}
-#| layout-ncol: 2
-#| fig-width: 4
-df <- data.frame(x = 1:10, xend = 0:9, y = 0, yend = 1:10)
-base <- ggplot(df, aes(x, y, xend = xend, yend = yend))
-
-base + geom_barbell()
-base + geom_barbell(shape = 4, linetype = "dashed")  
-```
-
-```{r}
-scale_fill_random <- function(..., aesthetics = "fill") {
-  discrete_scale(
-    aesthetics = aesthetics, 
-    scale_name = "random", 
-    palette = random_colours
-  )
-}
-
-ggplot(mpg, aes(hwy, class, fill = class)) + 
-  geom_violin(show.legend = FALSE) +
-  scale_fill_random()
-```
-
-```{r}
-#| layout-ncol: 2
-#| fig-width: 4
-df <- data.frame(
-  x = sample(1:3, 1500, TRUE),
-  y = sample(1:3, 1500, TRUE)
-)
-
-ggplot(df, aes(x, y)) + geom_point(position = position_jitter())
-ggplot(df, aes(x, y)) + geom_point(position = position_jitternormal())
-```
-
-```{r}
-#| label: facet-scatter-plot
-#| echo: false
-scatter <- ggplot(mpg, aes(displ, hwy)) + 
-  geom_point() + 
-  facet_scatter(vars(manufacturer), nrow = 5, ncol = 6)
-
-scatter_built <- ggplot_build(scatter)
-scatter_built$layout$layout
-```
-
-```{r}
-#| eval: false
-ggplot(mpg, aes(displ, hwy)) + 
-  geom_point() + 
-  facet_scatter(vars(manufacturer), nrow = 5, ncol = 6)
-```
-
-
 ## facet.qmd
 
 ```{r}
@@ -1127,7 +770,7 @@ p + geom_tile() + ggtitle("raster")
 ```
 
 ```{r}
-#| label: geom-basic
+#| label: geom-basic2
 #| layout-ncol: 4
 #| fig-width: 2.5
 df <- data.frame(
@@ -1150,29 +793,6 @@ p + geom_area() + ggtitle("area")
 p + geom_path() + ggtitle("path")
 p + geom_polygon() + ggtitle("polygon")
 ```
-
-
-## internals.qmd
-
-```{r}
-p <- ggplot(mpg, aes(displ, hwy, color = drv)) + 
-  geom_point(position = "jitter") +
-  geom_smooth(method = "lm", formula = y ~ x) + 
-  facet_wrap(vars(year)) + 
-  ggtitle("A plot for expository purposes")
-```
-
-```{r}
-p <- ggplot(mpg, aes(displ, hwy, color = drv)) + 
-  geom_point(position = "jitter") +
-  geom_smooth(method = "lm", formula = y ~ x) + 
-  facet_wrap(vars(year)) + 
-  ggtitle("A plot for expository purposes")
-
-#| echo: false
-ggbuild(p + scale_x_log10())$transformed[[1]] %>% head(n = 3)
-```
-
 
 ## layers.qmd
 
@@ -1359,6 +979,8 @@ ggplot(mi_counties, aes(lon, lat, group = group)) +
 ```
 
 ```{r}
+library(ozmaps)
+oz_states <- ozmaps::ozmap_states %>% filter(NAME != "Other Territories")
 ggplot(oz_states) + 
   geom_sf() + 
   coord_sf()
@@ -1366,9 +988,8 @@ ggplot(oz_states) +
 
 ```{r}
 library(ozmaps)
-library(sf)
 oz_states <- ozmaps::ozmap_states %>% filter(NAME != "Other Territories")
-library(ozmaps)
+library(sf)
 library(rmapshaper)
 oz_votes <- rmapshaper::ms_simplify(ozmaps::abs_ced)
 
@@ -1468,56 +1089,6 @@ ggplot(dawson[-69]) +
   coord_sf()
 ```
 
-```{r}
-library(stars)
-# Note: Requires external data file "IDE00422.202001072100.tif"
-sat_vis <- read_stars(
-  "IDE00422.202001072100.tif",
-  RasterIO = list(nBufXSize = 600, nBufYSize = 600)
-)
-
-ggplot() + 
-  geom_stars(data = sat_vis) + 
-  coord_equal()
-```
-
-```{r}
-#| fig-width: 8
-#| fig-height: 4
-library(stars)
-# Note: Requires external data file "IDE00422.202001072100.tif"
-sat_vis <- read_stars(
-  "IDE00422.202001072100.tif",
-  RasterIO = list(nBufXSize = 600, nBufYSize = 600)
-)
-
-ggplot() + 
-  geom_stars(data = sat_vis, show.legend = FALSE) +
-  facet_wrap(vars(band)) + 
-  coord_equal() + 
-  scale_fill_gradient(low = "black", high = "white")
-```
-
-```{r}
-library(stars)
-# Note: Requires external data file "IDE00422.202001072100.tif"
-sat_vis <- read_stars(
-  "IDE00422.202001072100.tif",
-  RasterIO = list(nBufXSize = 600, nBufYSize = 600)
-)
-library(ozmaps)
-library(sf)
-oz_states <- ozmaps::ozmap_states %>% filter(NAME != "Other Territories")
-
-ggplot() + 
-  geom_stars(data = sat_vis, show.legend = FALSE) +
-  geom_sf(data = oz_states, fill = NA, color = "white") + 
-  coord_sf() + 
-  theme_void() + 
-  scale_fill_gradient(low = "black", high = "white")
-```
-
-
 ## mastery.qmd
 
 ```{r}
@@ -1564,25 +1135,6 @@ ggplot(mpg, aes(displ, hwy)) +
   geom_point() +
   geom_smooth() + 
   facet_wrap(~year)
-```
-
-```{r}
-#| label: scale-legends
-#| echo: false
-#| fig.cap: 'Examples of legends from four different scales. From left to right: continuous
-#|   variable mapped to size, and to colour, discrete variable mapped to shape, and to
-#|   colour. The ordering of scales seems upside-down, but this matches the labelling
-#|   of the $y$-axis: small values occur at the bottom.'
-df <- data.frame(
-  x = 1:10,
-  y = factor(letters[1:5])
-)
-draw_legends(
-  ggplot(df, aes(x, x, size = x)) + geom_point(),
-  ggplot(df, aes(x, x, colour = x)) + geom_point(),
-  ggplot(df, aes(y, y, shape = y)) + geom_point(),
-  ggplot(df, aes(y, y, colour = y)) + geom_point()
-)
 ```
 
 ```{r}
@@ -2969,7 +2521,6 @@ base <- ggplot(toy, aes(log, const)) +
   scale_y_continuous(breaks = NULL) 
 
 base + scale_x_log10()
-base + scale_x_log10(minor_breaks = mb)
 ```
 
 ```{r}
@@ -3023,7 +2574,7 @@ base + scale_y_continuous(
 ```
 
 ```{r}
-#| label: breaks-functions
+#| label: breaks-functions2
 #| layout-ncol: 3
 #| fig-width: 3
 #| fig-height: 3
@@ -3151,7 +2702,7 @@ base +
 ```
 
 ```{r}
-#| label: date-scale-3
+#| label: date-scale-3a
 #| layout-ncol: 2
 #| fig-width: 4
 base <- ggplot(economics, aes(date, psavert)) + 
@@ -3163,7 +2714,7 @@ base + scale_x_date(date_breaks = "5 years", date_labels = "%y")
 ```
 
 ```{r}
-#| label: date-scale-3
+#| label: date-scale-3b
 #| layout-ncol: 2
 #| fig-width: 4
 base <- ggplot(economics, aes(date, psavert)) + 
@@ -3184,7 +2735,7 @@ base + scale_x_date(limits = lim, date_labels = "%B\n%Y")
 ```
 
 ```{r}
-#| label: date-scale-3
+#| label: date-scale-3c
 #| layout-ncol: 2
 #| fig-width: 4
 base <- ggplot(economics, aes(date, psavert)) + 
@@ -3500,7 +3051,7 @@ ggplot(small, aes(eruptions, waiting)) +
 ## themes.qmd
 
 ```{r}
-#| label: motivation-1
+#| label: motivation-1a
 base <- ggplot(mpg, aes(cty, hwy, color = factor(cyl))) +
   geom_jitter() + 
   geom_abline(colour = "grey50", size = 2)
@@ -3508,7 +3059,7 @@ base
 ```
 
 ```{r}
-#| label: motivation-1
+#| label: motivation-1b
 base <- ggplot(mpg, aes(cty, hwy, color = factor(cyl))) +
   geom_jitter() + 
   geom_abline(colour = "grey50", size = 2)
@@ -3527,7 +3078,7 @@ labelled
 ```
 
 ```{r}
-#| label: built-in
+#| label: built-in-a
 #| layout-ncol: 3
 #| fig-width: 3
 df <- data.frame(x = 1:3, y = 1:3)
@@ -3538,7 +3089,7 @@ base + theme_linedraw() + ggtitle("theme_linedraw()")
 ```
 
 ```{r}
-#| label: built-in
+#| label: built-in-b
 #| layout-ncol: 3
 #| fig-width: 3
 df <- data.frame(x = 1:3, y = 1:3)
