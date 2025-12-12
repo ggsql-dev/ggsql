@@ -1401,7 +1401,7 @@ mod tests {
     fn test_case_insensitive_keywords_mixed() {
         let query = r#"
             ViSuAlIsE As PlOt
-            WiTh line UsInG x = date, y = revenue
+            DrAw line UsInG x = date, y = revenue
             ScAlE x uSiNg type = 'date'
             ThEmE minimal
         "#;
