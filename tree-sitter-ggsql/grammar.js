@@ -238,14 +238,13 @@ module.exports = grammar({
       $.theme_clause,
     ),
 
-    // WITH clause
+    // DRAW clause - new syntax: DRAW geom [MAPPING ...] [USING ...] [FILTER ...]
     draw_clause: $ => seq(
       caseInsensitive('DRAW'),
       $.geom_type,
-      caseInsensitive('USING'),
-      $.aesthetic_mapping,
-      repeat(seq(',', $.aesthetic_mapping)),
-      optional(seq(caseInsensitive('AS'), $.identifier))
+      optional($.mapping_clause),
+      optional($.draw_using_clause),
+      optional($.filter_clause)
     ),
 
     geom_type: $ => choice(
@@ -254,11 +253,82 @@ module.exports = grammar({
       'text', 'label', 'segment', 'arrow', 'hline', 'vline', 'abline', 'errorbar'
     ),
 
-    aesthetic_mapping: $ => seq(
-      field('aesthetic', $.aesthetic_name),
-      '=',
-      field('value', $.aesthetic_value)
+    // MAPPING clause for aesthetic mappings: MAPPING col AS x, "blue" AS color
+    mapping_clause: $ => seq(
+      caseInsensitive('MAPPING'),
+      $.mapping_item,
+      repeat(seq(',', $.mapping_item))
     ),
+
+    mapping_item: $ => seq(
+      field('value', $.mapping_value),
+      caseInsensitive('AS'),
+      field('aesthetic', $.aesthetic_name)
+    ),
+
+    mapping_value: $ => choice(
+      $.column_reference,
+      $.literal_value
+    ),
+
+    // USING clause for parameters: USING opacity := 0.5, size := 3
+    draw_using_clause: $ => seq(
+      caseInsensitive('USING'),
+      $.parameter_assignment,
+      repeat(seq(',', $.parameter_assignment))
+    ),
+
+    parameter_assignment: $ => seq(
+      field('param', $.parameter_name),
+      ':=',
+      field('value', $.parameter_value)
+    ),
+
+    parameter_name: $ => $.identifier,
+
+    parameter_value: $ => choice(
+      $.string,
+      $.number,
+      $.boolean
+    ),
+
+    // FILTER clause for layer filtering: FILTER x > 10 AND y < 20
+    filter_clause: $ => seq(
+      caseInsensitive('FILTER'),
+      $.filter_expression
+    ),
+
+    filter_expression: $ => choice(
+      $.filter_and_expression,
+      $.filter_or_expression,
+      $.filter_primary
+    ),
+
+    filter_primary: $ => choice(
+      $.filter_comparison,
+      seq('(', $.filter_expression, ')')
+    ),
+
+    filter_and_expression: $ => prec.left(2, seq(
+      $.filter_primary,
+      caseInsensitive('AND'),
+      $.filter_expression
+    )),
+
+    filter_or_expression: $ => prec.left(1, seq(
+      $.filter_primary,
+      caseInsensitive('OR'),
+      $.filter_expression
+    )),
+
+    filter_comparison: $ => seq(
+      $.identifier,
+      $.comparison_operator,
+      choice($.string, $.number, $.boolean, $.identifier)
+    ),
+
+    // Basic comparison operators only
+    comparison_operator: $ => choice('=', '!=', '<>', '<', '>', '<=', '>='),
 
     aesthetic_name: $ => choice(
       // Position aesthetics
@@ -271,11 +341,6 @@ module.exports = grammar({
       'label', 'family', 'fontface', 'hjust', 'vjust',
       // Grouping
       'group'
-    ),
-
-    aesthetic_value: $ => choice(
-      $.column_reference,
-      $.literal_value
     ),
 
     column_reference: $ => $.identifier,
