@@ -819,7 +819,10 @@ cargo build --all-features
 **Syntax**:
 
 ```sql
-DRAW <geom> [MAPPING <value> AS <aesthetic>, ...] [SETTING <param> TO <value>, ...] [FILTER <condition>]
+DRAW <geom>
+    [MAPPING <value> AS <aesthetic>, ...]
+    [SETTING <param> TO <value>, ...]
+    [FILTER <condition>]
 ```
 
 All clauses (MAPPING, SETTING, FILTER) are optional.
@@ -861,19 +864,28 @@ Applies a filter to the layer data. Supports basic comparison operators.
 
 ```sql
 -- Basic mapping
-DRAW line MAPPING date AS x, revenue AS y, region AS color
+DRAW line
+    MAPPING date AS x, revenue AS y, region AS color
 
 -- Mapping with literal
-DRAW point MAPPING date AS x, revenue AS y, 'red' AS color
+DRAW point
+    MAPPING date AS x, revenue AS y, 'red' AS color
 
 -- Setting parameters
-DRAW point MAPPING x AS x, y AS y SETTING size TO 5, opacity TO 0.7
+DRAW point
+    MAPPING x AS x, y AS y
+    SETTING size TO 5, opacity TO 0.7
 
 -- With filter
-DRAW point MAPPING x AS x, y AS y, category AS color FILTER value > 100
+DRAW point
+    MAPPING x AS x, y AS y, category AS color
+    FILTER value > 100
 
 -- Combined
-DRAW line MAPPING date AS x, value AS y SETTING stroke_width TO 2 FILTER category = 'A' AND year >= 2024
+DRAW line
+    MAPPING date AS x, value AS y
+    SETTING stroke_width TO 2
+    FILTER category = 'A' AND year >= 2024
 ```
 
 ### SCALE Clause
@@ -1092,8 +1104,10 @@ WHERE sale_date >= '2024-01-01'
 GROUP BY sale_date, region
 ORDER BY sale_date
 VISUALISE AS PLOT
-DRAW line MAPPING sale_date AS x, total AS y, region AS color
-DRAW point MAPPING sale_date AS x, total AS y, region AS color
+DRAW line
+    MAPPING sale_date AS x, total AS y, region AS color
+DRAW point
+    MAPPING sale_date AS x, total AS y, region AS color
 SCALE x USING type = 'date'
 FACET WRAP region
 LABEL title = 'Sales Trends by Region', x = 'Date', y = 'Total Quantity'

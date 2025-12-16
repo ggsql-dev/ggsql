@@ -246,7 +246,8 @@ SELECT * FROM (VALUES
 -- Visualize with ggSQL
 SELECT * FROM sales
 VISUALISE AS PLOT
-DRAW line MAPPING date AS x, revenue AS y, region AS color
+DRAW line
+    MAPPING date AS x, revenue AS y, region AS color
 SCALE x USING type = 'date'
 LABEL title = 'Sales Trends'
 ```

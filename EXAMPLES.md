@@ -22,7 +22,8 @@ This document provides a collection of basic examples demonstrating how to use g
 ```sql
 SELECT x, y FROM data
 VISUALISE AS PLOT
-DRAW point MAPPING x AS x, y AS y
+DRAW point
+    MAPPING x AS x, y AS y
 ```
 
 ### Line Chart
@@ -31,7 +32,8 @@ DRAW point MAPPING x AS x, y AS y
 SELECT date, revenue FROM sales
 WHERE year = 2024
 VISUALISE AS PLOT
-DRAW line MAPPING date AS x, revenue AS y
+DRAW line
+    MAPPING date AS x, revenue AS y
 ```
 
 ### Bar Chart
@@ -40,7 +42,8 @@ DRAW line MAPPING date AS x, revenue AS y
 SELECT category, total FROM sales
 GROUP BY category
 VISUALISE AS PLOT
-DRAW bar MAPPING category AS x, total AS y
+DRAW bar
+    MAPPING category AS x, total AS y
 ```
 
 ### Area Chart
@@ -48,7 +51,8 @@ DRAW bar MAPPING category AS x, total AS y
 ```sql
 SELECT date, cumulative FROM metrics
 VISUALISE AS PLOT
-DRAW area MAPPING date AS x, cumulative AS y
+DRAW area
+    MAPPING date AS x, cumulative AS y
 ```
 
 ---
@@ -60,8 +64,10 @@ DRAW area MAPPING date AS x, cumulative AS y
 ```sql
 SELECT date, value FROM timeseries
 VISUALISE AS PLOT
-DRAW line MAPPING date AS x, value AS y
-DRAW point MAPPING date AS x, value AS y
+DRAW line
+    MAPPING date AS x, value AS y
+DRAW point
+    MAPPING date AS x, value AS y
 ```
 
 ### Bar Chart with Colored Regions
@@ -70,7 +76,8 @@ DRAW point MAPPING date AS x, value AS y
 SELECT category, revenue, region FROM sales
 GROUP BY category, region
 VISUALISE AS PLOT
-DRAW bar MAPPING category AS x, revenue AS y, region AS fill
+DRAW bar
+    MAPPING category AS x, revenue AS y, region AS fill
 ```
 
 ### Multiple Lines by Group
@@ -78,7 +85,8 @@ DRAW bar MAPPING category AS x, revenue AS y, region AS fill
 ```sql
 SELECT date, value, category FROM metrics
 VISUALISE AS PLOT
-DRAW line MAPPING date AS x, value AS y, category AS color
+DRAW line
+    MAPPING date AS x, value AS y, category AS color
 ```
 
 ---
@@ -90,7 +98,8 @@ DRAW line MAPPING date AS x, value AS y, category AS color
 ```sql
 SELECT sale_date, revenue FROM sales
 VISUALISE AS PLOT
-DRAW line MAPPING sale_date AS x, revenue AS y
+DRAW line
+    MAPPING sale_date AS x, revenue AS y
 SCALE x USING type = 'date'
 ```
 
@@ -99,7 +108,8 @@ SCALE x USING type = 'date'
 ```sql
 SELECT x, y FROM exponential_data
 VISUALISE AS PLOT
-DRAW point MAPPING x AS x, y AS y
+DRAW point
+    MAPPING x AS x, y AS y
 SCALE y USING type = 'log10'
 ```
 
@@ -108,7 +118,8 @@ SCALE y USING type = 'log10'
 ```sql
 SELECT date, temperature, station FROM weather
 VISUALISE AS PLOT
-DRAW line MAPPING date AS x, temperature AS y, station AS color
+DRAW line
+    MAPPING date AS x, temperature AS y, station AS color
 SCALE color USING palette = 'viridis'
 ```
 
@@ -117,7 +128,8 @@ SCALE color USING palette = 'viridis'
 ```sql
 SELECT category, value FROM data
 VISUALISE AS PLOT
-DRAW bar MAPPING category AS x, value AS y, category AS fill
+DRAW bar
+    MAPPING category AS x, value AS y, category AS fill
 SCALE fill USING domain = ['A', 'B', 'C', 'D']
 ```
 
@@ -130,7 +142,8 @@ SCALE fill USING domain = ['A', 'B', 'C', 'D']
 ```sql
 SELECT x, y FROM data
 VISUALISE AS PLOT
-DRAW point MAPPING x AS x, y AS y
+DRAW point
+    MAPPING x AS x, y AS y
 COORD cartesian USING xlim = [0, 100], ylim = [0, 50]
 ```
 
@@ -140,7 +153,8 @@ COORD cartesian USING xlim = [0, 100], ylim = [0, 50]
 SELECT category, value FROM data
 ORDER BY value DESC
 VISUALISE AS PLOT
-DRAW bar MAPPING category AS x, value AS y
+DRAW bar
+    MAPPING category AS x, value AS y
 COORD flip
 ```
 
@@ -150,7 +164,8 @@ COORD flip
 SELECT category, SUM(value) as total FROM data
 GROUP BY category
 VISUALISE AS PLOT
-DRAW bar MAPPING category AS x, total AS y
+DRAW bar
+    MAPPING category AS x, total AS y
 COORD polar
 ```
 
@@ -159,7 +174,8 @@ COORD polar
 ```sql
 SELECT category, value FROM data
 VISUALISE AS PLOT
-DRAW bar MAPPING category AS x, value AS y
+DRAW bar
+    MAPPING category AS x, value AS y
 COORD polar USING theta = y
 ```
 
@@ -172,7 +188,8 @@ COORD polar USING theta = y
 ```sql
 SELECT date, revenue FROM sales
 VISUALISE AS PLOT
-DRAW line MAPPING date AS x, revenue AS y
+DRAW line
+    MAPPING date AS x, revenue AS y
 LABEL title = 'Monthly Revenue Trends',
       x = 'Date',
       y = 'Revenue ($)'
@@ -183,7 +200,8 @@ LABEL title = 'Monthly Revenue Trends',
 ```sql
 SELECT date, value FROM metrics
 VISUALISE AS PLOT
-DRAW area MAPPING date AS x, value AS y
+DRAW area
+    MAPPING date AS x, value AS y
 LABEL title = 'Performance Metrics',
       subtitle = 'Q4 2024',
       x = 'Date',
@@ -196,7 +214,8 @@ LABEL title = 'Performance Metrics',
 ```sql
 SELECT category, value FROM data
 VISUALISE AS PLOT
-DRAW bar MAPPING category AS x, value AS y
+DRAW bar
+    MAPPING category AS x, value AS y
 THEME minimal
 ```
 
@@ -205,7 +224,8 @@ THEME minimal
 ```sql
 SELECT x, y FROM data
 VISUALISE AS PLOT
-DRAW point MAPPING x AS x, y AS y
+DRAW point
+    MAPPING x AS x, y AS y
 THEME dark USING background = '#1a1a1a'
 ```
 
@@ -218,7 +238,8 @@ THEME dark USING background = '#1a1a1a'
 ```sql
 SELECT date, value, region FROM sales
 VISUALISE AS PLOT
-DRAW line MAPPING date AS x, value AS y
+DRAW line
+    MAPPING date AS x, value AS y
 FACET WRAP region
 ```
 
@@ -227,7 +248,8 @@ FACET WRAP region
 ```sql
 SELECT date, value, region, product FROM sales
 VISUALISE AS PLOT
-DRAW line MAPPING date AS x, value AS y
+DRAW line
+    MAPPING date AS x, value AS y
 FACET region BY product
 ```
 
@@ -236,7 +258,8 @@ FACET region BY product
 ```sql
 SELECT date, value, category FROM metrics
 VISUALISE AS PLOT
-DRAW line MAPPING date AS x, value AS y
+DRAW line
+    MAPPING date AS x, value AS y
 FACET WRAP category USING scales = 'free_y'
 ```
 
@@ -262,7 +285,8 @@ WITH monthly_sales AS (
     GROUP BY DATE_TRUNC('month', sale_date)
 )
 VISUALISE FROM monthly_sales AS PLOT
-DRAW line MAPPING month AS x, total_revenue AS y
+DRAW line
+    MAPPING month AS x, total_revenue AS y
 SCALE x USING type = 'date'
 LABEL title = 'Monthly Revenue Trends',
       x = 'Month',
@@ -284,7 +308,8 @@ WITH monthly_sales AS (
 )
 SELECT * FROM monthly_sales WHERE region = 'North'
 VISUALISE AS PLOT
-DRAW line MAPPING month AS x, total_revenue AS y
+DRAW line
+    MAPPING month AS x, total_revenue AS y
 SCALE x USING type = 'date'
 ```
 
@@ -304,7 +329,8 @@ regional_totals AS (
     GROUP BY region
 )
 VISUALISE FROM regional_totals AS PLOT
-DRAW bar MAPPING region AS x, total AS y, region AS fill
+DRAW bar
+    MAPPING region AS x, total AS y, region AS fill
 COORD flip
 LABEL title = 'Total Revenue by Region',
       x = 'Region',
@@ -328,7 +354,8 @@ WITH product_metrics AS (
     GROUP BY p.product_name, p.category
 )
 VISUALISE FROM product_metrics AS PLOT
-DRAW point MAPPING total_sold AS x, total_revenue AS y, category AS color
+DRAW point
+    MAPPING total_sold AS x, total_revenue AS y, category AS color
 LABEL title = 'Product Performance',
       x = 'Units Sold',
       y = 'Revenue ($)'
@@ -347,8 +374,10 @@ WITH RECURSIVE series AS (
     WHERE n < 10
 )
 VISUALISE FROM series AS PLOT
-DRAW line MAPPING n AS x, value AS y
-DRAW point MAPPING n AS x, value AS y
+DRAW line
+    MAPPING n AS x, value AS y
+DRAW point
+    MAPPING n AS x, value AS y
 SCALE y USING type = 'log10'
 LABEL title = 'Exponential Growth',
       x = 'Step',
@@ -370,7 +399,8 @@ WITH ranked_products AS (
 )
 SELECT * FROM ranked_products WHERE rank <= 5
 VISUALISE AS PLOT
-DRAW bar MAPPING product_name AS x, revenue AS y, category AS color
+DRAW bar
+    MAPPING product_name AS x, revenue AS y, category AS color
 FACET WRAP category USING scales = 'free_x'
 COORD flip
 LABEL title = 'Top 5 Products per Category',
@@ -394,8 +424,12 @@ WITH daily_metrics AS (
     GROUP BY DATE_TRUNC('day', timestamp)
 )
 VISUALISE FROM daily_metrics AS PLOT
-DRAW ribbon MAPPING day AS x, min_temp AS ymin, max_temp AS ymax, 'lightblue' AS fill SETTING alpha TO 0.3
-DRAW line MAPPING day AS x, avg_temp AS y, 'blue' AS color SETTING size TO 2
+DRAW ribbon
+    MAPPING day AS x, min_temp AS ymin, max_temp AS ymax, 'lightblue' AS fill
+    SETTING alpha TO 0.3
+DRAW line
+    MAPPING day AS x, avg_temp AS y, 'blue' AS color
+    SETTING size TO 2
 SCALE x USING type = 'date'
 LABEL title = 'Temperature Range (Last 30 Days)',
       x = 'Date',
@@ -441,8 +475,10 @@ WHERE sale_date >= '2024-01-01'
 GROUP BY sale_date, region
 ORDER BY sale_date
 VISUALISE AS PLOT
-DRAW line MAPPING sale_date AS x, total_quantity AS y, region AS color
-DRAW point MAPPING sale_date AS x, total_quantity AS y, region AS color
+DRAW line
+    MAPPING sale_date AS x, total_quantity AS y, region AS color
+DRAW point
+    MAPPING sale_date AS x, total_quantity AS y, region AS color
 SCALE x USING type = 'date'
 FACET WRAP region
 LABEL title = 'Sales Trends by Region',
@@ -462,7 +498,8 @@ SELECT
 FROM weather_data
 WHERE timestamp >= NOW() - INTERVAL '7 days'
 VISUALISE AS PLOT
-DRAW line MAPPING timestamp AS x, temperature AS y, station AS color, station AS linetype
+DRAW line
+    MAPPING timestamp AS x, temperature AS y, station AS color, station AS linetype
 SCALE x USING type = 'datetime'
 SCALE color USING palette = 'viridis'
 LABEL title = 'Temperature Trends',
@@ -481,7 +518,8 @@ GROUP BY product_name
 ORDER BY total_revenue DESC
 LIMIT 10
 VISUALISE AS PLOT
-DRAW bar MAPPING product_name AS x, total_revenue AS y, product_name AS fill
+DRAW bar
+    MAPPING product_name AS x, total_revenue AS y, product_name AS fill
 COORD flip USING color = ['red', 'orange', 'yellow', 'green', 'blue',
                           'indigo', 'violet', 'pink', 'brown', 'gray']
 LABEL title = 'Top 10 Products by Revenue',
@@ -500,7 +538,8 @@ SELECT
 FROM measurements
 WHERE category IN ('A', 'B', 'C')
 VISUALISE AS PLOT
-DRAW point MAPPING date AS x, value AS y, category AS color, value AS size
+DRAW point
+    MAPPING date AS x, value AS y, category AS color, value AS size
 SCALE x USING type = 'date'
 SCALE color USING domain = ['A', 'B', 'C']
 SCALE size USING limits = [0, 100]
@@ -520,8 +559,11 @@ SELECT
     label
 FROM data_points
 VISUALISE AS PLOT
-DRAW point MAPPING x AS x, y AS y, category AS color SETTING size TO 5
-DRAW text MAPPING x AS x, y AS y, label AS label
+DRAW point
+    MAPPING x AS x, y AS y, category AS color
+    SETTING size TO 5
+DRAW text
+    MAPPING x AS x, y AS y, label AS label
 SCALE color USING palette = 'viridis'
 COORD cartesian USING xlim = [0, 100], ylim = [0, 100]
 LABEL title = 'Annotated Scatter Plot',
@@ -538,7 +580,8 @@ WHERE cyl IN (4, 6, 8)
 GROUP BY cyl
 ORDER BY cyl
 VISUALISE AS PLOT
-DRAW bar MAPPING cyl AS x, vehicle_count AS y
+DRAW bar
+    MAPPING cyl AS x, vehicle_count AS y
 SCALE x USING domain = [4, 6, 8]
 LABEL title = 'Distribution of Vehicles by Number of Cylinders',
       x = 'Number of Cylinders',
@@ -554,15 +597,18 @@ ggSQL keywords are case-insensitive. All of the following are valid:
 ```sql
 -- Uppercase (traditional)
 VISUALISE AS PLOT
-DRAW line MAPPING date AS x, value AS y
+DRAW line
+    MAPPING date AS x, value AS y
 
 -- Lowercase
 visualise as plot
-draw line mapping date as x, value as y
+draw line
+    mapping date as x, value as y
 
 -- Mixed case
 Visualise As Plot
-Draw Line Mapping date AS x, value AS y
+Draw Line
+    Mapping date AS x, value AS y
 ```
 
 ---
