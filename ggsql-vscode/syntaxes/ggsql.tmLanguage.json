@@ -156,8 +156,20 @@
           "match": "\\b(?i:DRAW)\\b"
         },
         {
+          "name": "keyword.control.mapping.ggsql",
+          "match": "\\b(?i:MAPPING)\\b"
+        },
+        {
           "name": "keyword.control.with.ggsql",
           "match": "\\b(?i:USING)\\b"
+        },
+        {
+          "name": "keyword.control.filter.ggsql",
+          "match": "\\b(?i:FILTER)\\b"
+        },
+        {
+          "name": "keyword.operator.assignment.ggsql",
+          "match": ":="
         },
         {
           "name": "support.type.geom.ggsql",
