@@ -11,11 +11,11 @@ SELECT date, revenue, region
 FROM sales
 WHERE year = 2024
 VISUALISE AS PLOT
-DRAW line USING
-    x = date,
-    y = revenue,
-    color = region
-LABELS
+DRAW line MAPPING
+    date AS x,
+    revenue AS y,
+    region AS color
+LABEL
     title = 'Sales by Region'
 THEME minimal
 ```
@@ -214,8 +214,8 @@ See [CLAUDE.md](CLAUDE.md) for the in-progress ggSQL grammar specification, incl
 Key grammar elements:
 
 - `VISUALISE AS PLOT` - Entry point for visualization
-- `DRAW <geom> USING` - Define geometric layers (point, line, bar, etc.)
-- `SCALE <aesthetic> USING` - Configure data-to-visual mappings
+- `DRAW <geom> MAPPING` - Define geometric layers (point, line, bar, etc.)
+- `SCALE <aesthetic> SETTING` - Configure data-to-visual mappings
 - `FACET` - Create small multiples (WRAP for flowing layout, BY for grid)
 - `COORD` - Coordinate transformations (cartesian, flip, polar)
 - `LABEL`, `THEME`, `GUIDE` - Styling and annotation
@@ -246,8 +246,9 @@ SELECT * FROM (VALUES
 -- Visualize with ggSQL
 SELECT * FROM sales
 VISUALISE AS PLOT
-DRAW line USING x = date, y = revenue, color = region
-SCALE x USING type = 'date'
+DRAW line
+    MAPPING date AS x, revenue AS y, region AS color
+SCALE x SETTING type TO 'date'
 LABEL title = 'Sales Trends'
 ```
 

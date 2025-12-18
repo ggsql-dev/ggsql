@@ -13,21 +13,25 @@ FROM (VALUES (1), (2), (3), (4), (5)) AS t(value);
 -- Simple visualization
 SELECT 1 as x, 2 as y
 VISUALISE AS PLOT
-DRAW point USING x = x, y = y;
+DRAW point
+    MAPPING x AS x, y AS y;
 
 -- Line chart with multiple points
 SELECT n as x, n * n as y
 FROM generate_series(1, 10) as t(n)
 VISUALISE AS PLOT
-DRAW line USING x = x, y = y
+DRAW line
+    MAPPING x AS x, y AS y
 LABEL title = 'Quadratic Function', x = 'X', y = 'Y';
 
 -- Multi-layer visualization
 SELECT n as x, n * n as y
 FROM generate_series(1, 10) as t(n)
 VISUALISE AS PLOT
-DRAW line USING x = x, y = y
-DRAW point USING x = x, y = y
+DRAW line
+    MAPPING x AS x, y AS y
+DRAW point
+    MAPPING x AS x, y AS y
 LABEL title = 'Line with Points';
 
 -- Date-based visualization
@@ -37,8 +41,9 @@ SELECT
   CASE WHEN n % 2 = 0 THEN 'Even' ELSE 'Odd' END as category
 FROM generate_series(0, 30) as t(n)
 VISUALISE AS PLOT
-DRAW line USING x = date, y = value, color = category
-SCALE x USING type = 'date'
+DRAW line
+    MAPPING date AS x, value AS y, category AS color
+SCALE x SETTING type TO 'date'
 LABEL title = 'Time Series', x = 'Date', y = 'Value';
 
 -- Bar chart
@@ -47,7 +52,8 @@ SELECT
   (n + 1) * 10 as value
 FROM generate_series(0, 4) as t(n)
 VISUALISE AS PLOT
-DRAW bar USING x = category, y = value
+DRAW bar
+    MAPPING category AS x, value AS y
 LABEL title = 'Bar Chart', x = 'Category', y = 'Value';
 
 -- Faceted visualization
@@ -57,9 +63,34 @@ SELECT
   CASE WHEN n <= 5 THEN 'Group A' ELSE 'Group B' END as group
 FROM generate_series(1, 10) as t(n)
 VISUALISE AS PLOT
-DRAW point USING x = x, y = y
+DRAW point
+    MAPPING x AS x, y AS y
 FACET WRAP group
 LABEL title = 'Faceted Plot';
+
+-- Visualization with FILTER clause
+SELECT
+  n as x,
+  n * n as y
+FROM generate_series(1, 10) as t(n)
+VISUALISE AS PLOT
+DRAW line
+    MAPPING x AS x, y AS y
+DRAW point
+    MAPPING x AS x, y AS y
+    FILTER y > 25
+LABEL title = 'Filtered Points';
+
+-- Visualization with SETTING parameters
+SELECT
+  n as x,
+  n * n as y
+FROM generate_series(1, 10) as t(n)
+VISUALISE AS PLOT
+DRAW point
+    MAPPING x AS x, y AS y
+    SETTING size TO 10, opacity TO 0.5
+LABEL title = 'Points with Parameters';
 
 -- Error case: invalid table
 SELECT * FROM nonexistent_table;
@@ -70,4 +101,5 @@ SELECT invalid_column FROM (SELECT 1 as x);
 -- Error case: invalid VIZ syntax
 SELECT 1 as x
 VISUALISE AS PLOT
-DRAW invalid_geom USING x = x;
+DRAW invalid_geom
+    MAPPING x AS x;
