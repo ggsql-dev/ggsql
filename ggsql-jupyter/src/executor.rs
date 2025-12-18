@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn test_simple_visualization() {
         let executor = QueryExecutor::new().unwrap();
-        let code = "SELECT 1 as x, 2 as y VISUALISE AS PLOT DRAW point MAPPING x AS x, y AS y";
+        let code = "SELECT 1 as x, 2 as y VISUALISE x, y DRAW point";
         let result = executor.execute(code).unwrap();
 
         assert!(matches!(result, ExecutionResult::Visualization { .. }));
