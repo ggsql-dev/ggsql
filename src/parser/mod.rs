@@ -239,7 +239,7 @@ mod tests {
             SELECT x, y FROM data
             VISUALISE AS PLOT
             DRAW point MAPPING x AS x, y AS y
-            LABEL title = 'Scatter Plot'
+            LABEL title AS 'Scatter Plot'
             THEME minimal
             VISUALIZE AS TABLE
         "#;
@@ -287,7 +287,7 @@ mod tests {
             DRAW line MAPPING date AS x, revenue AS y
             DRAW line MAPPING date AS x, cost AS y
             SCALE x SETTING type TO 'date'
-            LABEL title = 'Revenue and Cost Trends'
+            LABEL title AS 'Revenue and Cost Trends'
             THEME minimal
             VISUALIZE AS TABLE
             VISUALISE AS MAP
