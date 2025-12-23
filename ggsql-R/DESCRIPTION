@@ -15,6 +15,7 @@ Description: ggSQL allows you to write queries that combine SQL data retrieval
   with visualization specifications in a single, composable syntax.
 License: MIT + file LICENSE
 Encoding: UTF-8
+SystemRequirements: ggsql
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports: 

@@ -12,8 +12,8 @@ write.csv(mtcars, test_file)
 
 ```{ggsql}
 SELECT mpg, disp FROM 'test.csv'
-VISUALISE AS PLOT
-DRAW point USING x = mpg, y = disp
+VISUALISE mpg AS x, disp AS y
+DRAW point
 ```
 
 ```{r}

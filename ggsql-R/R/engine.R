@@ -1,7 +1,7 @@
 
 ggsql_engine <- function(options) {
   # Write a temporary file with the query
-  tmp <- basename(tempfile("ggsql", ".", paste0(".", "plt")))
+  tmp <- basename(tempfile("ggsql", ".", paste0(".", "gsql")))
   on.exit(unlink(tmp))
   writeLines(options$code, tmp)
 

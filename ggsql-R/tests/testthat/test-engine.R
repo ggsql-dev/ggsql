@@ -11,8 +11,8 @@ test_that("engine can handle a query", {
 
   query <- c(
     paste0("SELECT mpg, disp FROM '", data_file, "'"),
-    "VISUALISE AS PLOT",
-    "DRAW point USING x = mpg, y = disp"
+    "VISUALISE mpg AS x, disp AS y",
+    "DRAW point"
   )
 
   opts <- knitr::opts_current$get()
