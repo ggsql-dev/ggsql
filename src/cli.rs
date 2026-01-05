@@ -5,7 +5,7 @@ Provides commands for executing ggSQL queries with various data sources and outp
 */
 
 use clap::{Parser, Subcommand};
-use ggsql::{parser, VERSION};
+use ggsql::{parser, DataFrame, VERSION};
 use std::path::PathBuf;
 
 #[cfg(feature = "duckdb")]
@@ -197,8 +197,9 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
     // Parse ggSQL portion
     if viz_part.is_empty() {
         if verbose {
-            eprintln!("The ggSQL portion is empty. No specifications produced.");
+            eprintln!("Visualisation is empty. Printing table instead.");
         }
+        print_table_fallback(&df, 100);
         return;
     }
 
@@ -308,4 +309,52 @@ fn cmd_validate(query: String, reader: Option<String>) {
     }
     // TODO: Implement validation logic
     println!("Validation not yet implemented");
+}
+
+// Prints a CSV-like output to stdout with aligned columns
+fn print_table_fallback(data: &DataFrame, max_rows: usize) {
+    let nrow = data.height().min(max_rows);
+    let ncol = data.width();
+    let colnames = data.get_column_names_str();
+
+    // We add an extra 'row' for the column names
+    let mut rows: Vec<String> = vec![String::from(""); nrow + 1];
+
+    for col_id in 0..ncol {
+        let col_name = colnames[col_id];
+        let mut width = col_name.chars().count();
+
+        // End last column without comma
+        let mut suffix = ", ";
+        if col_id == ncol - 1 {
+            suffix = "";
+        }
+
+        // Prepopulate formatted column with column name
+        let mut col_fmt: Vec<String> = vec![format!("{}{}", col_name, suffix)];
+
+        // Format every cell in column, tracking width
+        let column_data = &data[col_id];
+        for cell in column_data.iter().take(rows.len()) {
+            let cell_fmt = format!("{}{}", cell, suffix);
+            let nchar = cell_fmt.chars().count();
+            if nchar > width {
+                width = nchar;
+            }
+            col_fmt.push(cell_fmt);
+        }
+        // Pad strings with spaces
+        let col_fmt: Vec<String> = col_fmt
+            .into_iter()
+            .map(|s| format!("{:width$}", s, width = width))
+            .collect();
+
+        // Push columns to row string
+        for i in 0..rows.len() {
+            rows[i].push_str(col_fmt[i].as_str());
+        }
+    }
+
+    let output = rows.join("\n");
+    println!("{}", output);
 }
