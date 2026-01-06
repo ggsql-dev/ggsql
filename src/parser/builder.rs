@@ -1497,6 +1497,12 @@ mod tests {
         parser.set_language(&tree_sitter_ggsql::language()).unwrap();
 
         let tree = parser.parse(query, None).unwrap();
+
+        // Check for parse errors like the main parse_full_query does
+        if tree.root_node().has_error() {
+            return Err(GgsqlError::ParseError("Parse tree contains errors".to_string()));
+        }
+
         build_ast(&tree, query)
     }
 
