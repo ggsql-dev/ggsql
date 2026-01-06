@@ -439,7 +439,7 @@ fn parse_partition_clause(node: &Node, source: &str) -> Result<Vec<String>> {
     Ok(columns)
 }
 
-/// Parse a parameter_assignment: param TO value
+/// Parse a parameter_assignment: param => value
 fn parse_parameter_assignment(node: &Node, source: &str) -> Result<(String, ParameterValue)> {
     let mut param_name = String::new();
     let mut param_value = None;
@@ -791,7 +791,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
                         "scale_property_value" => {
                             prop_value = Some(parse_scale_property_value(&prop_child, source)?);
                         }
-                        "TO" => continue,
+                        "=>" => continue,
                         _ => {}
                     }
                 }
@@ -1292,11 +1292,11 @@ fn build_guide(node: &Node, source: &str) -> Result<Guide> {
                         // Regular property: name = value
                         let prop_name = get_node_text(&prop_child, source);
 
-                        // Find the value (next sibling after 'TO')
+                        // Find the value (next sibling after '=>')
                         let mut found_to = false;
                         let mut value_cursor = child.walk();
                         for value_child in child.children(&mut value_cursor) {
-                            if value_child.kind() == "TO" {
+                            if value_child.kind() == "=>" {
                                 found_to = true;
                                 continue;
                             }
@@ -1393,7 +1393,7 @@ fn build_theme(node: &Node, source: &str) -> Result<Theme> {
                         "string" | "number" | "boolean" => {
                             prop_value = Some(parse_theme_property_value(&prop_child, source)?);
                         }
-                        "TO" => continue,
+                        "=>" => continue,
                         _ => {}
                     }
                 }

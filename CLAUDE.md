@@ -968,11 +968,11 @@ DRAW line
 
 ```sql
 SCALE <aesthetic> SETTING
-  [type TO <scale_type>]
-  [limits TO [min, max]]
-  [breaks TO <array | interval>]
-  [palette TO <name>]
-  [domain TO [values...]]
+  [type => <scale_type>]
+  [limits => [min, max]]
+  [breaks => <array | interval>]
+  [palette => <name>]
+  [domain => [values...]]
 ```
 
 **Scale Types**:
@@ -1064,22 +1064,22 @@ COORD SETTING <properties>
 
 **Cartesian**:
 
-- `xlim TO [min, max]` - Set x-axis limits
-- `ylim TO [min, max]` - Set y-axis limits
-- `<aesthetic> TO [values...]` - Set domain for any aesthetic (color, fill, size, etc.)
+- `xlim => [min, max]` - Set x-axis limits
+- `ylim => [min, max]` - Set y-axis limits
+- `<aesthetic> => [values...]` - Set domain for any aesthetic (color, fill, size, etc.)
 
 **Flip**:
 
-- `<aesthetic> TO [values...]` - Set domain for any aesthetic
+- `<aesthetic> => [values...]` - Set domain for any aesthetic
 
 **Polar**:
 
-- `theta TO <aesthetic>` - Which aesthetic maps to angle (defaults to `y`)
-- `<aesthetic> TO [values...]` - Set domain for any aesthetic
+- `theta => <aesthetic>` - Which aesthetic maps to angle (defaults to `y`)
+- `<aesthetic> => [values...]` - Set domain for any aesthetic
 
 **Important Notes**:
 
-1. **Axis limits auto-swap**: `xlim TO [100, 0]` automatically becomes `[0, 100]`
+1. **Axis limits auto-swap**: `xlim => [100, 0]` automatically becomes `[0, 100]`
 2. **ggplot2 compatibility**: `coord_flip` preserves axis label names (labels stay with aesthetic names, not visual position)
 3. **Domain conflicts**: Error if same aesthetic has domain in both SCALE and COORD
 4. **Multi-layer support**: All coordinate transforms apply to all layers
