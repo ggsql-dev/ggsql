@@ -330,43 +330,74 @@ module.exports = grammar({
       $.boolean
     ),
 
-    // FILTER clause for layer filtering: FILTER x > 10 AND y < 20
+    // FILTER clause for layer filtering: FILTER <raw SQL WHERE expression>
+    // The filter_expression captures any valid SQL WHERE clause verbatim
+    // and passes it to the database backend
     filter_clause: $ => seq(
       caseInsensitive('FILTER'),
       $.filter_expression
     ),
 
-    filter_expression: $ => choice(
-      $.filter_and_expression,
-      $.filter_or_expression,
-      $.filter_primary
-    ),
+    // Raw SQL expression - captures everything that's valid in a WHERE clause
+    // Uses prec.right to greedily consume tokens until a clause keyword is hit
+    filter_expression: $ => prec.right(repeat1($.filter_token)),
 
-    filter_primary: $ => choice(
-      $.filter_comparison,
-      seq('(', $.filter_expression, ')')
-    ),
-
-    filter_and_expression: $ => prec.left(2, seq(
-      $.filter_primary,
+    // Individual tokens that can appear in a filter expression
+    filter_token: $ => choice(
+      // SQL keywords commonly used in WHERE clauses
       caseInsensitive('AND'),
-      $.filter_expression
-    )),
-
-    filter_or_expression: $ => prec.left(1, seq(
-      $.filter_primary,
       caseInsensitive('OR'),
-      $.filter_expression
-    )),
-
-    filter_comparison: $ => seq(
+      caseInsensitive('NOT'),
+      caseInsensitive('IN'),
+      caseInsensitive('IS'),
+      caseInsensitive('NULL'),
+      caseInsensitive('LIKE'),
+      caseInsensitive('ILIKE'),
+      caseInsensitive('BETWEEN'),
+      caseInsensitive('EXISTS'),
+      caseInsensitive('ANY'),
+      caseInsensitive('ALL'),
+      caseInsensitive('CASE'),
+      caseInsensitive('WHEN'),
+      caseInsensitive('THEN'),
+      caseInsensitive('ELSE'),
+      caseInsensitive('END'),
+      caseInsensitive('CAST'),
+      caseInsensitive('AS'),
+      caseInsensitive('TRUE'),
+      caseInsensitive('FALSE'),
+      // Values and identifiers
+      $.string,
+      $.number,
       $.identifier,
-      $.comparison_operator,
-      choice($.string, $.number, $.boolean, $.identifier)
+      // Comparison operators (as explicit tokens)
+      token('='),
+      token('!='),
+      token('<>'),
+      token('<='),
+      token('>='),
+      token('<'),
+      token('>'),
+      // Regex operators (DuckDB/PostgreSQL)
+      token('~*'),   // case-insensitive regex match
+      token('!~*'),  // case-insensitive regex not match
+      token('!~'),   // regex not match
+      token('~'),    // regex match
+      // Arithmetic operators
+      token('+'),
+      token('-'),
+      token('*'),
+      token('/'),
+      token('%'),
+      token('||'),
+      // Type cast operator (PostgreSQL style)
+      token('::'),
+      // Parentheses for grouping
+      token('('),
+      token(')'),
+      token(','),
+      token('.')
     ),
-
-    // Basic comparison operators only
-    comparison_operator: $ => choice('=', '!=', '<>', '<', '>', '<=', '>='),
 
     aesthetic_name: $ => choice(
       // Position aesthetics
