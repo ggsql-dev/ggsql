@@ -339,30 +339,29 @@ fn parse_mapping_clause(
     source: &str,
 ) -> Result<(HashMap<String, AestheticValue>, Option<LayerSource>)> {
     let mut aesthetics = HashMap::new();
-    let mut layer_source = None;
 
+    // Parse mapping items
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        match child.kind() {
-            "mapping_item" => {
-                let (aesthetic, value) = parse_mapping_item(&child, source)?;
-                aesthetics.insert(aesthetic, value);
-            }
-            "identifier" => {
-                // FROM identifier (CTE or table name)
-                let ident = get_node_text(&child, source);
-                layer_source = Some(LayerSource::Identifier(ident));
-            }
-            "string" => {
-                // FROM 'file.csv' (file path)
-                let text = get_node_text(&child, source);
-                // Remove surrounding quotes
-                let path = text.trim_matches(|c| c == '\'' || c == '"');
-                layer_source = Some(LayerSource::FilePath(path.to_string()));
-            }
-            _ => continue,
+        if child.kind() == "mapping_item" {
+            let (aesthetic, value) = parse_mapping_item(&child, source)?;
+            aesthetics.insert(aesthetic, value);
         }
     }
+
+    // Extract layer_source field (FROM identifier or FROM 'file.csv')
+    let layer_source = node.child_by_field_name("layer_source").map(|child| {
+        let text = get_node_text(&child, source);
+        match child.kind() {
+            "identifier" => LayerSource::Identifier(text.to_string()),
+            "string" => {
+                // Remove surrounding quotes
+                let path = text.trim_matches(|c| c == '\'' || c == '"');
+                LayerSource::FilePath(path.to_string())
+            }
+            _ => LayerSource::Identifier(text.to_string()),
+        }
+    });
 
     Ok((aesthetics, layer_source))
 }
@@ -501,194 +500,23 @@ fn parse_parameter_value(node: &Node, source: &str) -> Result<ParameterValue> {
     )))
 }
 
-/// Parse a filter_clause: FILTER condition
+/// Parse a filter_clause: FILTER <raw SQL expression>
+///
+/// Extracts the raw SQL text from the filter_expression and returns it verbatim.
+/// This allows any valid SQL WHERE expression to be passed to the database backend.
 fn parse_filter_clause(node: &Node, source: &str) -> Result<FilterExpression> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "filter_expression" {
-            return parse_filter_expression(&child, source);
+            // Extract the raw text from the filter_expression node
+            let filter_text = get_node_text(&child, source).trim().to_string();
+            return Ok(FilterExpression::new(filter_text));
         }
     }
 
     Err(GgsqlError::ParseError(
         "Could not find filter expression in filter clause".to_string()
     ))
-}
-
-/// Parse a filter_expression (recursive)
-fn parse_filter_expression(node: &Node, source: &str) -> Result<FilterExpression> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "filter_and_expression" => {
-                return parse_filter_and_expression(&child, source);
-            }
-            "filter_or_expression" => {
-                return parse_filter_or_expression(&child, source);
-            }
-            "filter_primary" => {
-                return parse_filter_primary(&child, source);
-            }
-            _ => {}
-        }
-    }
-
-    Err(GgsqlError::ParseError(format!(
-        "Could not parse filter expression from node: {}",
-        node.kind()
-    )))
-}
-
-/// Parse filter_primary (comparison or parenthesized expression)
-fn parse_filter_primary(node: &Node, source: &str) -> Result<FilterExpression> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "filter_comparison" => {
-                return parse_filter_comparison(&child, source);
-            }
-            "filter_expression" => {
-                // Parenthesized expression
-                return parse_filter_expression(&child, source);
-            }
-            _ => {}
-        }
-    }
-
-    Err(GgsqlError::ParseError(
-        "Could not parse filter primary".to_string()
-    ))
-}
-
-/// Parse filter_and_expression: primary AND expression
-fn parse_filter_and_expression(node: &Node, source: &str) -> Result<FilterExpression> {
-    let mut left = None;
-    let mut right = None;
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "filter_primary" => {
-                left = Some(parse_filter_primary(&child, source)?);
-            }
-            "filter_expression" => {
-                right = Some(parse_filter_expression(&child, source)?);
-            }
-            _ => {}
-        }
-    }
-
-    match (left, right) {
-        (Some(l), Some(r)) => Ok(FilterExpression::And(Box::new(l), Box::new(r))),
-        _ => Err(GgsqlError::ParseError(
-            "Invalid AND expression: missing left or right operand".to_string()
-        )),
-    }
-}
-
-/// Parse filter_or_expression: primary OR expression
-fn parse_filter_or_expression(node: &Node, source: &str) -> Result<FilterExpression> {
-    let mut left = None;
-    let mut right = None;
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "filter_primary" => {
-                left = Some(parse_filter_primary(&child, source)?);
-            }
-            "filter_expression" => {
-                right = Some(parse_filter_expression(&child, source)?);
-            }
-            _ => {}
-        }
-    }
-
-    match (left, right) {
-        (Some(l), Some(r)) => Ok(FilterExpression::Or(Box::new(l), Box::new(r))),
-        _ => Err(GgsqlError::ParseError(
-            "Invalid OR expression: missing left or right operand".to_string()
-        )),
-    }
-}
-
-/// Parse filter_comparison: column op value
-fn parse_filter_comparison(node: &Node, source: &str) -> Result<FilterExpression> {
-    let mut column = String::new();
-    let mut operator = None;
-    let mut value = None;
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "identifier" => {
-                if column.is_empty() {
-                    column = get_node_text(&child, source);
-                } else {
-                    // Second identifier is a column reference in comparison
-                    value = Some(FilterValue::Column(get_node_text(&child, source)));
-                }
-            }
-            "comparison_operator" => {
-                let op_text = get_node_text(&child, source);
-                operator = Some(parse_comparison_operator(&op_text)?);
-            }
-            "string" => {
-                let text = get_node_text(&child, source);
-                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                value = Some(FilterValue::String(unquoted.to_string()));
-            }
-            "number" => {
-                let text = get_node_text(&child, source);
-                let num = text.parse::<f64>().map_err(|e| {
-                    GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-                })?;
-                value = Some(FilterValue::Number(num));
-            }
-            "boolean" => {
-                let text = get_node_text(&child, source);
-                let bool_val = text == "true";
-                value = Some(FilterValue::Boolean(bool_val));
-            }
-            _ => {}
-        }
-    }
-
-    if column.is_empty() {
-        return Err(GgsqlError::ParseError(
-            "Invalid comparison: missing column".to_string()
-        ));
-    }
-
-    match (operator, value) {
-        (Some(op), Some(val)) => Ok(FilterExpression::Comparison {
-            column,
-            operator: op,
-            value: val,
-        }),
-        (None, _) => Err(GgsqlError::ParseError(
-            "Invalid comparison: missing operator".to_string()
-        )),
-        (_, None) => Err(GgsqlError::ParseError(
-            "Invalid comparison: missing value".to_string()
-        )),
-    }
-}
-
-/// Parse comparison operator
-fn parse_comparison_operator(text: &str) -> Result<ComparisonOp> {
-    match text {
-        "=" => Ok(ComparisonOp::Eq),
-        "!=" | "<>" => Ok(ComparisonOp::Ne),
-        "<" => Ok(ComparisonOp::Lt),
-        ">" => Ok(ComparisonOp::Gt),
-        "<=" => Ok(ComparisonOp::Le),
-        ">=" => Ok(ComparisonOp::Ge),
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unknown comparison operator: {}",
-            text
-        ))),
-    }
 }
 
 /// Parse a geom_type node text into a Geom enum
@@ -2365,7 +2193,7 @@ mod tests {
     }
 
     // ========================================
-    // FILTER Clause Tests
+    // FILTER Clause Tests (Raw SQL)
     // ========================================
 
     #[test]
@@ -2382,14 +2210,7 @@ mod tests {
         assert_eq!(specs[0].layers.len(), 1);
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
-        match filter {
-            FilterExpression::Comparison { column, operator, value } => {
-                assert_eq!(column, "value");
-                assert_eq!(*operator, ComparisonOp::Gt);
-                assert!(matches!(value, FilterValue::Number(n) if *n == 10.0));
-            }
-            _ => panic!("Expected Comparison filter"),
-        }
+        assert_eq!(filter.as_str(), "value > 10");
     }
 
     #[test]
@@ -2404,14 +2225,7 @@ mod tests {
         let specs = result.unwrap();
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
-        match filter {
-            FilterExpression::Comparison { column, operator, value } => {
-                assert_eq!(column, "category");
-                assert_eq!(*operator, ComparisonOp::Eq);
-                assert!(matches!(value, FilterValue::String(s) if s == "A"));
-            }
-            _ => panic!("Expected Comparison filter"),
-        }
+        assert_eq!(filter.as_str(), "category = 'A'");
     }
 
     #[test]
@@ -2426,12 +2240,7 @@ mod tests {
         let specs = result.unwrap();
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
-        match filter {
-            FilterExpression::Comparison { operator, .. } => {
-                assert_eq!(*operator, ComparisonOp::Ne);
-            }
-            _ => panic!("Expected Comparison filter"),
-        }
+        assert_eq!(filter.as_str(), "status != 'inactive'");
     }
 
     #[test]
@@ -2446,12 +2255,7 @@ mod tests {
         let specs = result.unwrap();
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
-        match filter {
-            FilterExpression::Comparison { operator, .. } => {
-                assert_eq!(*operator, ComparisonOp::Le);
-            }
-            _ => panic!("Expected Comparison filter"),
-        }
+        assert_eq!(filter.as_str(), "score <= 100");
     }
 
     #[test]
@@ -2466,12 +2270,7 @@ mod tests {
         let specs = result.unwrap();
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
-        match filter {
-            FilterExpression::Comparison { operator, .. } => {
-                assert_eq!(*operator, ComparisonOp::Ge);
-            }
-            _ => panic!("Expected Comparison filter"),
-        }
+        assert_eq!(filter.as_str(), "year >= 2020");
     }
 
     #[test]
@@ -2486,27 +2285,7 @@ mod tests {
         let specs = result.unwrap();
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
-        match filter {
-            FilterExpression::And(left, right) => {
-                // Left should be value > 10
-                match left.as_ref() {
-                    FilterExpression::Comparison { column, operator, .. } => {
-                        assert_eq!(column, "value");
-                        assert_eq!(*operator, ComparisonOp::Gt);
-                    }
-                    _ => panic!("Expected left Comparison"),
-                }
-                // Right should be value < 100
-                match right.as_ref() {
-                    FilterExpression::Comparison { column, operator, .. } => {
-                        assert_eq!(column, "value");
-                        assert_eq!(*operator, ComparisonOp::Lt);
-                    }
-                    _ => panic!("Expected right Comparison"),
-                }
-            }
-            _ => panic!("Expected And filter"),
-        }
+        assert_eq!(filter.as_str(), "value > 10 AND value < 100");
     }
 
     #[test]
@@ -2521,23 +2300,7 @@ mod tests {
         let specs = result.unwrap();
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
-        match filter {
-            FilterExpression::Or(left, right) => {
-                match left.as_ref() {
-                    FilterExpression::Comparison { value, .. } => {
-                        assert!(matches!(value, FilterValue::String(s) if s == "A"));
-                    }
-                    _ => panic!("Expected left Comparison"),
-                }
-                match right.as_ref() {
-                    FilterExpression::Comparison { value, .. } => {
-                        assert!(matches!(value, FilterValue::String(s) if s == "B"));
-                    }
-                    _ => panic!("Expected right Comparison"),
-                }
-            }
-            _ => panic!("Expected Or filter"),
-        }
+        assert_eq!(filter.as_str(), "category = 'A' OR category = 'B'");
     }
 
     #[test]
@@ -2562,17 +2325,10 @@ mod tests {
         assert_eq!(layer.parameters.len(), 1);
         assert!(layer.parameters.contains_key("size"));
 
-        // Check filter
+        // Check filter - now raw SQL text
         assert!(layer.filter.is_some());
         let filter = layer.filter.as_ref().unwrap();
-        match filter {
-            FilterExpression::Comparison { column, operator, value } => {
-                assert_eq!(column, "value");
-                assert_eq!(*operator, ComparisonOp::Gt);
-                assert!(matches!(value, FilterValue::Number(n) if *n == 50.0));
-            }
-            _ => panic!("Expected Comparison filter"),
-        }
+        assert_eq!(filter.as_str(), "value > 50");
     }
 
     #[test]
@@ -2587,12 +2343,7 @@ mod tests {
         let specs = result.unwrap();
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
-        match filter {
-            FilterExpression::Comparison { value, .. } => {
-                assert!(matches!(value, FilterValue::Boolean(true)));
-            }
-            _ => panic!("Expected Comparison filter"),
-        }
+        assert_eq!(filter.as_str(), "active = true");
     }
 
     #[test]
@@ -2607,12 +2358,8 @@ mod tests {
         let specs = result.unwrap();
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
-        match filter {
-            FilterExpression::Comparison { value, .. } => {
-                assert!(matches!(value, FilterValue::Number(n) if *n == -10.0));
-            }
-            _ => panic!("Expected Comparison filter"),
-        }
+        // Negative numbers are parsed as a single token with no space
+        assert_eq!(filter.as_str(), "temperature > -10");
     }
 
     #[test]
@@ -2646,6 +2393,7 @@ mod tests {
 
         // Second layer has filter
         assert!(specs[0].layers[1].filter.is_some());
+        assert_eq!(specs[0].layers[1].filter.as_ref().unwrap().as_str(), "highlight = true");
     }
 
     #[test]
@@ -2660,14 +2408,39 @@ mod tests {
         let specs = result.unwrap();
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
-        match filter {
-            FilterExpression::Comparison { column, operator, value } => {
-                assert_eq!(column, "start_date");
-                assert_eq!(*operator, ComparisonOp::Lt);
-                assert!(matches!(value, FilterValue::Column(col) if col == "end_date"));
-            }
-            _ => panic!("Expected Comparison filter"),
-        }
+        assert_eq!(filter.as_str(), "start_date < end_date");
+    }
+
+    #[test]
+    fn test_filter_complex_sql_expression() {
+        // Test that complex SQL WHERE expressions are captured verbatim
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x FILTER category IN ('A', 'B', 'C') AND value BETWEEN 10 AND 100
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let filter = specs[0].layers[0].filter.as_ref().unwrap();
+        assert!(filter.as_str().contains("IN"));
+        assert!(filter.as_str().contains("BETWEEN"));
+    }
+
+    #[test]
+    fn test_filter_like_expression() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x FILTER name LIKE '%test%'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let filter = specs[0].layers[0].filter.as_ref().unwrap();
+        assert!(filter.as_str().contains("LIKE"));
     }
 
     // ========================================

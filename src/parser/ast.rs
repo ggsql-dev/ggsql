@@ -113,46 +113,34 @@ pub struct Layer {
     pub source: Option<LayerSource>,
 }
 
-/// Filter expression for layer-specific filtering (from FILTER clause)
+/// Raw SQL filter expression for layer-specific filtering (from FILTER clause)
+///
+/// This stores the raw SQL WHERE clause text verbatim, which is passed directly
+/// to the database backend. This allows any valid SQL WHERE expression to be used.
+///
+/// Example filter values:
+/// - `"x > 10"`
+/// - `"region = 'North' AND year >= 2020"`
+/// - `"category IN ('A', 'B', 'C')"`
+/// - `"name LIKE '%test%'"`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum FilterExpression {
-    /// Logical AND of two expressions
-    And(Box<FilterExpression>, Box<FilterExpression>),
-    /// Logical OR of two expressions
-    Or(Box<FilterExpression>, Box<FilterExpression>),
-    /// Simple comparison
-    Comparison {
-        column: String,
-        operator: ComparisonOp,
-        value: FilterValue,
-    },
-}
+pub struct FilterExpression(pub String);
 
-/// Comparison operators for filter expressions
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ComparisonOp {
-    /// Equal (=)
-    Eq,
-    /// Not equal (!= or <>)
-    Ne,
-    /// Less than (<)
-    Lt,
-    /// Greater than (>)
-    Gt,
-    /// Less than or equal (<=)
-    Le,
-    /// Greater than or equal (>=)
-    Ge,
-}
+impl FilterExpression {
+    /// Create a new filter expression from raw SQL text
+    pub fn new(sql: impl Into<String>) -> Self {
+        Self(sql.into())
+    }
 
-/// Values in filter comparisons
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum FilterValue {
-    String(String),
-    Number(f64),
-    Boolean(bool),
-    /// Column reference (for column-to-column comparisons)
-    Column(String),
+    /// Get the raw SQL text
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consume and return the raw SQL text
+    pub fn into_string(self) -> String {
+        self.0
+    }
 }
 
 /// Geometric object types
@@ -761,13 +749,10 @@ mod tests {
 
     #[test]
     fn test_layer_with_filter() {
-        let filter = FilterExpression::Comparison {
-            column: "year".to_string(),
-            operator: ComparisonOp::Gt,
-            value: FilterValue::Number(2020.0),
-        };
+        let filter = FilterExpression::new("year > 2020");
         let layer = Layer::new(Geom::Point).with_filter(filter);
         assert!(layer.filter.is_some());
+        assert_eq!(layer.filter.as_ref().unwrap().as_str(), "year > 2020");
     }
 
     #[test]
