@@ -44,3 +44,9 @@ jobs:
       - name: Run Rust tests
         if: success()
         run: cargo test --verbose
+
+      - name: Run Rust formatting check
+        if: success()
+        run: |
+          rustup component add rustfmt-preview
+          cargo fmt --all -- --check
