@@ -131,6 +131,9 @@ jobs:
           extra-packages: any::rcmdcheck
           needs: check
 
+      - name: Setup CLI tools
+        run: cargo install --path src
+
       - name: Checking R package
         uses: r-lib/actions/check-r-package@v2
         with:
