@@ -81,6 +81,12 @@ jobs:
       - name: Setup quarto
         uses: quarto-dev/quarto-actions/setup@v2
 
+      - name: Build Jupyter kernel
+        run: cargo build --release --package ggsql-jupyter
+
+      - name: Install Jupyter kernel
+        run: ./target/release/ggsql-jupyter --install
+
       - name: Render and Publish
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: quarto-dev/quarto-actions/publish@v2
