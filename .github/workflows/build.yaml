@@ -45,6 +45,10 @@ jobs:
         if: success()
         run: cargo test
 
+      - name: Run Rust formatting check
+        if: success()
+        run: cargo fmt --all -- --check
+
   publish-website:
     runs-on: ubuntu-latest
     steps:
