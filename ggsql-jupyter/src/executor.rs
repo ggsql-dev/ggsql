@@ -14,9 +14,7 @@ pub enum ExecutionResult {
     DataFrame(DataFrame),
     /// Query with visualization specification
     Visualization {
-        spec: String,      // Vega-Lite JSON
-        data_rows: usize,
-        data_cols: usize,
+        spec: String      // Vega-Lite JSON
     },
 }
 
@@ -67,25 +65,14 @@ impl QueryExecutor {
 
         tracing::info!("Data sources prepared: {} sources", prepared.data.len());
 
-        // 4. Get metadata from available data
-        let (data_rows, data_cols) = if let Some(df) = prepared.data.get("__global__") {
-            (df.height(), df.width())
-        } else {
-            // Use first available data for metadata
-            let df = prepared.data.values().next().unwrap();
-            (df.height(), df.width())
-        };
-
-        // 5. Generate Vega-Lite spec (use first spec if multiple)
+        // 4. Generate Vega-Lite spec (use first spec if multiple)
         let vega_json = self.writer.write(&prepared.specs[0], &prepared.data)?;
 
         tracing::debug!("Generated Vega-Lite spec: {} chars", vega_json.len());
 
         // 6. Return result
         Ok(ExecutionResult::Visualization {
-            spec: vega_json,
-            data_rows,
-            data_cols,
+            spec: vega_json
         })
     }
 }
