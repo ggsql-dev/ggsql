@@ -1206,6 +1206,7 @@ impl Writer for VegaLiteWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::ast::LiteralValue;
     use crate::parser::ast::{Labels, Layer};
     use std::collections::HashMap;
 
