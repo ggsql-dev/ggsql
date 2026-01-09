@@ -56,7 +56,6 @@
   "fontface"
   "hjust"
   "vjust"
-  "group"
 ] @attribute
 
 ; String literals
@@ -83,9 +82,18 @@
 
 ; Operators
 "=" @operator
-
-; Comparison operators (for FILTER clause)
-(comparison_operator) @operator
+"!=" @operator
+"<>" @operator
+"<" @operator
+">" @operator
+"<=" @operator
+">=" @operator
+"~" @operator
+"~*" @operator
+"!~" @operator
+"!~*" @operator
+"::" @operator
+"||" @operator
 
 ; Punctuation
 ["," "[" "]" "(" ")"] @punctuation.delimiter
