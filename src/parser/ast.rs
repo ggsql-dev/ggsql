@@ -225,7 +225,7 @@ impl Geom {
             // Position geoms
             Geom::Point => GeomAesthetics {
                 supported: &[
-                    "x", "y", "color", "colour", "fill", "size", "shape", "alpha", "group",
+                    "x", "y", "color", "colour", "fill", "size", "shape", "alpha",
                 ],
                 required: &["x", "y"],
             },
@@ -238,7 +238,6 @@ impl Geom {
                     "linetype",
                     "linewidth",
                     "alpha",
-                    "group",
                 ],
                 required: &["x", "y"],
             },
@@ -251,24 +250,23 @@ impl Geom {
                     "linetype",
                     "linewidth",
                     "alpha",
-                    "group",
                 ],
                 required: &["x", "y"],
             },
             Geom::Bar => GeomAesthetics {
                 supported: &[
-                    "x", "y", "color", "colour", "fill", "width", "alpha", "group",
+                    "x", "y", "color", "colour", "fill", "width", "alpha",
                 ],
                 required: &["x", "y"],
             },
             Geom::Col => GeomAesthetics {
                 supported: &[
-                    "x", "y", "color", "colour", "fill", "width", "alpha", "group",
+                    "x", "y", "color", "colour", "fill", "width", "alpha",
                 ],
                 required: &["x", "y"],
             },
             Geom::Area => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "fill", "alpha", "group"],
+                supported: &["x", "y", "color", "colour", "fill", "alpha"],
                 required: &["x", "y"],
             },
             Geom::Tile => GeomAesthetics {
@@ -278,12 +276,12 @@ impl Geom {
                 required: &["x", "y"],
             },
             Geom::Polygon => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "fill", "alpha", "group"],
+                supported: &["x", "y", "color", "colour", "fill", "alpha"],
                 required: &["x", "y"],
             },
             Geom::Ribbon => GeomAesthetics {
                 supported: &[
-                    "x", "ymin", "ymax", "color", "colour", "fill", "alpha", "group",
+                    "x", "ymin", "ymax", "color", "colour", "fill", "alpha",
                 ],
                 required: &["x", "ymin", "ymax"],
             },
@@ -298,7 +296,7 @@ impl Geom {
                 required: &["x"],
             },
             Geom::Smooth => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "linetype", "alpha", "group"],
+                supported: &["x", "y", "color", "colour", "linetype", "alpha"],
                 required: &["x", "y"],
             },
             Geom::Boxplot => GeomAesthetics {
