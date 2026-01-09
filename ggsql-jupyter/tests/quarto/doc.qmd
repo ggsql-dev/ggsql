@@ -373,7 +373,7 @@ DRAW line MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals
 DRAW point MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals SETTING size => 30
 DRAW line MAPPING month AS x, value AS y, 'Target' AS color FROM targets
 SCALE x SETTING type => 'date'
-LABEL title = 'Revenue: Actual vs Target', x = 'Month', y = 'Revenue ($)'
+LABEL title => 'Revenue: Actual vs Target', x => 'Month', y => 'Revenue ($)'
 ```
 
 ### CTE Chain: Raw → Filtered → Aggregated
@@ -401,7 +401,7 @@ VISUALISE month AS x, total AS y, region AS color FROM monthly_electronics
 DRAW line
 DRAW point
 SCALE x SETTING type => 'date'
-LABEL title = 'Electronics Revenue by Region (CTE Chain)', x = 'Month', y = 'Revenue ($)'
+LABEL title => 'Electronics Revenue by Region (CTE Chain)', x => 'Month', y => 'Revenue ($)'
 ```
 
 ### Layer FROM with FILTER
@@ -422,7 +422,7 @@ DRAW line MAPPING month AS x, revenue AS y, 'All Categories' AS color FROM all_s
 DRAW line MAPPING month AS x, revenue AS y, 'Electronics' AS color FROM all_sales FILTER category = 'Electronics'
 DRAW line MAPPING month AS x, revenue AS y, 'Clothing' AS color FROM all_sales FILTER category = 'Clothing'
 SCALE x SETTING type => 'date'
-LABEL title = 'Revenue by Category (Filtered Layers)', x = 'Month', y = 'Revenue ($)'
+LABEL title => 'Revenue by Category (Filtered Layers)', x => 'Month', y => 'Revenue ($)'
 ```
 
 ### Multiple File Sources
@@ -433,7 +433,7 @@ Layers can also reference different CSV files directly:
 VISUALISE
 DRAW line MAPPING date AS x, value AS y, 'Time Series' AS color FROM 'timeseries.csv'
 DRAW point MAPPING x AS x, y AS y, 'Scatter' AS color FROM 'data.csv'
-LABEL title = 'Data from Multiple Files', x = 'X', y = 'Y'
+LABEL title => 'Data from Multiple Files', x => 'X', y => 'Y'
 ```
 
 ## Advanced Examples
