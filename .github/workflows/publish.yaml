@@ -47,7 +47,7 @@ jobs:
         run: ./target/release/ggsql-jupyter --install
 
       - name: Render and Publish
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         uses: quarto-dev/quarto-actions/publish@v2
         with:
           target: gh-pages
@@ -56,7 +56,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Render
-        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main' && github.event_name != 'workflow_dispatch'
         uses: quarto-dev/quarto-actions/render@v2
         with:
           to: html
