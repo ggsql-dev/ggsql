@@ -10,7 +10,6 @@ on:
 jobs:
   publish-website:
     runs-on: ubuntu-latest
-    needs: build
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
