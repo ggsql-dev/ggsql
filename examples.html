@@ -1,0 +1,2159 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.21">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Examples – ggsql</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-ea1d7ac60288e0f1efdbc993fd8432ae.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-9dd7bf4d922e1fb5065d7fea8f52941c.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="styles.css">
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="./index.html" class="navbar-brand navbar-brand-logo">
+    </a>
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">ggsql</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="./index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="./examples.html" aria-current="page"> 
+<span class="menu-text">Examples</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#basic-visualizations" id="toc-basic-visualizations" class="nav-link active" data-scroll-target="#basic-visualizations">Basic Visualizations</a>
+  <ul class="collapse">
+  <li><a href="#simple-scatter-plot" id="toc-simple-scatter-plot" class="nav-link" data-scroll-target="#simple-scatter-plot">Simple Scatter Plot</a></li>
+  <li><a href="#line-chart-with-date-scale" id="toc-line-chart-with-date-scale" class="nav-link" data-scroll-target="#line-chart-with-date-scale">Line Chart with Date Scale</a></li>
+  <li><a href="#bar-chart-by-category" id="toc-bar-chart-by-category" class="nav-link" data-scroll-target="#bar-chart-by-category">Bar Chart by Category</a></li>
+  <li><a href="#line-chart-with-multiple-lines-with-same-aesthetics" id="toc-line-chart-with-multiple-lines-with-same-aesthetics" class="nav-link" data-scroll-target="#line-chart-with-multiple-lines-with-same-aesthetics">Line chart with multiple lines with same aesthetics</a></li>
+  </ul></li>
+  <li><a href="#multiple-layers" id="toc-multiple-layers" class="nav-link" data-scroll-target="#multiple-layers">Multiple Layers</a>
+  <ul class="collapse">
+  <li><a href="#line-with-points" id="toc-line-with-points" class="nav-link" data-scroll-target="#line-with-points">Line with Points</a></li>
+  <li><a href="#colored-lines-by-category" id="toc-colored-lines-by-category" class="nav-link" data-scroll-target="#colored-lines-by-category">Colored Lines by Category</a></li>
+  </ul></li>
+  <li><a href="#faceting" id="toc-faceting" class="nav-link" data-scroll-target="#faceting">Faceting</a>
+  <ul class="collapse">
+  <li><a href="#facet-wrap-by-region" id="toc-facet-wrap-by-region" class="nav-link" data-scroll-target="#facet-wrap-by-region">Facet Wrap by Region</a></li>
+  <li><a href="#facet-grid" id="toc-facet-grid" class="nav-link" data-scroll-target="#facet-grid">Facet Grid</a></li>
+  </ul></li>
+  <li><a href="#coordinate-transformations" id="toc-coordinate-transformations" class="nav-link" data-scroll-target="#coordinate-transformations">Coordinate Transformations</a>
+  <ul class="collapse">
+  <li><a href="#flipped-coordinates-horizontal-bar-chart" id="toc-flipped-coordinates-horizontal-bar-chart" class="nav-link" data-scroll-target="#flipped-coordinates-horizontal-bar-chart">Flipped Coordinates (Horizontal Bar Chart)</a></li>
+  <li><a href="#cartesian-with-axis-limits" id="toc-cartesian-with-axis-limits" class="nav-link" data-scroll-target="#cartesian-with-axis-limits">Cartesian with Axis Limits</a></li>
+  <li><a href="#pie-chart-with-polar-coordinates" id="toc-pie-chart-with-polar-coordinates" class="nav-link" data-scroll-target="#pie-chart-with-polar-coordinates">Pie Chart with Polar Coordinates</a></li>
+  </ul></li>
+  <li><a href="#constant-mappings" id="toc-constant-mappings" class="nav-link" data-scroll-target="#constant-mappings">Constant Mappings</a>
+  <ul class="collapse">
+  <li><a href="#different-constants-per-layer" id="toc-different-constants-per-layer" class="nav-link" data-scroll-target="#different-constants-per-layer">Different Constants Per Layer</a></li>
+  <li><a href="#mixed-constants-and-columns" id="toc-mixed-constants-and-columns" class="nav-link" data-scroll-target="#mixed-constants-and-columns">Mixed Constants and Columns</a></li>
+  <li><a href="#numeric-constants" id="toc-numeric-constants" class="nav-link" data-scroll-target="#numeric-constants">Numeric Constants</a></li>
+  </ul></li>
+  <li><a href="#layer-filtering" id="toc-layer-filtering" class="nav-link" data-scroll-target="#layer-filtering">Layer filtering</a>
+  <ul class="collapse">
+  <li><a href="#filter-one-layer" id="toc-filter-one-layer" class="nav-link" data-scroll-target="#filter-one-layer">Filter one layer</a></li>
+  </ul></li>
+  <li><a href="#common-table-expressions-ctes" id="toc-common-table-expressions-ctes" class="nav-link" data-scroll-target="#common-table-expressions-ctes">Common Table Expressions (CTEs)</a>
+  <ul class="collapse">
+  <li><a href="#simple-cte-with-visualise-from" id="toc-simple-cte-with-visualise-from" class="nav-link" data-scroll-target="#simple-cte-with-visualise-from">Simple CTE with VISUALISE FROM</a></li>
+  <li><a href="#multiple-ctes" id="toc-multiple-ctes" class="nav-link" data-scroll-target="#multiple-ctes">Multiple CTEs</a></li>
+  </ul></li>
+  <li><a href="#layer-specific-data-sources-mapping-from" id="toc-layer-specific-data-sources-mapping-from" class="nav-link" data-scroll-target="#layer-specific-data-sources-mapping-from">Layer-Specific Data Sources (MAPPING FROM)</a>
+  <ul class="collapse">
+  <li><a href="#comparing-actuals-vs-targets" id="toc-comparing-actuals-vs-targets" class="nav-link" data-scroll-target="#comparing-actuals-vs-targets">Comparing Actuals vs Targets</a></li>
+  <li><a href="#cte-chain-raw-filtered-aggregated" id="toc-cte-chain-raw-filtered-aggregated" class="nav-link" data-scroll-target="#cte-chain-raw-filtered-aggregated">CTE Chain: Raw → Filtered → Aggregated</a></li>
+  <li><a href="#layer-from-with-filter" id="toc-layer-from-with-filter" class="nav-link" data-scroll-target="#layer-from-with-filter">Layer FROM with FILTER</a></li>
+  <li><a href="#multiple-file-sources" id="toc-multiple-file-sources" class="nav-link" data-scroll-target="#multiple-file-sources">Multiple File Sources</a></li>
+  </ul></li>
+  <li><a href="#advanced-examples" id="toc-advanced-examples" class="nav-link" data-scroll-target="#advanced-examples">Advanced Examples</a>
+  <ul class="collapse">
+  <li><a href="#complete-regional-sales-analysis" id="toc-complete-regional-sales-analysis" class="nav-link" data-scroll-target="#complete-regional-sales-analysis">Complete Regional Sales Analysis</a></li>
+  <li><a href="#multi-category-analysis" id="toc-multi-category-analysis" class="nav-link" data-scroll-target="#multi-category-analysis">Multi-Category Analysis</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Examples</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>This document demonstrates various ggSQL features with runnable examples using CSV files.</p>
+<section id="basic-visualizations" class="level2">
+<h2 class="anchored" data-anchor-id="basic-visualizations">Basic Visualizations</h2>
+<section id="simple-scatter-plot" class="level3">
+<h3 class="anchored" data-anchor-id="simple-scatter-plot">Simple Scatter Plot</h3>
+<div id="13150eaf" class="cell" data-execution_count="5">
+<pre class="ggsql cell-code"><code>SELECT x, y FROM 'data.csv'
+VISUALISE x, y
+DRAW point</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<div id="vis-1768219870638"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"x":5.2,"y":18.5},{"x":8.7,"y":22.3},{"x":12.3,"y":28.9},{"x":15.8,"y":35.2},{"x":19.4,"y":42.7},{"x":23.1,"y":38.6},{"x":26.8,"y":45.1},{"x":30.2,"y":52.8},{"x":33.9,"y":48.3},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"x","title":"x","type":"quantitative"},"y":{"field":"y","title":"y","type":"quantitative"}},"mark":"point"}]};
+    const visId = 'vis-1768219870638';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="line-chart-with-date-scale" class="level3">
+<h3 class="anchored" data-anchor-id="line-chart-with-date-scale">Line Chart with Date Scale</h3>
+<div id="5bbde5b9" class="cell" data-execution_count="6">
+<pre class="ggsql cell-code"><code>SELECT sale_date, revenue FROM 'sales.csv'
+WHERE category = 'Electronics'
+VISUALISE sale_date AS x, revenue AS y
+DRAW line
+SCALE x SETTING type =&gt; 'date'
+LABEL title =&gt; 'Electronics Revenue Over Time', x =&gt; 'Date', y =&gt; 'Revenue ($)'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<div id="vis-1768219870650"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"revenue":1000.0,"sale_date":"2023-01-15"},{"revenue":1200.0,"sale_date":"2023-02-10"},{"revenue":1400.0,"sale_date":"2023-03-05"},{"revenue":1100.0,"sale_date":"2023-04-20"},{"revenue":1600.0,"sale_date":"2023-05-12"},{"revenue":1800.0,"sale_date":"2023-06-08"},{"revenue":2000.0,"sale_date":"2023-07-14"},{"revenue":2200.0,"sale_date":"2023-08-22"},{"revenue":1900.0,"sale_date":"2023-09-18"},{"revenue":2400.0,"sale_date":"2023-10-25"},{"revenue":2600.0,"sale_date":"2023-11-11"},{"revenue":3000.0,"sale_date":"2023-12-05"}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"sale_date","title":"Date","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Electronics Revenue Over Time"};
+    const visId = 'vis-1768219870650';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="bar-chart-by-category" class="level3">
+<h3 class="anchored" data-anchor-id="bar-chart-by-category">Bar Chart by Category</h3>
+<div id="5a24c1ae" class="cell" data-execution_count="7">
+<pre class="ggsql cell-code"><code>SELECT category, SUM(revenue) as total
+FROM 'sales.csv'
+GROUP BY category
+VISUALISE category AS x, total AS y, category AS fill
+DRAW bar
+LABEL title =&gt; 'Total Revenue by Category', x =&gt; 'Category', y =&gt; 'Total Revenue ($)'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<div id="vis-1768219870665"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Furniture","total":14300.0},{"category":"Clothing","total":21700.0},{"category":"Electronics","total":22200.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"category","type":"nominal"},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"total","title":"Total Revenue ($)","type":"quantitative"}},"mark":"bar"}],"title":"Total Revenue by Category"};
+    const visId = 'vis-1768219870665';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="line-chart-with-multiple-lines-with-same-aesthetics" class="level3">
+<h3 class="anchored" data-anchor-id="line-chart-with-multiple-lines-with-same-aesthetics">Line chart with multiple lines with same aesthetics</h3>
+<div id="d7137886" class="cell" data-execution_count="8">
+<pre class="ggsql cell-code"><code>SELECT * FROM 'sales.csv'
+VISUALISE sale_date AS x, revenue AS y
+DRAW line
+    PARTITION BY category</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<div id="vis-1768219870676"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Electronics","quantity":5,"region":"North","revenue":1000.0,"sale_date":"2023-01-15"},{"category":"Electronics","quantity":8,"region":"South","revenue":1200.0,"sale_date":"2023-02-10"},{"category":"Electronics","quantity":7,"region":"East","revenue":1400.0,"sale_date":"2023-03-05"},{"category":"Electronics","quantity":6,"region":"West","revenue":1100.0,"sale_date":"2023-04-20"},{"category":"Electronics","quantity":9,"region":"North","revenue":1600.0,"sale_date":"2023-05-12"},{"category":"Electronics","quantity":10,"region":"South","revenue":1800.0,"sale_date":"2023-06-08"},{"category":"Electronics","quantity":11,"region":"East","revenue":2000.0,"sale_date":"2023-07-14"},{"category":"Electronics","quantity":12,"region":"West","revenue":2200.0,"sale_date":"2023-08-22"},{"category":"Electronics","quantity":8,"region":"North","revenue":1900.0,"sale_date":"2023-09-18"},{"category":"Electronics","quantity":14,"region":"South","revenue":2400.0,"sale_date":"2023-10-25"},{"category":"Electronics","quantity":15,"region":"East","revenue":2600.0,"sale_date":"2023-11-11"},{"category":"Electronics","quantity":16,"region":"West","revenue":3000.0,"sale_date":"2023-12-05"},{"category":"Clothing","quantity":25,"region":"North","revenue":800.0,"sale_date":"2023-01-20"},{"category":"Clothing","quantity":30,"region":"South","revenue":900.0,"sale_date":"2023-02-15"},{"category":"Clothing","quantity":35,"region":"East","revenue":1100.0,"sale_date":"2023-03-10"},{"category":"Clothing","quantity":38,"region":"West","revenue":1300.0,"sale_date":"2023-04-25"},{"category":"Clothing","quantity":42,"region":"North","revenue":1500.0,"sale_date":"2023-05-18"},{"category":"Clothing","quantity":45,"region":"South","revenue":1700.0,"sale_date":"2023-06-12"},{"category":"Clothing","quantity":48,"region":"East","revenue":1900.0,"sale_date":"2023-07-20"},{"category":"Clothing","quantity":50,"region":"West","revenue":2100.0,"sale_date":"2023-08-28"},{"category":"Clothing","quantity":52,"region":"North","revenue":2300.0,"sale_date":"2023-09-22"},{"category":"Clothing","quantity":55,"region":"South","revenue":2500.0,"sale_date":"2023-10-30"},{"category":"Clothing","quantity":58,"region":"East","revenue":2700.0,"sale_date":"2023-11-15"},{"category":"Clothing","quantity":60,"region":"West","revenue":2900.0,"sale_date":"2023-12-10"},{"category":"Furniture","quantity":3,"region":"North","revenue":600.0,"sale_date":"2023-01-25"},{"category":"Furniture","quantity":3,"region":"South","revenue":700.0,"sale_date":"2023-02-18"},{"category":"Furniture","quantity":4,"region":"East","revenue":850.0,"sale_date":"2023-03-15"},{"category":"Furniture","quantity":4,"region":"West","revenue":950.0,"sale_date":"2023-04-28"},{"category":"Furniture","quantity":5,"region":"North","revenue":1050.0,"sale_date":"2023-05-22"},{"category":"Furniture","quantity":5,"region":"South","revenue":1150.0,"sale_date":"2023-06-16"},{"category":"Furniture","quantity":5,"region":"East","revenue":1250.0,"sale_date":"2023-07-24"},{"category":"Furniture","quantity":6,"region":"West","revenue":1350.0,"sale_date":"2023-08-30"},{"category":"Furniture","quantity":6,"region":"North","revenue":1450.0,"sale_date":"2023-09-26"},{"category":"Furniture","quantity":6,"region":"South","revenue":1550.0,"sale_date":"2023-10-31"},{"category":"Furniture","quantity":7,"region":"East","revenue":1650.0,"sale_date":"2023-11-20"},{"category":"Furniture","quantity":7,"region":"West","revenue":1750.0,"sale_date":"2023-12-15"}]},"layer":[{"data":{"name":"__global__"},"encoding":{"detail":{"field":"category","type":"nominal"},"x":{"field":"sale_date","title":"sale_date","type":"temporal"},"y":{"field":"revenue","title":"revenue","type":"quantitative"}},"mark":"line"}]};
+    const visId = 'vis-1768219870676';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+</section>
+<section id="multiple-layers" class="level2">
+<h2 class="anchored" data-anchor-id="multiple-layers">Multiple Layers</h2>
+<section id="line-with-points" class="level3">
+<h3 class="anchored" data-anchor-id="line-with-points">Line with Points</h3>
+<div id="0b1212b5" class="cell" data-execution_count="9">
+<pre class="ggsql cell-code"><code>SELECT date, value FROM 'timeseries.csv'
+VISUALISE date AS x, value AS y
+DRAW line SETTING  color =&gt; 'blue'
+DRAW point SETTING size =&gt; 30, color =&gt; 'red'
+SCALE x SETTING type =&gt; 'date'
+LABEL title =&gt; 'Time Series with Points', x =&gt; 'Date', y =&gt; 'Value'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<div id="vis-1768219870686"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"date":"2023-01-01","value":100.0},{"date":"2023-01-08","value":110.0},{"date":"2023-01-15","value":105.0},{"date":"2023-01-22","value":115.0},{"date":"2023-01-29","value":120.0},{"date":"2023-02-05","value":118.0},{"date":"2023-02-12","value":125.0},{"date":"2023-02-19","value":130.0},{"date":"2023-02-26","value":128.0},{"date":"2023-03-05","value":135.0},{"date":"2023-03-12","value":142.0},{"date":"2023-03-19","value":138.0},{"date":"2023-03-26","value":145.0},{"date":"2023-04-02","value":150.0},{"date":"2023-04-09","value":148.0},{"date":"2023-04-16","value":155.0},{"date":"2023-04-23","value":160.0},{"date":"2023-04-30","value":158.0},{"date":"2023-05-07","value":165.0},{"date":"2023-05-14","value":170.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"point"}],"title":"Time Series with Points"};
+    const visId = 'vis-1768219870686';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="colored-lines-by-category" class="level3">
+<h3 class="anchored" data-anchor-id="colored-lines-by-category">Colored Lines by Category</h3>
+<div id="493f0479" class="cell" data-execution_count="10">
+<pre class="ggsql cell-code"><code>SELECT date, value, category FROM 'metrics.csv'
+VISUALISE date AS x, value AS y, category AS color
+DRAW line
+SCALE x SETTING type =&gt; 'date'
+LABEL title =&gt; 'Metrics by Category', x =&gt; 'Date', y =&gt; 'Value'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<div id="vis-1768219870698"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Sales","date":"2023-01-01","value":45.2},{"category":"Sales","date":"2023-02-01","value":52.1},{"category":"Sales","date":"2023-03-01","value":48.7},{"category":"Sales","date":"2023-04-01","value":58.3},{"category":"Sales","date":"2023-05-01","value":62.5},{"category":"Sales","date":"2023-06-01","value":67.8},{"category":"Sales","date":"2023-07-01","value":71.2},{"category":"Sales","date":"2023-08-01","value":75.6},{"category":"Sales","date":"2023-09-01","value":80.1},{"category":"Sales","date":"2023-10-01","value":85.4},{"category":"Sales","date":"2023-11-01","value":90.2},{"category":"Sales","date":"2023-12-01","value":95.8},{"category":"Marketing","date":"2023-01-01","value":120.5},{"category":"Marketing","date":"2023-02-01","value":135.2},{"category":"Marketing","date":"2023-03-01","value":128.9},{"category":"Marketing","date":"2023-04-01","value":142.3},{"category":"Marketing","date":"2023-05-01","value":155.7},{"category":"Marketing","date":"2023-06-01","value":148.2},{"category":"Marketing","date":"2023-07-01","value":162.8},{"category":"Marketing","date":"2023-08-01","value":175.4},{"category":"Marketing","date":"2023-09-01","value":168.9},{"category":"Marketing","date":"2023-10-01","value":182.5},{"category":"Marketing","date":"2023-11-01","value":195.1},{"category":"Marketing","date":"2023-12-01","value":188.7},{"category":"Support","date":"2023-01-01","value":78.3},{"category":"Support","date":"2023-02-01","value":82.1},{"category":"Support","date":"2023-03-01","value":75.6},{"category":"Support","date":"2023-04-01","value":85.9},{"category":"Support","date":"2023-05-01","value":92.4},{"category":"Support","date":"2023-06-01","value":88.7},{"category":"Support","date":"2023-07-01","value":95.2},{"category":"Support","date":"2023-08-01","value":101.8},{"category":"Support","date":"2023-09-01","value":97.5},{"category":"Support","date":"2023-10-01","value":105.3},{"category":"Support","date":"2023-11-01","value":112.6},{"category":"Support","date":"2023-12-01","value":108.9}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line"}],"title":"Metrics by Category"};
+    const visId = 'vis-1768219870698';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+</section>
+<section id="faceting" class="level2">
+<h2 class="anchored" data-anchor-id="faceting">Faceting</h2>
+<section id="facet-wrap-by-region" class="level3">
+<h3 class="anchored" data-anchor-id="facet-wrap-by-region">Facet Wrap by Region</h3>
+<div id="09b4a74d" class="cell" data-execution_count="11">
+<pre class="ggsql cell-code"><code>SELECT sale_date, revenue, region FROM 'sales.csv'
+WHERE category = 'Electronics'
+VISUALISE sale_date AS x, revenue AS y
+DRAW line
+SCALE x SETTING type =&gt; 'date'
+FACET WRAP region
+LABEL title =&gt; 'Electronics Sales by Region', x =&gt; 'Date', y =&gt; 'Revenue ($)'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<div id="vis-1768219870710"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"__global__"},"datasets":{"__global__":[{"region":"North","revenue":1000.0,"sale_date":"2023-01-15"},{"region":"South","revenue":1200.0,"sale_date":"2023-02-10"},{"region":"East","revenue":1400.0,"sale_date":"2023-03-05"},{"region":"West","revenue":1100.0,"sale_date":"2023-04-20"},{"region":"North","revenue":1600.0,"sale_date":"2023-05-12"},{"region":"South","revenue":1800.0,"sale_date":"2023-06-08"},{"region":"East","revenue":2000.0,"sale_date":"2023-07-14"},{"region":"West","revenue":2200.0,"sale_date":"2023-08-22"},{"region":"North","revenue":1900.0,"sale_date":"2023-09-18"},{"region":"South","revenue":2400.0,"sale_date":"2023-10-25"},{"region":"East","revenue":2600.0,"sale_date":"2023-11-11"},{"region":"West","revenue":3000.0,"sale_date":"2023-12-05"}]},"facet":{"field":"region","type":"nominal"},"spec":{"layer":[{"encoding":{"x":{"field":"sale_date","title":"Date","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}]},"title":"Electronics Sales by Region"};
+    const visId = 'vis-1768219870710';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="facet-grid" class="level3">
+<h3 class="anchored" data-anchor-id="facet-grid">Facet Grid</h3>
+<div id="8e4e2d87" class="cell" data-execution_count="12">
+<pre class="ggsql cell-code"><code>SELECT
+    DATE_TRUNC('month', sale_date) as month,
+    region,
+    category,
+    SUM(revenue) as total_revenue,
+    SUM(quantity) * 100 as total_quantity_scaled
+FROM 'sales.csv'
+GROUP BY DATE_TRUNC('month', sale_date), region, category
+VISUALISE month AS x
+DRAW line 
+    MAPPING total_revenue AS y
+    SETTING color =&gt; 'steelblue'
+DRAW point 
+    MAPPING total_revenue AS y
+    SETTING size =&gt; 30, color =&gt; 'darkblue'
+DRAW line 
+    MAPPING total_quantity_scaled AS y
+    SETTING color =&gt; 'coral'
+DRAW point 
+    MAPPING total_quantity_scaled AS y
+    SETTING size =&gt; 30, color =&gt; 'orangered'
+SCALE x SETTING type =&gt; 'date'
+FACET region BY category
+LABEL title =&gt; 'Monthly Revenue and Quantity by Region and Category', x =&gt; 'Month', y =&gt; 'Value'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<div id="vis-1768219870726"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"__global__"},"datasets":{"__global__":[{"category":"Electronics","month":"2023-08-01","region":"West","total_quantity_scaled":1200.0,"total_revenue":2200.0},{"category":"Electronics","month":"2023-11-01","region":"East","total_quantity_scaled":1500.0,"total_revenue":2600.0},{"category":"Electronics","month":"2023-05-01","region":"North","total_quantity_scaled":900.0,"total_revenue":1600.0},{"category":"Electronics","month":"2023-07-01","region":"East","total_quantity_scaled":1100.0,"total_revenue":2000.0},{"category":"Clothing","month":"2023-12-01","region":"West","total_quantity_scaled":6000.0,"total_revenue":2900.0},{"category":"Clothing","month":"2023-08-01","region":"West","total_quantity_scaled":5000.0,"total_revenue":2100.0},{"category":"Clothing","month":"2023-11-01","region":"East","total_quantity_scaled":5800.0,"total_revenue":2700.0},{"category":"Furniture","month":"2023-09-01","region":"North","total_quantity_scaled":600.0,"total_revenue":1450.0},{"category":"Electronics","month":"2023-09-01","region":"North","total_quantity_scaled":800.0,"total_revenue":1900.0},{"category":"Electronics","month":"2023-04-01","region":"West","total_quantity_scaled":600.0,"total_revenue":1100.0},{"category":"Furniture","month":"2023-01-01","region":"North","total_quantity_scaled":300.0,"total_revenue":600.0},{"category":"Furniture","month":"2023-02-01","region":"South","total_quantity_scaled":300.0,"total_revenue":700.0},{"category":"Electronics","month":"2023-01-01","region":"North","total_quantity_scaled":500.0,"total_revenue":1000.0},{"category":"Electronics","month":"2023-02-01","region":"South","total_quantity_scaled":800.0,"total_revenue":1200.0},{"category":"Clothing","month":"2023-03-01","region":"East","total_quantity_scaled":3500.0,"total_revenue":1100.0},{"category":"Furniture","month":"2023-04-01","region":"West","total_quantity_scaled":400.0,"total_revenue":950.0},{"category":"Electronics","month":"2023-06-01","region":"South","total_quantity_scaled":1000.0,"total_revenue":1800.0},{"category":"Furniture","month":"2023-10-01","region":"South","total_quantity_scaled":600.0,"total_revenue":1550.0},{"category":"Clothing","month":"2023-06-01","region":"South","total_quantity_scaled":4500.0,"total_revenue":1700.0},{"category":"Clothing","month":"2023-10-01","region":"South","total_quantity_scaled":5500.0,"total_revenue":2500.0},{"category":"Furniture","month":"2023-05-01","region":"North","total_quantity_scaled":500.0,"total_revenue":1050.0},{"category":"Furniture","month":"2023-07-01","region":"East","total_quantity_scaled":500.0,"total_revenue":1250.0},{"category":"Clothing","month":"2023-04-01","region":"West","total_quantity_scaled":3800.0,"total_revenue":1300.0},{"category":"Furniture","month":"2023-03-01","region":"East","total_quantity_scaled":400.0,"total_revenue":850.0},{"category":"Clothing","month":"2023-09-01","region":"North","total_quantity_scaled":5200.0,"total_revenue":2300.0},{"category":"Furniture","month":"2023-08-01","region":"West","total_quantity_scaled":600.0,"total_revenue":1350.0},{"category":"Furniture","month":"2023-11-01","region":"East","total_quantity_scaled":700.0,"total_revenue":1650.0},{"category":"Furniture","month":"2023-12-01","region":"West","total_quantity_scaled":700.0,"total_revenue":1750.0},{"category":"Electronics","month":"2023-12-01","region":"West","total_quantity_scaled":1600.0,"total_revenue":3000.0},{"category":"Clothing","month":"2023-05-01","region":"North","total_quantity_scaled":4200.0,"total_revenue":1500.0},{"category":"Clothing","month":"2023-07-01","region":"East","total_quantity_scaled":4800.0,"total_revenue":1900.0},{"category":"Electronics","month":"2023-10-01","region":"South","total_quantity_scaled":1400.0,"total_revenue":2400.0},{"category":"Furniture","month":"2023-06-01","region":"South","total_quantity_scaled":500.0,"total_revenue":1150.0},{"category":"Electronics","month":"2023-03-01","region":"East","total_quantity_scaled":700.0,"total_revenue":1400.0},{"category":"Clothing","month":"2023-01-01","region":"North","total_quantity_scaled":2500.0,"total_revenue":800.0},{"category":"Clothing","month":"2023-02-01","region":"South","total_quantity_scaled":3000.0,"total_revenue":900.0}]},"facet":{"column":{"field":"category","type":"nominal"},"row":{"field":"region","type":"nominal"}},"spec":{"layer":[{"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Value","type":"quantitative"}},"mark":"line"},{"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Value","type":"quantitative"}},"mark":"point"},{"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_quantity_scaled","title":"Value","type":"quantitative"}},"mark":"line"},{"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_quantity_scaled","title":"Value","type":"quantitative"}},"mark":"point"}]},"title":"Monthly Revenue and Quantity by Region and Category"};
+    const visId = 'vis-1768219870726';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+</section>
+<section id="coordinate-transformations" class="level2">
+<h2 class="anchored" data-anchor-id="coordinate-transformations">Coordinate Transformations</h2>
+<section id="flipped-coordinates-horizontal-bar-chart" class="level3">
+<h3 class="anchored" data-anchor-id="flipped-coordinates-horizontal-bar-chart">Flipped Coordinates (Horizontal Bar Chart)</h3>
+<div id="8d836ace" class="cell" data-execution_count="13">
+<pre class="ggsql cell-code"><code>SELECT region, SUM(revenue) as total
+FROM 'sales.csv'
+GROUP BY region
+ORDER BY total DESC
+VISUALISE region AS x, total AS y, region AS fill
+DRAW bar
+COORD flip
+LABEL title =&gt; 'Total Revenue by Region', x =&gt; 'Region', y =&gt; 'Total Revenue ($)'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<div id="vis-1768219870738"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"region":"West","total":16650.0},{"region":"East","total":15450.0},{"region":"South","total":13900.0},{"region":"North","total":12200.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","type":"nominal"},"x":{"field":"total","title":"Total Revenue ($)","type":"quantitative"},"y":{"field":"region","title":"Region","type":"nominal"}},"mark":"bar"}],"title":"Total Revenue by Region"};
+    const visId = 'vis-1768219870738';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="cartesian-with-axis-limits" class="level3">
+<h3 class="anchored" data-anchor-id="cartesian-with-axis-limits">Cartesian with Axis Limits</h3>
+<div id="fd8df059" class="cell" data-execution_count="14">
+<pre class="ggsql cell-code"><code>SELECT x, y FROM 'data.csv'
+VISUALISE x, y
+DRAW point SETTING size =&gt; 4, color =&gt; 'blue'
+COORD cartesian SETTING xlim =&gt; [0, 60], ylim =&gt; [0, 70]
+LABEL title =&gt; 'Scatter Plot with Custom Axis Limits', x =&gt; 'X', y =&gt; 'Y'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<div id="vis-1768219870747"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"x":5.2,"y":18.5},{"x":8.7,"y":22.3},{"x":12.3,"y":28.9},{"x":15.8,"y":35.2},{"x":19.4,"y":42.7},{"x":23.1,"y":38.6},{"x":26.8,"y":45.1},{"x":30.2,"y":52.8},{"x":33.9,"y":48.3},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"x","scale":{"domain":[0.0,60.0]},"title":"X","type":"quantitative"},"y":{"field":"y","scale":{"domain":[0.0,70.0]},"title":"Y","type":"quantitative"}},"mark":"point"}],"title":"Scatter Plot with Custom Axis Limits"};
+    const visId = 'vis-1768219870747';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="pie-chart-with-polar-coordinates" class="level3">
+<h3 class="anchored" data-anchor-id="pie-chart-with-polar-coordinates">Pie Chart with Polar Coordinates</h3>
+<div id="d2569be9" class="cell" data-execution_count="15">
+<pre class="ggsql cell-code"><code>SELECT category, SUM(revenue) as total
+FROM 'sales.csv'
+GROUP BY category
+VISUALISE total AS y, category AS fill
+DRAW bar
+COORD polar
+LABEL title =&gt; 'Revenue Distribution by Category'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<div id="vis-1768219870760"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Clothing","total":21700.0},{"category":"Electronics","total":22200.0},{"category":"Furniture","total":14300.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"category","type":"nominal"},"theta":{"field":"total","title":"total","type":"quantitative"}},"mark":"arc"}],"title":"Revenue Distribution by Category"};
+    const visId = 'vis-1768219870760';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+</section>
+<section id="constant-mappings" class="level2">
+<h2 class="anchored" data-anchor-id="constant-mappings">Constant Mappings</h2>
+<p>Constants can be used in both the VISUALISE clause (global) and MAPPING clauses (per-layer) to set fixed aesthetic values.</p>
+<section id="different-constants-per-layer" class="level3">
+<h3 class="anchored" data-anchor-id="different-constants-per-layer">Different Constants Per Layer</h3>
+<p>Each layer can have its own constant value, creating a legend showing all values:</p>
+<div id="08fb9142" class="cell" data-execution_count="16">
+<pre class="ggsql cell-code"><code>WITH monthly AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        category,
+        SUM(revenue) as revenue
+    FROM 'sales.csv'
+    GROUP BY DATE_TRUNC('month', sale_date), category
+)
+VISUALISE month AS x, revenue AS y
+DRAW line MAPPING 'Electronics' AS color FROM monthly FILTER category = 'Electronics'
+DRAW line MAPPING 'Clothing' AS color FROM monthly FILTER category = 'Clothing'
+DRAW line MAPPING 'Furniture' AS color FROM monthly FILTER category = 'Furniture'
+SCALE x SETTING type =&gt; 'date'
+LABEL title =&gt; 'Revenue by Category (Constant Colors)', x =&gt; 'Month', y =&gt; 'Revenue ($)'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<div id="vis-1768219870774"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"category":"Electronics","month":"2023-10-01","revenue":2400.0},{"category":"Electronics","month":"2023-02-01","revenue":1200.0},{"category":"Electronics","month":"2023-04-01","revenue":1100.0},{"category":"Electronics","month":"2023-05-01","revenue":1600.0},{"category":"Electronics","month":"2023-12-01","revenue":3000.0},{"category":"Electronics","month":"2023-08-01","revenue":2200.0},{"category":"Electronics","month":"2023-01-01","revenue":1000.0},{"category":"Electronics","month":"2023-11-01","revenue":2600.0},{"category":"Electronics","month":"2023-07-01","revenue":2000.0},{"category":"Electronics","month":"2023-03-01","revenue":1400.0},{"category":"Electronics","month":"2023-06-01","revenue":1800.0},{"category":"Electronics","month":"2023-09-01","revenue":1900.0}],"__layer_1__":[{"category":"Clothing","month":"2023-09-01","revenue":2300.0},{"category":"Clothing","month":"2023-07-01","revenue":1900.0},{"category":"Clothing","month":"2023-01-01","revenue":800.0},{"category":"Clothing","month":"2023-11-01","revenue":2700.0},{"category":"Clothing","month":"2023-02-01","revenue":900.0},{"category":"Clothing","month":"2023-08-01","revenue":2100.0},{"category":"Clothing","month":"2023-04-01","revenue":1300.0},{"category":"Clothing","month":"2023-05-01","revenue":1500.0},{"category":"Clothing","month":"2023-12-01","revenue":2900.0},{"category":"Clothing","month":"2023-06-01","revenue":1700.0},{"category":"Clothing","month":"2023-03-01","revenue":1100.0},{"category":"Clothing","month":"2023-10-01","revenue":2500.0}],"__layer_2__":[{"category":"Furniture","month":"2023-04-01","revenue":950.0},{"category":"Furniture","month":"2023-05-01","revenue":1050.0},{"category":"Furniture","month":"2023-12-01","revenue":1750.0},{"category":"Furniture","month":"2023-03-01","revenue":850.0},{"category":"Furniture","month":"2023-08-01","revenue":1350.0},{"category":"Furniture","month":"2023-02-01","revenue":700.0},{"category":"Furniture","month":"2023-10-01","revenue":1550.0},{"category":"Furniture","month":"2023-09-01","revenue":1450.0},{"category":"Furniture","month":"2023-06-01","revenue":1150.0},{"category":"Furniture","month":"2023-01-01","revenue":600.0},{"category":"Furniture","month":"2023-11-01","revenue":1650.0},{"category":"Furniture","month":"2023-07-01","revenue":1250.0}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_2__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue by Category (Constant Colors)"};
+    const visId = 'vis-1768219870774';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="mixed-constants-and-columns" class="level3">
+<h3 class="anchored" data-anchor-id="mixed-constants-and-columns">Mixed Constants and Columns</h3>
+<p>When mixing constant and column mappings for the same aesthetic, the axis/legend label uses the first non-constant column name:</p>
+<div id="2b39fbfd" class="cell" data-execution_count="17">
+<pre class="ggsql cell-code"><code>SELECT date, value, category FROM 'metrics.csv'
+VISUALISE date AS x
+DRAW line MAPPING value AS y, category AS color
+DRAW point MAPPING 120 AS y SETTING size =&gt; 20, color =&gt; 'blue'
+SCALE x SETTING type =&gt; 'date'
+LABEL title =&gt; 'Metrics with Threshold Line', x =&gt; 'Date'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="17">
+<div id="vis-1768219870788"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Sales","date":"2023-01-01","value":45.2},{"category":"Sales","date":"2023-02-01","value":52.1},{"category":"Sales","date":"2023-03-01","value":48.7},{"category":"Sales","date":"2023-04-01","value":58.3},{"category":"Sales","date":"2023-05-01","value":62.5},{"category":"Sales","date":"2023-06-01","value":67.8},{"category":"Sales","date":"2023-07-01","value":71.2},{"category":"Sales","date":"2023-08-01","value":75.6},{"category":"Sales","date":"2023-09-01","value":80.1},{"category":"Sales","date":"2023-10-01","value":85.4},{"category":"Sales","date":"2023-11-01","value":90.2},{"category":"Sales","date":"2023-12-01","value":95.8},{"category":"Marketing","date":"2023-01-01","value":120.5},{"category":"Marketing","date":"2023-02-01","value":135.2},{"category":"Marketing","date":"2023-03-01","value":128.9},{"category":"Marketing","date":"2023-04-01","value":142.3},{"category":"Marketing","date":"2023-05-01","value":155.7},{"category":"Marketing","date":"2023-06-01","value":148.2},{"category":"Marketing","date":"2023-07-01","value":162.8},{"category":"Marketing","date":"2023-08-01","value":175.4},{"category":"Marketing","date":"2023-09-01","value":168.9},{"category":"Marketing","date":"2023-10-01","value":182.5},{"category":"Marketing","date":"2023-11-01","value":195.1},{"category":"Marketing","date":"2023-12-01","value":188.7},{"category":"Support","date":"2023-01-01","value":78.3},{"category":"Support","date":"2023-02-01","value":82.1},{"category":"Support","date":"2023-03-01","value":75.6},{"category":"Support","date":"2023-04-01","value":85.9},{"category":"Support","date":"2023-05-01","value":92.4},{"category":"Support","date":"2023-06-01","value":88.7},{"category":"Support","date":"2023-07-01","value":95.2},{"category":"Support","date":"2023-08-01","value":101.8},{"category":"Support","date":"2023-09-01","value":97.5},{"category":"Support","date":"2023-10-01","value":105.3},{"category":"Support","date":"2023-11-01","value":112.6},{"category":"Support","date":"2023-12-01","value":108.9}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"value","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"x":{"field":"date","title":"Date","type":"temporal"},"y":{"value":120.0}},"mark":"point"}],"title":"Metrics with Threshold Line"};
+    const visId = 'vis-1768219870788';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="numeric-constants" class="level3">
+<h3 class="anchored" data-anchor-id="numeric-constants">Numeric Constants</h3>
+<p>Numbers work as constants too:</p>
+<div id="f2045ba7" class="cell" data-execution_count="18">
+<pre class="ggsql cell-code"><code>SELECT x, y FROM 'data.csv'
+VISUALISE x, y
+DRAW point SETTING color =&gt; 'blue', size =&gt; 100
+DRAW point SETTING color =&gt; 'red', size =&gt; 50 FILTER y &gt; 50
+LABEL title =&gt; 'Scatter Plot with Constant Sizes'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<div id="vis-1768219870798"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"x":5.2,"y":18.5},{"x":8.7,"y":22.3},{"x":12.3,"y":28.9},{"x":15.8,"y":35.2},{"x":19.4,"y":42.7},{"x":23.1,"y":38.6},{"x":26.8,"y":45.1},{"x":30.2,"y":52.8},{"x":33.9,"y":48.3},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}],"__layer_1__":[{"x":30.2,"y":52.8},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"x","title":"x","type":"quantitative"},"y":{"field":"y","title":"y","type":"quantitative"}},"mark":"point"},{"data":{"name":"__global__"},"encoding":{"x":{"field":"x","title":"x","type":"quantitative"},"y":{"field":"y","title":"y","type":"quantitative"}},"mark":"point"}],"title":"Scatter Plot with Constant Sizes"};
+    const visId = 'vis-1768219870798';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+</section>
+<section id="layer-filtering" class="level2">
+<h2 class="anchored" data-anchor-id="layer-filtering">Layer filtering</h2>
+<section id="filter-one-layer" class="level3">
+<h3 class="anchored" data-anchor-id="filter-one-layer">Filter one layer</h3>
+<div id="4c72ccb8" class="cell" data-execution_count="19">
+<pre class="ggsql cell-code"><code>SELECT date, value FROM 'timeseries.csv'
+VISUALISE date AS x, value AS y
+DRAW line SETTING color =&gt; 'blue'
+DRAW point SETTING color =&gt; 'red', size =&gt; 30 FILTER value &lt; 130
+SCALE x SETTING type =&gt; 'date'
+LABEL title =&gt; 'Time Series with Points', x =&gt; 'Date', y =&gt; 'Value'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="19">
+<div id="vis-1768219870809"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"date":"2023-01-01","value":100.0},{"date":"2023-01-08","value":110.0},{"date":"2023-01-15","value":105.0},{"date":"2023-01-22","value":115.0},{"date":"2023-01-29","value":120.0},{"date":"2023-02-05","value":118.0},{"date":"2023-02-12","value":125.0},{"date":"2023-02-19","value":130.0},{"date":"2023-02-26","value":128.0},{"date":"2023-03-05","value":135.0},{"date":"2023-03-12","value":142.0},{"date":"2023-03-19","value":138.0},{"date":"2023-03-26","value":145.0},{"date":"2023-04-02","value":150.0},{"date":"2023-04-09","value":148.0},{"date":"2023-04-16","value":155.0},{"date":"2023-04-23","value":160.0},{"date":"2023-04-30","value":158.0},{"date":"2023-05-07","value":165.0},{"date":"2023-05-14","value":170.0}],"__layer_1__":[{"date":"2023-01-01","value":100.0},{"date":"2023-01-08","value":110.0},{"date":"2023-01-15","value":105.0},{"date":"2023-01-22","value":115.0},{"date":"2023-01-29","value":120.0},{"date":"2023-02-05","value":118.0},{"date":"2023-02-12","value":125.0},{"date":"2023-02-26","value":128.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"point"}],"title":"Time Series with Points"};
+    const visId = 'vis-1768219870809';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+</section>
+<section id="common-table-expressions-ctes" class="level2">
+<h2 class="anchored" data-anchor-id="common-table-expressions-ctes">Common Table Expressions (CTEs)</h2>
+<section id="simple-cte-with-visualise-from" class="level3">
+<h3 class="anchored" data-anchor-id="simple-cte-with-visualise-from">Simple CTE with VISUALISE FROM</h3>
+<div id="2caac5a3" class="cell" data-execution_count="20">
+<pre class="ggsql cell-code"><code>WITH monthly_sales AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        SUM(revenue) as total_revenue
+    FROM 'sales.csv'
+    GROUP BY DATE_TRUNC('month', sale_date)
+)
+VISUALISE month AS x, total_revenue AS y FROM monthly_sales
+DRAW line
+DRAW point
+SCALE x SETTING type =&gt; 'date'
+LABEL title =&gt; 'Monthly Revenue Trends', x =&gt; 'Month', y =&gt; 'Revenue ($)'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="20">
+<div id="vis-1768219870822"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"month":"2023-02-01","total_revenue":2800.0},{"month":"2023-06-01","total_revenue":4650.0},{"month":"2023-11-01","total_revenue":6950.0},{"month":"2023-12-01","total_revenue":7650.0},{"month":"2023-01-01","total_revenue":2400.0},{"month":"2023-03-01","total_revenue":3350.0},{"month":"2023-08-01","total_revenue":5650.0},{"month":"2023-09-01","total_revenue":5650.0},{"month":"2023-04-01","total_revenue":3350.0},{"month":"2023-10-01","total_revenue":6450.0},{"month":"2023-05-01","total_revenue":4150.0},{"month":"2023-07-01","total_revenue":5150.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"point"}],"title":"Monthly Revenue Trends"};
+    const visId = 'vis-1768219870822';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="multiple-ctes" class="level3">
+<h3 class="anchored" data-anchor-id="multiple-ctes">Multiple CTEs</h3>
+<div id="1b620009" class="cell" data-execution_count="21">
+<pre class="ggsql cell-code"><code>WITH daily_sales AS (
+    SELECT sale_date, region, SUM(revenue) as revenue
+    FROM 'sales.csv'
+    GROUP BY sale_date, region
+),
+regional_totals AS (
+    SELECT region, SUM(revenue) as total
+    FROM daily_sales
+    GROUP BY region
+)
+VISUALISE region AS x, total AS y, region AS fill FROM regional_totals
+DRAW bar
+COORD flip
+LABEL title =&gt; 'Total Revenue by Region', x =&gt; 'Region', y =&gt; 'Total Revenue ($)'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="21">
+<div id="vis-1768219870839"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"region":"North","total":12200.0},{"region":"South","total":13900.0},{"region":"East","total":15450.0},{"region":"West","total":16650.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","type":"nominal"},"x":{"field":"total","title":"Total Revenue ($)","type":"quantitative"},"y":{"field":"region","title":"Region","type":"nominal"}},"mark":"bar"}],"title":"Total Revenue by Region"};
+    const visId = 'vis-1768219870839';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+</section>
+<section id="layer-specific-data-sources-mapping-from" class="level2">
+<h2 class="anchored" data-anchor-id="layer-specific-data-sources-mapping-from">Layer-Specific Data Sources (MAPPING FROM)</h2>
+<p>Layers can pull data from different sources using <code>MAPPING FROM</code>. This enables overlaying data from different CTEs or tables.</p>
+<section id="comparing-actuals-vs-targets" class="level3">
+<h3 class="anchored" data-anchor-id="comparing-actuals-vs-targets">Comparing Actuals vs Targets</h3>
+<p>Each layer can reference a different CTE using <code>MAPPING ... FROM cte_name</code>:</p>
+<div id="32b7def4" class="cell" data-execution_count="22">
+<pre class="ggsql cell-code"><code>WITH actuals AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        SUM(revenue) as value
+    FROM 'sales.csv'
+    GROUP BY DATE_TRUNC('month', sale_date)
+),
+targets AS (
+    SELECT * FROM (VALUES
+        ('2023-01-01'::DATE, 5000.0),
+        ('2023-02-01'::DATE, 5500.0),
+        ('2023-03-01'::DATE, 6000.0),
+        ('2023-04-01'::DATE, 6500.0),
+        ('2023-05-01'::DATE, 7000.0),
+        ('2023-06-01'::DATE, 7500.0),
+        ('2023-07-01'::DATE, 8000.0),
+        ('2023-08-01'::DATE, 8500.0),
+        ('2023-09-01'::DATE, 9000.0),
+        ('2023-10-01'::DATE, 9500.0),
+        ('2023-11-01'::DATE, 10000.0),
+        ('2023-12-01'::DATE, 10500.0)
+    ) AS t(month, value)
+)
+VISUALISE
+DRAW line MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals
+DRAW point MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals SETTING size =&gt; 30
+DRAW line MAPPING month AS x, value AS y, 'Target' AS color FROM targets
+SCALE x SETTING type =&gt; 'date'
+LABEL title =&gt; 'Revenue: Actual vs Target', x =&gt; 'Month', y =&gt; 'Revenue ($)'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="22">
+<div id="vis-1768219870854"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"month":"2023-04-01","value":3350.0},{"month":"2023-10-01","value":6450.0},{"month":"2023-11-01","value":6950.0},{"month":"2023-12-01","value":7650.0},{"month":"2023-01-01","value":2400.0},{"month":"2023-03-01","value":3350.0},{"month":"2023-08-01","value":5650.0},{"month":"2023-09-01","value":5650.0},{"month":"2023-07-01","value":5150.0},{"month":"2023-02-01","value":2800.0},{"month":"2023-06-01","value":4650.0},{"month":"2023-05-01","value":4150.0}],"__layer_1__":[{"month":"2023-04-01","value":3350.0},{"month":"2023-10-01","value":6450.0},{"month":"2023-11-01","value":6950.0},{"month":"2023-12-01","value":7650.0},{"month":"2023-01-01","value":2400.0},{"month":"2023-03-01","value":3350.0},{"month":"2023-08-01","value":5650.0},{"month":"2023-09-01","value":5650.0},{"month":"2023-07-01","value":5150.0},{"month":"2023-02-01","value":2800.0},{"month":"2023-06-01","value":4650.0},{"month":"2023-05-01","value":4150.0}],"__layer_2__":[{"month":"2023-01-01","value":5000.0},{"month":"2023-02-01","value":5500.0},{"month":"2023-03-01","value":6000.0},{"month":"2023-04-01","value":6500.0},{"month":"2023-05-01","value":7000.0},{"month":"2023-06-01","value":7500.0},{"month":"2023-07-01","value":8000.0},{"month":"2023-08-01","value":8500.0},{"month":"2023-09-01","value":9000.0},{"month":"2023-10-01","value":9500.0},{"month":"2023-11-01","value":10000.0},{"month":"2023-12-01","value":10500.0}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"value":"Actual"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"point"},{"data":{"name":"__layer_2__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue: Actual vs Target"};
+    const visId = 'vis-1768219870854';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="cte-chain-raw-filtered-aggregated" class="level3">
+<h3 class="anchored" data-anchor-id="cte-chain-raw-filtered-aggregated">CTE Chain: Raw → Filtered → Aggregated</h3>
+<p>CTEs can reference other CTEs, creating a data transformation pipeline:</p>
+<div id="0eaf468d" class="cell" data-execution_count="23">
+<pre class="ggsql cell-code"><code>WITH raw_data AS (
+    SELECT sale_date, revenue, category, region
+    FROM 'sales.csv'
+),
+electronics_only AS (
+    SELECT * FROM raw_data
+    WHERE category = 'Electronics'
+),
+monthly_electronics AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        region,
+        SUM(revenue) as total
+    FROM electronics_only
+    GROUP BY DATE_TRUNC('month', sale_date), region
+)
+VISUALISE month AS x, total AS y, region AS color FROM monthly_electronics
+DRAW line
+DRAW point
+SCALE x SETTING type =&gt; 'date'
+LABEL title =&gt; 'Electronics Revenue by Region (CTE Chain)', x =&gt; 'Month', y =&gt; 'Revenue ($)'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="23">
+<div id="vis-1768219870870"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"month":"2023-04-01","region":"West","total":1100.0},{"month":"2023-12-01","region":"West","total":3000.0},{"month":"2023-11-01","region":"East","total":2600.0},{"month":"2023-02-01","region":"South","total":1200.0},{"month":"2023-01-01","region":"North","total":1000.0},{"month":"2023-10-01","region":"South","total":2400.0},{"month":"2023-08-01","region":"West","total":2200.0},{"month":"2023-05-01","region":"North","total":1600.0},{"month":"2023-03-01","region":"East","total":1400.0},{"month":"2023-07-01","region":"East","total":2000.0},{"month":"2023-09-01","region":"North","total":1900.0},{"month":"2023-06-01","region":"South","total":1800.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total","title":"Revenue ($)","type":"quantitative"}},"mark":"point"}],"title":"Electronics Revenue by Region (CTE Chain)"};
+    const visId = 'vis-1768219870870';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="layer-from-with-filter" class="level3">
+<h3 class="anchored" data-anchor-id="layer-from-with-filter">Layer FROM with FILTER</h3>
+<p>Combine <code>FROM</code> with <code>FILTER</code> to get filtered subsets from a CTE:</p>
+<div id="1599f7e2" class="cell" data-execution_count="24">
+<pre class="ggsql cell-code"><code>WITH all_sales AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        category,
+        SUM(revenue) as revenue
+    FROM 'sales.csv'
+    GROUP BY DATE_TRUNC('month', sale_date), category
+)
+VISUALISE
+DRAW line MAPPING month AS x, revenue AS y, 'All Categories' AS color FROM all_sales
+DRAW line MAPPING month AS x, revenue AS y, 'Electronics' AS color FROM all_sales FILTER category = 'Electronics'
+DRAW line MAPPING month AS x, revenue AS y, 'Clothing' AS color FROM all_sales FILTER category = 'Clothing'
+SCALE x SETTING type =&gt; 'date'
+LABEL title =&gt; 'Revenue by Category (Filtered Layers)', x =&gt; 'Month', y =&gt; 'Revenue ($)'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="24">
+<div id="vis-1768219870884"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"category":"Furniture","month":"2023-03-01","revenue":850.0},{"category":"Electronics","month":"2023-06-01","revenue":1800.0},{"category":"Clothing","month":"2023-03-01","revenue":1100.0},{"category":"Clothing","month":"2023-02-01","revenue":900.0},{"category":"Furniture","month":"2023-09-01","revenue":1450.0},{"category":"Clothing","month":"2023-10-01","revenue":2500.0},{"category":"Furniture","month":"2023-07-01","revenue":1250.0},{"category":"Electronics","month":"2023-02-01","revenue":1200.0},{"category":"Furniture","month":"2023-06-01","revenue":1150.0},{"category":"Electronics","month":"2023-08-01","revenue":2200.0},{"category":"Clothing","month":"2023-01-01","revenue":800.0},{"category":"Clothing","month":"2023-11-01","revenue":2700.0},{"category":"Clothing","month":"2023-09-01","revenue":2300.0},{"category":"Furniture","month":"2023-02-01","revenue":700.0},{"category":"Electronics","month":"2023-03-01","revenue":1400.0},{"category":"Clothing","month":"2023-06-01","revenue":1700.0},{"category":"Electronics","month":"2023-09-01","revenue":1900.0},{"category":"Electronics","month":"2023-10-01","revenue":2400.0},{"category":"Furniture","month":"2023-04-01","revenue":950.0},{"category":"Furniture","month":"2023-05-01","revenue":1050.0},{"category":"Furniture","month":"2023-12-01","revenue":1750.0},{"category":"Electronics","month":"2023-07-01","revenue":2000.0},{"category":"Clothing","month":"2023-04-01","revenue":1300.0},{"category":"Clothing","month":"2023-05-01","revenue":1500.0},{"category":"Clothing","month":"2023-12-01","revenue":2900.0},{"category":"Furniture","month":"2023-08-01","revenue":1350.0},{"category":"Electronics","month":"2023-04-01","revenue":1100.0},{"category":"Electronics","month":"2023-05-01","revenue":1600.0},{"category":"Electronics","month":"2023-12-01","revenue":3000.0},{"category":"Clothing","month":"2023-07-01","revenue":1900.0},{"category":"Furniture","month":"2023-10-01","revenue":1550.0},{"category":"Furniture","month":"2023-01-01","revenue":600.0},{"category":"Furniture","month":"2023-11-01","revenue":1650.0},{"category":"Electronics","month":"2023-01-01","revenue":1000.0},{"category":"Electronics","month":"2023-11-01","revenue":2600.0},{"category":"Clothing","month":"2023-08-01","revenue":2100.0}],"__layer_1__":[{"category":"Electronics","month":"2023-06-01","revenue":1800.0},{"category":"Electronics","month":"2023-02-01","revenue":1200.0},{"category":"Electronics","month":"2023-08-01","revenue":2200.0},{"category":"Electronics","month":"2023-03-01","revenue":1400.0},{"category":"Electronics","month":"2023-09-01","revenue":1900.0},{"category":"Electronics","month":"2023-10-01","revenue":2400.0},{"category":"Electronics","month":"2023-07-01","revenue":2000.0},{"category":"Electronics","month":"2023-04-01","revenue":1100.0},{"category":"Electronics","month":"2023-05-01","revenue":1600.0},{"category":"Electronics","month":"2023-12-01","revenue":3000.0},{"category":"Electronics","month":"2023-01-01","revenue":1000.0},{"category":"Electronics","month":"2023-11-01","revenue":2600.0}],"__layer_2__":[{"category":"Clothing","month":"2023-03-01","revenue":1100.0},{"category":"Clothing","month":"2023-02-01","revenue":900.0},{"category":"Clothing","month":"2023-10-01","revenue":2500.0},{"category":"Clothing","month":"2023-01-01","revenue":800.0},{"category":"Clothing","month":"2023-11-01","revenue":2700.0},{"category":"Clothing","month":"2023-09-01","revenue":2300.0},{"category":"Clothing","month":"2023-06-01","revenue":1700.0},{"category":"Clothing","month":"2023-04-01","revenue":1300.0},{"category":"Clothing","month":"2023-05-01","revenue":1500.0},{"category":"Clothing","month":"2023-12-01","revenue":2900.0},{"category":"Clothing","month":"2023-07-01","revenue":1900.0},{"category":"Clothing","month":"2023-08-01","revenue":2100.0}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_2__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue by Category (Filtered Layers)"};
+    const visId = 'vis-1768219870884';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="multiple-file-sources" class="level3">
+<h3 class="anchored" data-anchor-id="multiple-file-sources">Multiple File Sources</h3>
+<p>Layers can also reference different CSV files directly:</p>
+<div id="a3d6e88b" class="cell" data-execution_count="25">
+<pre class="ggsql cell-code"><code>VISUALISE
+DRAW line MAPPING date AS x, value AS y, 'Time Series' AS color FROM 'timeseries.csv'
+DRAW point MAPPING x AS x, y AS y, 'Scatter' AS color FROM 'data.csv'
+LABEL title =&gt; 'Data from Multiple Files', x =&gt; 'X', y =&gt; 'Y'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="25">
+<div id="vis-1768219870902"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"date":"2023-01-01","value":100.0},{"date":"2023-01-08","value":110.0},{"date":"2023-01-15","value":105.0},{"date":"2023-01-22","value":115.0},{"date":"2023-01-29","value":120.0},{"date":"2023-02-05","value":118.0},{"date":"2023-02-12","value":125.0},{"date":"2023-02-19","value":130.0},{"date":"2023-02-26","value":128.0},{"date":"2023-03-05","value":135.0},{"date":"2023-03-12","value":142.0},{"date":"2023-03-19","value":138.0},{"date":"2023-03-26","value":145.0},{"date":"2023-04-02","value":150.0},{"date":"2023-04-09","value":148.0},{"date":"2023-04-16","value":155.0},{"date":"2023-04-23","value":160.0},{"date":"2023-04-30","value":158.0},{"date":"2023-05-07","value":165.0},{"date":"2023-05-14","value":170.0}],"__layer_1__":[{"x":5.2,"y":18.5},{"x":8.7,"y":22.3},{"x":12.3,"y":28.9},{"x":15.8,"y":35.2},{"x":19.4,"y":42.7},{"x":23.1,"y":38.6},{"x":26.8,"y":45.1},{"x":30.2,"y":52.8},{"x":33.9,"y":48.3},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"x":{"field":"date","title":"X","type":"temporal"},"y":{"field":"value","title":"Y","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"value":"Scatter"},"x":{"field":"x","title":"X","type":"quantitative"},"y":{"field":"y","title":"Y","type":"quantitative"}},"mark":"point"}],"title":"Data from Multiple Files"};
+    const visId = 'vis-1768219870902';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+</section>
+<section id="advanced-examples" class="level2">
+<h2 class="anchored" data-anchor-id="advanced-examples">Advanced Examples</h2>
+<section id="complete-regional-sales-analysis" class="level3">
+<h3 class="anchored" data-anchor-id="complete-regional-sales-analysis">Complete Regional Sales Analysis</h3>
+<div id="126205f1" class="cell" data-execution_count="26">
+<pre class="ggsql cell-code"><code>SELECT
+    sale_date,
+    region,
+    SUM(quantity) as total_quantity
+FROM 'sales.csv'
+WHERE sale_date &gt;= '2023-01-01'
+GROUP BY sale_date, region
+ORDER BY sale_date
+VISUALISE sale_date AS x, total_quantity AS y, region AS color
+DRAW line
+DRAW point
+SCALE x SETTING type =&gt; 'date'
+FACET WRAP region
+LABEL title =&gt; 'Sales Trends by Region', x =&gt; 'Date', y =&gt; 'Total Quantity'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="26">
+<div id="vis-1768219870916"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"__global__"},"datasets":{"__global__":[{"region":"North","sale_date":"2023-01-15","total_quantity":5.0},{"region":"North","sale_date":"2023-01-20","total_quantity":25.0},{"region":"North","sale_date":"2023-01-25","total_quantity":3.0},{"region":"South","sale_date":"2023-02-10","total_quantity":8.0},{"region":"South","sale_date":"2023-02-15","total_quantity":30.0},{"region":"South","sale_date":"2023-02-18","total_quantity":3.0},{"region":"East","sale_date":"2023-03-05","total_quantity":7.0},{"region":"East","sale_date":"2023-03-10","total_quantity":35.0},{"region":"East","sale_date":"2023-03-15","total_quantity":4.0},{"region":"West","sale_date":"2023-04-20","total_quantity":6.0},{"region":"West","sale_date":"2023-04-25","total_quantity":38.0},{"region":"West","sale_date":"2023-04-28","total_quantity":4.0},{"region":"North","sale_date":"2023-05-12","total_quantity":9.0},{"region":"North","sale_date":"2023-05-18","total_quantity":42.0},{"region":"North","sale_date":"2023-05-22","total_quantity":5.0},{"region":"South","sale_date":"2023-06-08","total_quantity":10.0},{"region":"South","sale_date":"2023-06-12","total_quantity":45.0},{"region":"South","sale_date":"2023-06-16","total_quantity":5.0},{"region":"East","sale_date":"2023-07-14","total_quantity":11.0},{"region":"East","sale_date":"2023-07-20","total_quantity":48.0},{"region":"East","sale_date":"2023-07-24","total_quantity":5.0},{"region":"West","sale_date":"2023-08-22","total_quantity":12.0},{"region":"West","sale_date":"2023-08-28","total_quantity":50.0},{"region":"West","sale_date":"2023-08-30","total_quantity":6.0},{"region":"North","sale_date":"2023-09-18","total_quantity":8.0},{"region":"North","sale_date":"2023-09-22","total_quantity":52.0},{"region":"North","sale_date":"2023-09-26","total_quantity":6.0},{"region":"South","sale_date":"2023-10-25","total_quantity":14.0},{"region":"South","sale_date":"2023-10-30","total_quantity":55.0},{"region":"South","sale_date":"2023-10-31","total_quantity":6.0},{"region":"East","sale_date":"2023-11-11","total_quantity":15.0},{"region":"East","sale_date":"2023-11-15","total_quantity":58.0},{"region":"East","sale_date":"2023-11-20","total_quantity":7.0},{"region":"West","sale_date":"2023-12-05","total_quantity":16.0},{"region":"West","sale_date":"2023-12-10","total_quantity":60.0},{"region":"West","sale_date":"2023-12-15","total_quantity":7.0}]},"facet":{"field":"region","type":"nominal"},"spec":{"layer":[{"encoding":{"x":{"field":"sale_date","title":"Date","type":"temporal"},"y":{"field":"total_quantity","title":"Total Quantity","type":"quantitative"}},"mark":"line"},{"encoding":{"color":{"field":"region","type":"nominal"},"x":{"field":"sale_date","title":"Date","type":"temporal"},"y":{"field":"total_quantity","title":"Total Quantity","type":"quantitative"}},"mark":"point"}]},"title":"Sales Trends by Region"};
+    const visId = 'vis-1768219870916';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="multi-category-analysis" class="level3">
+<h3 class="anchored" data-anchor-id="multi-category-analysis">Multi-Category Analysis</h3>
+<div id="1f10327c" class="cell" data-execution_count="27">
+<pre class="ggsql cell-code"><code>SELECT
+    category,
+    region,
+    SUM(revenue) as total_revenue
+FROM 'sales.csv'
+GROUP BY category, region
+VISUALISE category AS x, total_revenue AS y, region AS fill
+DRAW bar
+LABEL title =&gt; 'Revenue by Category and Region', x =&gt; 'Category', y =&gt; 'Revenue ($)'</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="27">
+<div id="vis-1768219870928"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Clothing","region":"North","total_revenue":4600.0},{"category":"Clothing","region":"East","total_revenue":5700.0},{"category":"Furniture","region":"North","total_revenue":3100.0},{"category":"Furniture","region":"East","total_revenue":3750.0},{"category":"Clothing","region":"South","total_revenue":5100.0},{"category":"Furniture","region":"South","total_revenue":3400.0},{"category":"Electronics","region":"West","total_revenue":6300.0},{"category":"Electronics","region":"South","total_revenue":5400.0},{"category":"Electronics","region":"North","total_revenue":4500.0},{"category":"Electronics","region":"East","total_revenue":6000.0},{"category":"Clothing","region":"West","total_revenue":6300.0},{"category":"Furniture","region":"West","total_revenue":4050.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","type":"nominal"},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"bar"}],"title":"Revenue by Category and Region"};
+    const visId = 'vis-1768219870928';
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
+        }
+      });
+
+      setTimeout(() => {
+        window.requirejs(['vega-embed'], function(vegaEmbed) {
+          vegaEmbed('#' + visId, spec, {"actions": true}).catch(console.error);
+        });
+      }, 100);
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, {"actions": true})
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
+          }
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/georgestagg\.github\.io\/ggsql\/");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
