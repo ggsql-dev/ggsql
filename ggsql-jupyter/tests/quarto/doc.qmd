@@ -329,7 +329,7 @@ The `ORDER BY` clause can be combined with `FILTER` and other layer options:
 SELECT date, value, category FROM 'metrics.csv'
 VISUALISE
 DRAW line MAPPING date AS x, value AS y, category AS color FILTER category != 'Support' ORDER BY date ASC
-DRAW point MAPPING date AS x, value AS y, category AS color FILTER category != 'Support' ORDER BY date ASC SETTING size => 20
+DRAW point MAPPING date AS x, value AS y, category AS color SETTING size => 20 FILTER category != 'Support' ORDER BY date ASC
 SCALE x SETTING type => 'date'
 LABEL title => 'Sales and Marketing Metrics (Ordered)', x => 'Date', y => 'Value'
 ```
