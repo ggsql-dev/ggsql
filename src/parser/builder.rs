@@ -990,6 +990,7 @@ fn is_aesthetic_name(name: &str) -> bool {
             | "color"
             | "colour"
             | "fill"
+            | "stroke"
             | "opacity"
             | "size"
             | "shape"
