@@ -23,9 +23,6 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Setup quarto
         uses: quarto-dev/quarto-actions/setup@v2
 
