@@ -1134,7 +1134,15 @@ mod tests {
             ("size".to_string(), LiteralValue::Number(5.0)),
         ];
 
-        let result = build_layer_query(Some(&source), &materialized, None, None, false, 0, &constants);
+        let result = build_layer_query(
+            Some(&source),
+            &materialized,
+            None,
+            None,
+            false,
+            0,
+            &constants,
+        );
 
         // Should inject constants as columns
         let query = result.unwrap().unwrap();
