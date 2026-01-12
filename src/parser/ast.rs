@@ -20,6 +20,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+use serde_json::to_string;
 use std::collections::HashMap;
 
 use crate::Result;
@@ -711,6 +712,17 @@ impl VizSpec {
                     .entry(normalise_aes_name(&aesthetic))
                     .or_insert(value);
             }
+
+            if layer.aesthetics.contains_key("color") {
+                let supported = layer.geom.aesthetics().supported;
+                for &aes in &["stroke", "fill"] {
+                    if supported.contains(&aes) {
+                        let color = layer.aesthetics.get("color").unwrap().clone();
+                        layer.aesthetics.entry(aes.to_string()).or_insert(color);
+                    }
+                }
+                layer.aesthetics.remove("color");
+            }
         }
 
         Ok(())
@@ -744,7 +756,8 @@ impl Layer {
 
     /// Add an aesthetic mapping
     pub fn with_aesthetic(mut self, aesthetic: String, value: AestheticValue) -> Self {
-        self.aesthetics.insert(aesthetic, value);
+        self.aesthetics
+            .insert(normalise_aes_name(&aesthetic), value);
         self
     }
 
