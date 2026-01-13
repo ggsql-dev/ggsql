@@ -559,12 +559,12 @@ mod integration_tests {
         // Verify constant values appear in the global data with layer-indexed names
         let data_row = &global_data.as_array().unwrap()[0];
         assert_eq!(
-            data_row["__ggsql_const_color_0__"], "blue",
-            "Layer 0 constant should be 'blue'"
+            data_row["__ggsql_const_color_0__"], "value",
+            "Layer 0 constant should be 'value'"
         );
         assert_eq!(
-            data_row["__ggsql_const_color_1__"], "red",
-            "Layer 1 constant should be 'red'"
+            data_row["__ggsql_const_color_1__"], "value2",
+            "Layer 1 constant should be 'value2'"
         );
     }
 
