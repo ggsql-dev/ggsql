@@ -1,7 +1,7 @@
 /*
- * ggSQL VS Code Extension
+ * ggsql VS Code Extension
  *
- * Provides syntax highlighting for ggSQL and, when running in Positron,
+ * Provides syntax highlighting for ggsql and, when running in Positron,
  * a language runtime that wraps the ggsql-jupyter kernel.
  */
 
@@ -10,9 +10,9 @@ import { tryAcquirePositronApi } from '@posit-dev/positron';
 import { GgsqlRuntimeManager } from './manager';
 
 // Output channel for logging
-const outputChannel = vscode.window.createOutputChannel('ggSQL');
+const outputChannel = vscode.window.createOutputChannel('ggsql');
 
-function log(message: string): void {
+export function log(message: string): void {
     outputChannel.appendLine(`[${new Date().toISOString()}] ${message}`);
 }
 
@@ -22,7 +22,7 @@ function log(message: string): void {
  * @param context The extension context
  */
 export function activate(context: vscode.ExtensionContext): void {
-    log('ggSQL extension activating...');
+    log('ggsql extension activating...');
 
     // Try to acquire the Positron API
     const positronApi = tryAcquirePositronApi();
@@ -36,12 +36,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
     log('Positron API acquired - registering runtime manager');
 
-    // Running in Positron - register the ggSQL runtime manager
+    // Running in Positron - register the ggsql runtime manager
     const manager = new GgsqlRuntimeManager(context);
     const disposable = positronApi.runtime.registerLanguageRuntimeManager('ggsql', manager);
     context.subscriptions.push(disposable);
 
-    log('ggSQL runtime manager registered successfully');
+    log('ggsql runtime manager registered successfully');
 }
 
 /**

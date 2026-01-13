@@ -1,8 +1,8 @@
 /*
- * ggSQL Language Runtime Manager
+ * ggsql Language Runtime Manager
  *
  * Implements the Positron LanguageRuntimeManager interface to provide
- * ggSQL runtime capabilities by wrapping the ggsql-jupyter kernel.
+ * ggsql runtime capabilities by wrapping the ggsql-jupyter kernel.
  */
 
 import * as vscode from 'vscode';
@@ -11,20 +11,7 @@ import * as path from 'path';
 import * as cp from 'child_process';
 import type * as positron from '@posit-dev/positron';
 import type { JupyterKernelSpec, JupyterSession, JupyterKernel, PositronSupervisorApi } from './types';
-
-// Output channel for logging
-let outputChannel: vscode.OutputChannel | undefined;
-
-function getOutputChannel(): vscode.OutputChannel {
-    if (!outputChannel) {
-        outputChannel = vscode.window.createOutputChannel('ggSQL');
-    }
-    return outputChannel;
-}
-
-function log(message: string): void {
-    getOutputChannel().appendLine(`[${new Date().toISOString()}] ${message}`);
-}
+import { log } from './extension';
 
 /**
  * Get the path to the ggsql-jupyter kernel executable
@@ -94,14 +81,13 @@ async function isKernelAvailable(): Promise<boolean> {
 }
 
 /**
- * Generate runtime metadata for ggSQL
+ * Generate runtime metadata for ggsql
  */
 function generateMetadata(
     context: vscode.ExtensionContext
 ): positron.LanguageRuntimeMetadata {
     const kernelPath = getKernelPath();
 
-    // Try to load icon from file, fall back to embedded SVG
     let base64Icon: string;
     const iconPath = path.join(context.extensionPath, 'resources', 'ggsql-icon.svg');
     base64Icon = fs.readFileSync(iconPath).toString('base64');
@@ -109,8 +95,8 @@ function generateMetadata(
     return {
         runtimeId: 'ggsql-jupyter',
         runtimePath: kernelPath,
-        runtimeName: 'ggSQL',
-        runtimeShortName: 'ggSQL',
+        runtimeName: 'ggsql',
+        runtimeShortName: 'ggsql',
         runtimeVersion: '1.0.0',
         runtimeSource: 'ggsql',
         languageId: 'ggsql',
@@ -135,14 +121,13 @@ function createKernelSpec(): JupyterKernelSpec {
     return {
         // argv is empty when using startKernel callback
         argv: [],
-        display_name: 'ggSQL',
+        display_name: 'ggsql',
         language: 'ggsql',
         interrupt_mode: 'signal',
         env: {},
         kernel_protocol_version: '5.3',
         startKernel: async (session: JupyterSession, kernel: JupyterKernel) => {
-            log(`Starting ggSQL kernel with connection file: ${session.state.connectionFile}`);
-            kernel.log('Starting ggSQL kernel...');
+            kernel.log(`Starting ggsql kernel with connection file: ${session.state.connectionFile}`);
 
             const connectionFile = session.state.connectionFile;
 
@@ -155,25 +140,21 @@ function createKernelSpec(): JupyterKernelSpec {
             // Log stdout and stderr
             proc.stdout?.on('data', (data) => {
                 const msg = data.toString();
-                log(`[kernel stdout] ${msg}`);
                 kernel.log(msg);
             });
 
             proc.stderr?.on('data', (data) => {
                 const msg = data.toString();
-                log(`[kernel stderr] ${msg}`);
                 kernel.log(msg);
             });
 
             proc.on('error', (err) => {
                 const msg = `Failed to start kernel: ${err.message}`;
-                log(msg);
                 kernel.log(msg);
                 throw new Error(msg);
             });
 
             proc.on('exit', (code, signal) => {
-                log(`Kernel process exited with code ${code}, signal ${signal}`);
                 kernel.log(`Kernel exited (code: ${code}, signal: ${signal})`);
             });
 
@@ -185,14 +166,12 @@ function createKernelSpec(): JupyterKernelSpec {
                 throw new Error(`Kernel process exited immediately with code ${proc.exitCode}`);
             }
 
-            log('Connecting to kernel session...');
             kernel.log('Connecting to kernel session...');
 
             // Connect to the session
             await kernel.connectToSession(session);
 
-            log('Successfully connected to ggSQL kernel');
-            kernel.log('Connected to ggSQL kernel');
+            kernel.log('Connected to ggsql kernel');
         }
     };
 }
@@ -219,7 +198,7 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
         const context = this._context;
 
         const generator = async function* discoverGgsqlRuntimes() {
-            log('Discovering ggSQL runtimes...');
+            log('Discovering ggsql runtimes...');
 
             // Check if the kernel is available
             const available = await isKernelAvailable();
@@ -240,14 +219,14 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
     /**
      * Get the recommended runtime for the workspace.
      *
-     * Returns undefined - ggSQL doesn't auto-start.
+     * Returns undefined - ggsql doesn't auto-start.
      */
     async recommendedWorkspaceRuntime(): Promise<positron.LanguageRuntimeMetadata | undefined> {
         return undefined;
     }
 
     /**
-     * Create a new ggSQL runtime session.
+     * Create a new ggsql runtime session.
      */
     async createSession(
         runtimeMetadata: positron.LanguageRuntimeMetadata,
@@ -270,9 +249,9 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
 
         // Create the dynamic state
         const dynState: positron.LanguageRuntimeDynState = {
-            inputPrompt: 'ggSQL> ',
+            inputPrompt: 'ggsql> ',
             continuationPrompt: '... ',
-            sessionName: 'ggSQL'
+            sessionName: 'ggsql'
         };
 
         // Create the session using the supervisor
@@ -295,7 +274,7 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
     }
 
     /**
-     * Restore an existing ggSQL runtime session.
+     * Restore an existing ggsql runtime session.
      */
     async restoreSession(
         runtimeMetadata: positron.LanguageRuntimeMetadata,
@@ -313,9 +292,9 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
         const supervisorApi = await supervisorExt.activate();
 
         const dynState: positron.LanguageRuntimeDynState = {
-            inputPrompt: 'ggSQL> ',
+            inputPrompt: 'ggsql> ',
             continuationPrompt: '... ',
-            sessionName: 'ggSQL'
+            sessionName: 'ggsql'
         };
 
         const session = await supervisorApi.restoreSession(
