@@ -277,7 +277,9 @@ impl VegaLiteWriter {
                             | ScaleType::Log2
                             | ScaleType::Sqrt
                             | ScaleType::Reverse => "quantitative",
-                            ScaleType::Ordinal | ScaleType::Categorical => "nominal",
+                            ScaleType::Ordinal | ScaleType::Categorical | ScaleType::Manual => {
+                                "nominal"
+                            }
                             ScaleType::Date | ScaleType::DateTime | ScaleType::Time => "temporal",
                             ScaleType::Viridis
                             | ScaleType::Plasma
