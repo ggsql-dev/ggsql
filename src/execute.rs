@@ -3,8 +3,8 @@
 //! Provides shared execution logic for building data maps from queries,
 //! handling both global SQL and layer-specific data sources.
 
-use crate::parser::ast::{AestheticValue, GlobalMapping, GlobalMappingItem, Layer, LiteralValue};
-use crate::{parser, DataFrame, Facet, GgsqlError, LayerSource, Result, VizSpec};
+use crate::parser::ast::{AestheticValue, Layer, LiteralValue};
+use crate::{parser, DataFrame, DataSource, Facet, GgsqlError, Result, VizSpec};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Parser};
 
@@ -181,6 +181,7 @@ fn literal_to_sql(lit: &LiteralValue) -> String {
 fn extract_constants(layer: &Layer) -> Vec<(String, LiteralValue)> {
     layer
         .aesthetics
+        .aesthetics
         .iter()
         .filter_map(|(aesthetic, value)| {
             if let AestheticValue::Literal(lit) = value {
@@ -203,7 +204,7 @@ fn extract_constants(layer: &Layer) -> Vec<(String, LiteralValue)> {
 /// For other layers, uses non-indexed column names (e.g., `__ggsql_const_color__`).
 fn replace_literals_with_columns(spec: &mut VizSpec) {
     for (layer_idx, layer) in spec.layers.iter_mut().enumerate() {
-        for (aesthetic, value) in layer.aesthetics.iter_mut() {
+        for (aesthetic, value) in layer.aesthetics.aesthetics.iter_mut() {
             if matches!(value, AestheticValue::Literal(_)) {
                 // Use layer-indexed column name for layers using global data (no source, no filter)
                 // Use non-indexed name for layers with their own data (filter or explicit source)
@@ -212,7 +213,7 @@ fn replace_literals_with_columns(spec: &mut VizSpec) {
                 } else {
                     const_column_name(aesthetic)
                 };
-                *value = AestheticValue::Column(col_name);
+                *value = AestheticValue::column(col_name);
             }
         }
     }
@@ -352,7 +353,7 @@ where
     let order_by = layer.order_by.as_ref().map(|f| f.as_str());
 
     let table_name = match &layer.source {
-        Some(LayerSource::Identifier(name)) => {
+        Some(DataSource::Identifier(name)) => {
             // Check if it's a materialized CTE
             if materialized_ctes.contains(name) {
                 get_cte_temp_table_name(name)
@@ -360,7 +361,7 @@ where
                 name.clone()
             }
         }
-        Some(LayerSource::FilePath(path)) => {
+        Some(DataSource::FilePath(path)) => {
             // File paths need single quotes
             format!("'{}'", path)
         }
@@ -416,15 +417,84 @@ where
     }
 
     // Apply statistical transformation (after filter, uses combined group_by)
-    query = layer
-        .geom
-        .apply_stat_transform(&query, &layer.aesthetics, &group_by, execute_query)?;
+    // Returns None for identity (no transformation needed), Some(query) for transformed query
+    let stat_result =
+        layer
+            .geom
+            .apply_stat_transform(&query, &layer.aesthetics, &group_by, execute_query)?;
 
-    if let Some(o) = order_by {
-        query = format!("{} ORDER BY {}", query, o);
+    match stat_result {
+        Some(transformed_query) => {
+            // Stat transformation applied - use the transformed query
+            let mut final_query = transformed_query;
+            if let Some(o) = order_by {
+                final_query = format!("{} ORDER BY {}", final_query, o);
+            }
+            Ok(Some(final_query))
+        }
+        None => {
+            // Identity - no stat transformation
+            // If the layer has no explicit source, no filter, no order_by, and no constants,
+            // we can use __global__ directly (return None)
+            if layer.source.is_none()
+                && filter.is_none()
+                && order_by.is_none()
+                && constants.is_empty()
+            {
+                Ok(None)
+            } else {
+                // Layer has filter, order_by, or constants - still need the query
+                let mut final_query = query;
+                if let Some(o) = order_by {
+                    final_query = format!("{} ORDER BY {}", final_query, o);
+                }
+                Ok(Some(final_query))
+            }
+        }
     }
+}
 
-    Ok(Some(query))
+/// Merge global mappings into layer aesthetics and expand wildcards
+///
+/// This function performs smart wildcard expansion:
+/// 1. Merges explicit global aesthetics into layers (layer aesthetics take precedence)
+/// 2. Only merges aesthetics that the geom supports
+/// 3. Expands wildcards by adding mappings for all supported aesthetics not already mapped
+///    (wildcard means "map each aesthetic to a column of the same name")
+/// 4. Tracks which mappings came from wildcard expansion via the `from_wildcard` flag
+fn merge_global_mappings_into_layers(specs: &mut [VizSpec]) {
+    for spec in specs {
+        for layer in &mut spec.layers {
+            let supported = layer.geom.aesthetics().supported;
+
+            // 1. First merge explicit global aesthetics (layer overrides global)
+            for (aesthetic, value) in &spec.global_mapping.aesthetics {
+                if supported.contains(&aesthetic.as_str()) {
+                    layer
+                        .aesthetics
+                        .aesthetics
+                        .entry(aesthetic.clone())
+                        .or_insert(value.clone());
+                }
+            }
+
+            // 2. Expand wildcards: add mapping for each supported aesthetic
+            //    that isn't already mapped (either from global or layer)
+            let has_wildcard = layer.aesthetics.wildcard || spec.global_mapping.wildcard;
+            if has_wildcard {
+                for &aes in supported {
+                    layer
+                        .aesthetics
+                        .aesthetics
+                        .entry(aes.to_string())
+                        .or_insert(AestheticValue::wildcard_column(aes));
+                }
+            }
+
+            // Clear wildcard flag since it's been resolved
+            layer.aesthetics.wildcard = false;
+        }
+    }
 }
 
 /// Check if SQL contains executable statements (SELECT, INSERT, UPDATE, DELETE, CREATE)
@@ -552,21 +622,18 @@ where
 
     // First, extract global constants from VISUALISE clause (e.g., VISUALISE 'value' AS color)
     // These apply to all layers that use global data
-    let global_mapping_constants: Vec<(String, LiteralValue)> =
-        if let GlobalMapping::Mappings(items) = &first_spec.global_mapping {
-            items
-                .iter()
-                .filter_map(|item| {
-                    if let GlobalMappingItem::Literal { value, aesthetic } = item {
-                        Some((aesthetic.clone(), value.clone()))
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        } else {
-            vec![]
-        };
+    let global_mapping_constants: Vec<(String, LiteralValue)> = first_spec
+        .global_mapping
+        .aesthetics
+        .iter()
+        .filter_map(|(aesthetic, value)| {
+            if let AestheticValue::Literal(lit) = value {
+                Some((aesthetic.clone(), lit.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
 
     // Find layers that use global data (no source, no filter)
     let global_data_layer_indices: Vec<usize> = first_spec
@@ -590,7 +657,7 @@ where
     }
 
     // Add global mapping constants for each layer that uses global data
-    // (these will be propagated to layers during resolve_global_mappings)
+    // (these will be injected into the global data table)
     for layer_idx in &global_data_layer_indices {
         for (aes, lit) in &global_mapping_constants {
             // Only add if this layer doesn't already have this aesthetic from its own MAPPING
@@ -639,6 +706,11 @@ where
             data_map.insert("__global__".to_string(), df);
         }
     }
+
+    // Merge global mappings into layer aesthetics and expand wildcards
+    // This is needed before build_layer_query so stat transforms can see all aesthetics
+    // (e.g., bar chart's count stat needs to see 'x' from global mapping)
+    merge_global_mappings_into_layers(&mut specs);
 
     // Execute layer-specific queries
     // build_layer_query() handles all cases:
@@ -697,20 +769,8 @@ where
         ));
     }
 
-    // Resolve global mappings using global data if available, otherwise first layer data
-    let resolve_df = data_map
-        .get("__global__")
-        .or_else(|| data_map.values().next())
-        .ok_or_else(|| GgsqlError::InternalError("No data available".to_string()))?;
-
-    let column_names: Vec<&str> = resolve_df
-        .get_column_names()
-        .iter()
-        .map(|s| s.as_str())
-        .collect();
-
+    // Post-process specs: replace literals with column references and compute labels
     for spec in &mut specs {
-        spec.resolve_global_mappings(&column_names)?;
         // Replace literal aesthetic values with column references to synthetic constant columns
         replace_literals_with_columns(spec);
         // Compute aesthetic labels (uses first non-constant column, respects user-specified labels)
@@ -734,8 +794,8 @@ pub fn prepare_data(query: &str, reader: &DuckDBReader) -> Result<PreparedData> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::ast::OrderExpression;
-    use crate::{FilterExpression, Geom};
+    use crate::parser::ast::SqlExpression;
+    use crate::Geom;
 
     #[cfg(feature = "duckdb")]
     #[test]
@@ -956,7 +1016,7 @@ mod tests {
         materialized.insert("sales".to_string());
 
         let mut layer = Layer::new(Geom::Point);
-        layer.source = Some(LayerSource::Identifier("sales".to_string()));
+        layer.source = Some(DataSource::Identifier("sales".to_string()));
 
         let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
@@ -973,8 +1033,8 @@ mod tests {
         materialized.insert("sales".to_string());
 
         let mut layer = Layer::new(Geom::Point);
-        layer.source = Some(LayerSource::Identifier("sales".to_string()));
-        layer.filter = Some(FilterExpression::new("year = 2024"));
+        layer.source = Some(DataSource::Identifier("sales".to_string()));
+        layer.filter = Some(SqlExpression::new("year = 2024"));
 
         let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
@@ -989,7 +1049,7 @@ mod tests {
         let materialized = HashSet::new();
 
         let mut layer = Layer::new(Geom::Point);
-        layer.source = Some(LayerSource::Identifier("some_table".to_string()));
+        layer.source = Some(DataSource::Identifier("some_table".to_string()));
 
         let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
@@ -1005,8 +1065,8 @@ mod tests {
         let materialized = HashSet::new();
 
         let mut layer = Layer::new(Geom::Point);
-        layer.source = Some(LayerSource::Identifier("some_table".to_string()));
-        layer.filter = Some(FilterExpression::new("value > 100"));
+        layer.source = Some(DataSource::Identifier("some_table".to_string()));
+        layer.filter = Some(SqlExpression::new("value > 100"));
 
         let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
@@ -1021,7 +1081,7 @@ mod tests {
         let materialized = HashSet::new();
 
         let mut layer = Layer::new(Geom::Point);
-        layer.source = Some(LayerSource::FilePath("data/sales.csv".to_string()));
+        layer.source = Some(DataSource::FilePath("data/sales.csv".to_string()));
 
         let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
@@ -1037,8 +1097,8 @@ mod tests {
         let materialized = HashSet::new();
 
         let mut layer = Layer::new(Geom::Point);
-        layer.source = Some(LayerSource::FilePath("data.parquet".to_string()));
-        layer.filter = Some(FilterExpression::new("x > 10"));
+        layer.source = Some(DataSource::FilePath("data.parquet".to_string()));
+        layer.filter = Some(SqlExpression::new("x > 10"));
 
         let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
@@ -1053,7 +1113,7 @@ mod tests {
         let materialized = HashSet::new();
 
         let mut layer = Layer::new(Geom::Point);
-        layer.filter = Some(FilterExpression::new("category = 'A'"));
+        layer.filter = Some(SqlExpression::new("category = 'A'"));
 
         let result = build_layer_query(&layer, &materialized, true, 0, None, &[], &mock_execute);
 
@@ -1081,7 +1141,7 @@ mod tests {
         let materialized = HashSet::new();
 
         let mut layer = Layer::new(Geom::Point);
-        layer.filter = Some(FilterExpression::new("x > 10"));
+        layer.filter = Some(SqlExpression::new("x > 10"));
 
         let result = build_layer_query(&layer, &materialized, false, 2, None, &[], &mock_execute);
 
@@ -1097,8 +1157,8 @@ mod tests {
         let materialized = HashSet::new();
 
         let mut layer = Layer::new(Geom::Point);
-        layer.source = Some(LayerSource::Identifier("some_table".to_string()));
-        layer.order_by = Some(OrderExpression::new("date ASC"));
+        layer.source = Some(DataSource::Identifier("some_table".to_string()));
+        layer.order_by = Some(SqlExpression::new("date ASC"));
 
         let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
@@ -1113,9 +1173,9 @@ mod tests {
         let materialized = HashSet::new();
 
         let mut layer = Layer::new(Geom::Point);
-        layer.source = Some(LayerSource::Identifier("some_table".to_string()));
-        layer.filter = Some(FilterExpression::new("year = 2024"));
-        layer.order_by = Some(OrderExpression::new("date DESC, value ASC"));
+        layer.source = Some(DataSource::Identifier("some_table".to_string()));
+        layer.filter = Some(SqlExpression::new("year = 2024"));
+        layer.order_by = Some(SqlExpression::new("date DESC, value ASC"));
 
         let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
@@ -1133,7 +1193,7 @@ mod tests {
         let materialized = HashSet::new();
 
         let mut layer = Layer::new(Geom::Point);
-        layer.order_by = Some(OrderExpression::new("x ASC"));
+        layer.order_by = Some(SqlExpression::new("x ASC"));
 
         let result = build_layer_query(&layer, &materialized, true, 0, None, &[], &mock_execute);
 
@@ -1159,7 +1219,7 @@ mod tests {
         ];
 
         let mut layer = Layer::new(Geom::Point);
-        layer.source = Some(LayerSource::Identifier("some_table".to_string()));
+        layer.source = Some(DataSource::Identifier("some_table".to_string()));
 
         let result = build_layer_query(
             &layer,
@@ -1539,7 +1599,7 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
-    fn test_bar_no_transform_when_y_mapped() {
+    fn test_bar_uses_y_when_mapped() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         // Create test data with categories and values
@@ -1551,7 +1611,7 @@ mod tests {
             )
             .unwrap();
 
-        // Bar with x and y mapped - should NOT apply count stat
+        // Bar geom with x and y mapped - should NOT apply count stat (uses y values)
         let query = r#"
             SELECT * FROM bar_y_test
             VISUALISE
@@ -1684,5 +1744,469 @@ mod tests {
         // Global should have original 3 rows
         let global_df = result.data.get("__global__").unwrap();
         assert_eq!(global_df.height(), 3);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_bar_with_global_mapping_x_and_y() {
+        // Test that bar charts with x and y in global VISUALISE mapping work correctly
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data with categories and pre-aggregated values
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE sales AS SELECT * FROM (VALUES ('Electronics', 1000), ('Clothing', 800), ('Furniture', 600)) AS t(category, total)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Bar geom with x and y from global mapping - should NOT apply count stat (uses y values)
+        let query = r#"
+            SELECT * FROM sales
+            VISUALISE category AS x, total AS y
+            DRAW bar
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should NOT have layer 0 data (no transformation needed, y is mapped and exists)
+        assert!(
+            !result.data.contains_key("__layer_0__"),
+            "Bar with y mapped should use global data directly"
+        );
+        assert!(result.data.contains_key("__global__"));
+
+        // Global should have original 3 rows
+        let global_df = result.data.get("__global__").unwrap();
+        assert_eq!(global_df.height(), 3);
+
+        // Verify spec has x and y aesthetics merged into layer
+        assert_eq!(result.specs.len(), 1);
+        let layer = &result.specs[0].layers[0];
+        assert!(
+            layer.aesthetics.contains_key("x"),
+            "Layer should have x from global mapping"
+        );
+        assert!(
+            layer.aesthetics.contains_key("y"),
+            "Layer should have y from global mapping"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_bar_with_wildcard_uses_y_when_present() {
+        // With the new smart stat logic, if wildcard expands y and y column exists,
+        // bar uses existing y values (identity, no COUNT)
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE wildcard_test AS SELECT * FROM (VALUES
+                    ('A', 100), ('B', 200), ('C', 300)
+                ) AS t(x, y)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // VISUALISE * with bar chart - uses existing y values since y column exists
+        let query = r#"
+            SELECT * FROM wildcard_test
+            VISUALISE *
+            DRAW bar
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // With wildcard and y column present, bar uses identity (no layer 0 data)
+        assert!(
+            !result.data.contains_key("__layer_0__"),
+            "Bar with wildcard + y column should use identity (no COUNT)"
+        );
+        assert!(result.data.contains_key("__global__"));
+
+        // Global should have original 3 rows
+        let global_df = result.data.get("__global__").unwrap();
+        assert_eq!(global_df.height(), 3);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_bar_with_explicit_y_uses_data_directly() {
+        // Bar geom uses existing y column directly when y is mapped and exists, no stat transform
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE bar_explicit AS SELECT * FROM (VALUES
+                    ('A', 100), ('B', 200), ('C', 300)
+                ) AS t(x, y)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Explicit x, y mapping with bar geom - no COUNT transform (y exists)
+        let query = r#"
+            SELECT * FROM bar_explicit
+            VISUALISE x, y
+            DRAW bar
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should NOT have layer 0 data (no transformation, y is explicitly mapped and exists)
+        assert!(
+            !result.data.contains_key("__layer_0__"),
+            "Bar with explicit y should use global data directly"
+        );
+        assert!(result.data.contains_key("__global__"));
+
+        // Global should have original 3 rows (no COUNT applied)
+        let global_df = result.data.get("__global__").unwrap();
+        assert_eq!(global_df.height(), 3);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_bar_with_wildcard_mapping_only_x_column() {
+        // Wildcard with only x column - SHOULD apply COUNT stat transform
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE wildcard_x_only AS SELECT * FROM (VALUES
+                    ('A'), ('B'), ('A'), ('C'), ('A'), ('B')
+                ) AS t(x)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM wildcard_x_only
+            VISUALISE *
+            DRAW bar
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should have layer 0 data (COUNT transformation applied)
+        assert!(
+            result.data.contains_key("__layer_0__"),
+            "Bar without y should apply COUNT stat"
+        );
+        let layer_df = result.data.get("__layer_0__").unwrap();
+
+        // Should have 3 rows (3 unique x values: A, B, C)
+        assert_eq!(layer_df.height(), 3);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_aliased_columns_with_bar_geom() {
+        // Test explicit mappings with SQL column aliases using bar geom
+        // Bar geom uses existing y values directly when y is mapped and exists
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE sales_aliased AS SELECT * FROM (VALUES
+                    ('Electronics', 1000), ('Clothing', 800), ('Furniture', 600)
+                ) AS t(category, revenue)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Column aliases create columns named 'x' and 'y'
+        // Bar geom uses them directly (no stat transform since y exists)
+        let query = r#"
+            SELECT category AS x, SUM(revenue) AS y
+            FROM sales_aliased
+            GROUP BY category
+            VISUALISE x, y
+            DRAW bar
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Bar geom with y mapped - no stat transform (y column exists)
+        assert!(
+            !result.data.contains_key("__layer_0__"),
+            "Bar with explicit y should use global data directly"
+        );
+        assert!(result.data.contains_key("__global__"));
+
+        let global_df = result.data.get("__global__").unwrap();
+        assert_eq!(global_df.height(), 3);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_bar_with_weight_uses_sum() {
+        // Bar with weight aesthetic should use SUM(weight) instead of COUNT(*)
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE weight_test AS SELECT * FROM (VALUES
+                    ('A', 10), ('A', 20), ('B', 30)
+                ) AS t(category, amount)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM weight_test
+            VISUALISE
+            DRAW bar MAPPING category AS x, amount AS weight
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should have layer 0 data (SUM transformation applied)
+        assert!(
+            result.data.contains_key("__layer_0__"),
+            "Bar with weight should apply SUM stat"
+        );
+        let layer_df = result.data.get("__layer_0__").unwrap();
+
+        // Should have 2 rows (2 unique categories: A, B)
+        assert_eq!(layer_df.height(), 2);
+
+        // Verify y values are sums: A=30 (10+20), B=30
+        // SUM returns f64
+        let y_col = layer_df.column("y").expect("y column should exist");
+        let y_values: Vec<f64> = y_col
+            .f64()
+            .expect("y should be f64 (SUM result)")
+            .into_iter()
+            .flatten()
+            .collect();
+
+        // Sum of A should be 30, sum of B should be 30
+        assert!(y_values.contains(&30.0), "Should have sum of 30 for category A");
+        assert!(y_values.contains(&30.0), "Should have sum of 30 for category B");
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_bar_without_weight_uses_count() {
+        // Bar without weight aesthetic should use COUNT(*)
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE count_test AS SELECT * FROM (VALUES
+                    ('A', 10), ('A', 20), ('B', 30)
+                ) AS t(category, amount)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM count_test
+            VISUALISE
+            DRAW bar MAPPING category AS x
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should have layer 0 data (COUNT transformation applied)
+        assert!(
+            result.data.contains_key("__layer_0__"),
+            "Bar without weight should apply COUNT stat"
+        );
+        let layer_df = result.data.get("__layer_0__").unwrap();
+
+        // Should have 2 rows (2 unique categories: A, B)
+        assert_eq!(layer_df.height(), 2);
+
+        // Verify y values are counts: A=2, B=1
+        let y_col = layer_df.column("y").expect("y column should exist");
+        let y_values: Vec<i64> = y_col
+            .i64()
+            .expect("y should be i64")
+            .into_iter()
+            .flatten()
+            .collect();
+
+        assert!(y_values.contains(&2), "Should have count of 2 for category A");
+        assert!(y_values.contains(&1), "Should have count of 1 for category B");
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_bar_weight_from_wildcard_missing_column_falls_back_to_count() {
+        // Wildcard mapping with no 'weight' column should fall back to COUNT
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE no_weight_col AS SELECT * FROM (VALUES
+                    ('A'), ('A'), ('B')
+                ) AS t(x)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM no_weight_col
+            VISUALISE *
+            DRAW bar
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should have layer 0 data (COUNT transformation applied)
+        assert!(
+            result.data.contains_key("__layer_0__"),
+            "Bar with wildcard (no weight column) should apply COUNT stat"
+        );
+        let layer_df = result.data.get("__layer_0__").unwrap();
+
+        // Should have 2 rows (2 unique x values: A, B)
+        assert_eq!(layer_df.height(), 2);
+
+        // Verify y values are counts: A=2, B=1
+        let y_col = layer_df.column("y").expect("y column should exist");
+        let y_values: Vec<i64> = y_col
+            .i64()
+            .expect("y should be i64")
+            .into_iter()
+            .flatten()
+            .collect();
+
+        assert!(y_values.contains(&2), "Should have count of 2 for A");
+        assert!(y_values.contains(&1), "Should have count of 1 for B");
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_bar_explicit_weight_missing_column_errors() {
+        // Explicitly mapping weight to non-existent column should error
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE no_weight_explicit AS SELECT * FROM (VALUES
+                    ('A'), ('B')
+                ) AS t(category)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM no_weight_explicit
+            VISUALISE
+            DRAW bar MAPPING category AS x, nonexistent AS weight
+        "#;
+
+        let result = prepare_data(query, &reader);
+        assert!(
+            result.is_err(),
+            "Bar with explicit weight mapping to non-existent column should error"
+        );
+
+        if let Err(err) = result {
+            let err_msg = format!("{}", err);
+            assert!(
+                err_msg.contains("weight") && err_msg.contains("nonexistent"),
+                "Error should mention weight and the missing column name, got: {}",
+                err_msg
+            );
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_bar_weight_literal_errors() {
+        // Mapping a literal value to weight should error
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE literal_weight AS SELECT * FROM (VALUES
+                    ('A'), ('B')
+                ) AS t(category)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM literal_weight
+            VISUALISE
+            DRAW bar MAPPING category AS x, 5 AS weight
+        "#;
+
+        let result = prepare_data(query, &reader);
+        assert!(
+            result.is_err(),
+            "Bar with literal weight should error"
+        );
+
+        if let Err(err) = result {
+            let err_msg = format!("{}", err);
+            assert!(
+                err_msg.contains("weight") && err_msg.contains("literal"),
+                "Error should mention weight must be a column, not literal, got: {}",
+                err_msg
+            );
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_bar_with_wildcard_uses_weight_when_present() {
+        // Wildcard mapping with 'weight' column should use SUM(weight)
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE wildcard_weight AS SELECT * FROM (VALUES
+                    ('A', 10), ('A', 20), ('B', 30)
+                ) AS t(x, weight)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM wildcard_weight
+            VISUALISE *
+            DRAW bar
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should have layer 0 data (SUM transformation applied)
+        assert!(
+            result.data.contains_key("__layer_0__"),
+            "Bar with wildcard + weight column should apply SUM stat"
+        );
+        let layer_df = result.data.get("__layer_0__").unwrap();
+
+        // Should have 2 rows (2 unique x values: A, B)
+        assert_eq!(layer_df.height(), 2);
+
+        // Verify y values are sums: A=30, B=30
+        // SUM returns f64
+        let y_col = layer_df.column("y").expect("y column should exist");
+        let y_values: Vec<f64> = y_col
+            .f64()
+            .expect("y should be f64 (SUM result)")
+            .into_iter()
+            .flatten()
+            .collect();
+
+        assert!(y_values.contains(&30.0), "Should have sum values");
     }
 }

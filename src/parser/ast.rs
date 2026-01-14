@@ -9,7 +9,7 @@
 //! ```text
 //! VizSpec
 //! ├─ global_mapping: GlobalMapping  (from VISUALISE clause mappings)
-//! ├─ source: Option<String>         (optional, from VISUALISE FROM clause)
+//! ├─ source: Option<DataSource>     (optional, from VISUALISE FROM clause)
 //! ├─ layers: Vec<Layer>             (1+ LayerNode, one per DRAW clause)
 //! ├─ scales: Vec<Scale>             (0+ ScaleNode, one per SCALE clause)
 //! ├─ facet: Option<Facet>           (optional, from FACET clause)
@@ -28,9 +28,9 @@ use crate::{DataFrame, GgsqlError, Result};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VizSpec {
     /// Global aesthetic mappings (from VISUALISE clause)
-    pub global_mapping: GlobalMapping,
-    /// FROM source name (CTE or table) when using VISUALISE FROM syntax
-    pub source: Option<String>,
+    pub global_mapping: Mappings,
+    /// FROM source (CTE, table, or file) when using VISUALISE FROM syntax
+    pub source: Option<DataSource>,
     /// Visual layers (one per DRAW clause)
     pub layers: Vec<Layer>,
     /// Scale configurations (one per SCALE clause)
@@ -47,59 +47,85 @@ pub struct VizSpec {
     pub theme: Option<Theme>,
 }
 
-/// Global mapping specification from VISUALISE clause
+/// Unified aesthetic mapping specification
 ///
-/// Represents the aesthetic mappings declared at the top level in the VISUALISE clause.
-/// These serve as defaults for all layers, which can override or add to them.
+/// Used for both global mappings (VISUALISE clause) and layer mappings (MAPPING clause).
+/// Supports wildcards combined with explicit mappings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-pub enum GlobalMapping {
-    /// No global mapping specified - layers must define all aesthetics
-    #[default]
-    Empty,
-    /// Wildcard (*) - resolve all columns at execution time
-    Wildcard,
-    /// Explicit list of mappings (may include implicit entries)
-    Mappings(Vec<GlobalMappingItem>),
+pub struct Mappings {
+    /// Whether a wildcard (*) was specified
+    pub wildcard: bool,
+    /// Explicit aesthetic mappings (aesthetic → value)
+    pub aesthetics: HashMap<String, AestheticValue>,
 }
 
-/// Individual mapping item in global mapping
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum GlobalMappingItem {
-    /// Explicit mapping: `date AS x` → column "date" maps to aesthetic "x"
-    Explicit { column: String, aesthetic: String },
-    /// Implicit mapping: `x` → column "x" maps to aesthetic "x"
-    Implicit { name: String },
-    /// Literal mapping: `'value' AS color` → literal value maps to aesthetic
-    Literal {
-        value: LiteralValue,
-        aesthetic: String,
-    },
+impl Mappings {
+    /// Create a new empty Mappings
+    pub fn new() -> Self {
+        Self {
+            wildcard: false,
+            aesthetics: HashMap::new(),
+        }
+    }
+
+    /// Create a new Mappings with wildcard flag set
+    pub fn with_wildcard() -> Self {
+        Self {
+            wildcard: true,
+            aesthetics: HashMap::new(),
+        }
+    }
+
+    /// Check if the mappings are empty (no wildcard and no aesthetics)
+    pub fn is_empty(&self) -> bool {
+        !self.wildcard && self.aesthetics.is_empty()
+    }
+
+    /// Insert an aesthetic mapping
+    pub fn insert(&mut self, aesthetic: impl Into<String>, value: AestheticValue) {
+        self.aesthetics.insert(aesthetic.into(), value);
+    }
+
+    /// Get an aesthetic value by name
+    pub fn get(&self, aesthetic: &str) -> Option<&AestheticValue> {
+        self.aesthetics.get(aesthetic)
+    }
+
+    /// Check if an aesthetic is mapped
+    pub fn contains_key(&self, aesthetic: &str) -> bool {
+        self.aesthetics.contains_key(aesthetic)
+    }
+
+    /// Get the number of explicit aesthetic mappings
+    pub fn len(&self) -> usize {
+        self.aesthetics.len()
+    }
 }
 
-/// Data source for a layer (from MAPPING ... FROM clause)
+/// Data source for visualization or layer (from VISUALISE FROM or MAPPING ... FROM clause)
 ///
-/// Allows layers to specify their own data source instead of using
-/// the global data from the main SQL query.
+/// Allows specification of a data source - either a CTE/table name or a file path.
+/// Used both for global `VISUALISE FROM` and layer-specific `MAPPING ... FROM`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum LayerSource {
+pub enum DataSource {
     /// CTE or table name (unquoted identifier)
     Identifier(String),
     /// File path (quoted string like 'data.csv')
     FilePath(String),
 }
 
-impl LayerSource {
+impl DataSource {
     /// Returns the source as a string reference
     pub fn as_str(&self) -> &str {
         match self {
-            LayerSource::Identifier(s) => s,
-            LayerSource::FilePath(s) => s,
+            DataSource::Identifier(s) => s,
+            DataSource::FilePath(s) => s,
         }
     }
 
     /// Returns true if this is a file path source
     pub fn is_file(&self) -> bool {
-        matches!(self, LayerSource::FilePath(_))
+        matches!(self, DataSource::FilePath(_))
     }
 }
 
@@ -108,64 +134,35 @@ impl LayerSource {
 pub struct Layer {
     /// Geometric object type
     pub geom: Geom,
-    /// Aesthetic mappings (aesthetic → column or literal)
-    pub aesthetics: HashMap<String, AestheticValue>,
+    /// Aesthetic mappings
+    pub aesthetics: Mappings,
     /// Geom parameters (not aesthetic mappings)
     pub parameters: HashMap<String, ParameterValue>,
     /// Optional data source for this layer (from MAPPING ... FROM)
-    pub source: Option<LayerSource>,
-    /// Optional filter expression for this layer
-    pub filter: Option<FilterExpression>,
+    pub source: Option<DataSource>,
+    /// Optional filter expression for this layer (from FILTER clause)
+    pub filter: Option<SqlExpression>,
     /// Optional ORDER BY expression for this layer
-    pub order_by: Option<OrderExpression>,
+    pub order_by: Option<SqlExpression>,
     /// Columns for grouping/partitioning (from PARTITION BY clause)
     pub partition_by: Vec<String>,
 }
 
-/// Raw SQL filter expression for layer-specific filtering (from FILTER clause)
+/// Raw SQL expression for layer-specific clauses (FILTER, ORDER BY)
 ///
-/// This stores the raw SQL WHERE clause text verbatim, which is passed directly
-/// to the database backend. This allows any valid SQL WHERE expression to be used.
+/// This stores raw SQL text verbatim, which is passed directly to the database
+/// backend. This allows any valid SQL expression to be used.
 ///
-/// Example filter values:
-/// - `"x > 10"`
-/// - `"region = 'North' AND year >= 2020"`
-/// - `"category IN ('A', 'B', 'C')"`
-/// - `"name LIKE '%test%'"`
+/// Example values:
+/// - `"x > 10"` (filter)
+/// - `"region = 'North' AND year >= 2020"` (filter)
+/// - `"date ASC"` (order by)
+/// - `"category, value DESC"` (order by)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FilterExpression(pub String);
+pub struct SqlExpression(pub String);
 
-impl FilterExpression {
-    /// Create a new filter expression from raw SQL text
-    pub fn new(sql: impl Into<String>) -> Self {
-        Self(sql.into())
-    }
-
-    /// Get the raw SQL text
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Consume and return the raw SQL text
-    pub fn into_string(self) -> String {
-        self.0
-    }
-}
-
-/// Raw SQL ORDER BY expression for layer-specific sorting (from ORDER BY clause)
-///
-/// This stores the raw SQL ORDER BY clause text verbatim, which is passed directly
-/// to the database backend. This allows any valid SQL ORDER BY expression to be used.
-///
-/// Example order values:
-/// - `"date ASC"`
-/// - `"category, value DESC"`
-/// - `"date ASC NULLS FIRST, value DESC"`
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct OrderExpression(pub String);
-
-impl OrderExpression {
-    /// Create a new order expression from raw SQL text
+impl SqlExpression {
+    /// Create a new SQL expression from raw text
     pub fn new(sql: impl Into<String>) -> Self {
         Self(sql.into())
     }
@@ -189,7 +186,6 @@ pub enum Geom {
     Line,
     Path,
     Bar,
-    Col,
     Area,
     Tile,
     Polygon,
@@ -229,7 +225,6 @@ impl std::fmt::Display for Geom {
             Geom::Line => "line",
             Geom::Path => "path",
             Geom::Bar => "bar",
-            Geom::Col => "col",
             Geom::Area => "area",
             Geom::Tile => "tile",
             Geom::Polygon => "polygon",
@@ -290,12 +285,10 @@ impl Geom {
                 required: &["x", "y"],
             },
             Geom::Bar => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "fill", "width", "opacity"],
-                required: &["x", "y"],
-            },
-            Geom::Col => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "fill", "width", "opacity"],
-                required: &["x", "y"],
+                // Bar supports optional y - stat decides COUNT vs identity
+                // weight: optional, if mapped uses SUM(weight) instead of COUNT(*)
+                supported: &["x", "y", "weight", "color", "colour", "fill", "width", "opacity"],
+                required: &["x"],
             },
             Geom::Area => GeomAesthetics {
                 supported: &["x", "y", "color", "colour", "fill", "opacity"],
@@ -438,10 +431,10 @@ impl Geom {
     /// Returns true if the geom needs data to be transformed before rendering.
     /// This is used to determine if a layer needs to query data even when
     /// it has no explicit source or filter.
-    pub fn needs_stat_transform(&self, aesthetics: &HashMap<String, AestheticValue>) -> bool {
+    pub fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
         match self {
             Geom::Histogram => true,
-            Geom::Bar => !aesthetics.contains_key("y"), // Only if y not mapped
+            Geom::Bar => true, // Bar stat decides COUNT vs identity based on y mapping
             Geom::Density => true,
             Geom::Smooth => true,
             Geom::Boxplot => true,
@@ -465,21 +458,24 @@ impl Geom {
     /// * `aesthetics` - Layer aesthetic mappings (to find x, y columns)
     /// * `group_by` - Combined partition_by + facet variables for grouping
     /// * `execute_query` - Closure to execute SQL for data inspection
+    ///
+    /// Returns `Ok(None)` for identity (no transformation, use original data),
+    /// or `Ok(Some(query))` with the transformed query.
     pub fn apply_stat_transform<F>(
         &self,
         query: &str,
-        aesthetics: &HashMap<String, AestheticValue>,
+        aesthetics: &Mappings,
         group_by: &[String],
         execute_query: &F,
-    ) -> Result<String>
+    ) -> Result<Option<String>>
     where
         F: Fn(&str) -> Result<DataFrame>,
     {
         match self {
             Geom::Histogram => self.stat_histogram(query, aesthetics, group_by, execute_query),
-            Geom::Bar => self.stat_bar_count(query, aesthetics, group_by),
+            Geom::Bar => self.stat_bar_count(query, aesthetics, group_by, execute_query),
             // Future: Geom::Density, Geom::Smooth, etc.
-            _ => Ok(query.to_string()),
+            _ => Ok(None), // Identity - no transformation
         }
     }
 
@@ -487,10 +483,10 @@ impl Geom {
     fn stat_histogram<F>(
         &self,
         query: &str,
-        aesthetics: &HashMap<String, AestheticValue>,
+        aesthetics: &Mappings,
         group_by: &[String],
         execute_query: &F,
-    ) -> Result<String>
+    ) -> Result<Option<String>>
     where
         F: Fn(&str) -> Result<DataFrame>,
     {
@@ -517,7 +513,7 @@ impl Geom {
         let group_cols = if group_by.is_empty() {
             bin_expr.clone()
         } else {
-            let mut cols: Vec<String> = group_by.iter().cloned().collect();
+            let mut cols: Vec<String> = group_by.to_vec();
             cols.push(bin_expr.clone());
             cols.join(", ")
         };
@@ -529,29 +525,131 @@ impl Geom {
             format!("{}, {} AS x, COUNT(*) AS y", grp_cols, bin_expr)
         };
 
-        Ok(format!(
+        // Histogram always transforms
+        Ok(Some(format!(
             "WITH __stat_src__ AS ({query}) SELECT {select} FROM __stat_src__ GROUP BY {group}",
             query = query,
             select = select_cols,
             group = group_cols
-        ))
+        )))
     }
 
-    /// Statistical transformation for bar: count occurrences when y is not mapped
-    fn stat_bar_count(
+    /// Statistical transformation for bar: COUNT/SUM vs identity based on y and weight mappings
+    ///
+    /// Decision logic for y:
+    /// - y mapped to literal → identity (None, use original data)
+    /// - y mapped to column that exists → identity (None, use original data)
+    /// - y mapped to column that doesn't exist + from wildcard → aggregation
+    /// - y mapped to column that doesn't exist + explicit → error
+    /// - y not mapped → aggregation
+    ///
+    /// Decision logic for aggregation (when y triggers aggregation):
+    /// - weight not mapped → COUNT(*)
+    /// - weight mapped to literal → error (weight must be a column)
+    /// - weight mapped to column that exists → SUM(weight_col)
+    /// - weight mapped to column that doesn't exist + from wildcard → COUNT(*)
+    /// - weight mapped to column that doesn't exist + explicit → error
+    ///
+    /// Returns `None` for identity (no transformation), `Some(query)` for aggregation.
+    fn stat_bar_count<F>(
         &self,
         query: &str,
-        aesthetics: &HashMap<String, AestheticValue>,
+        aesthetics: &Mappings,
         group_by: &[String],
-    ) -> Result<String> {
-        // Only apply count stat if y is not mapped
-        if aesthetics.contains_key("y") {
-            return Ok(query.to_string());
-        }
-
+        execute_query: &F,
+    ) -> Result<Option<String>>
+    where
+        F: Fn(&str) -> Result<DataFrame>,
+    {
         let x_col = get_column_name(aesthetics, "x").ok_or_else(|| {
             GgsqlError::ValidationError("Bar requires 'x' aesthetic mapping".to_string())
         })?;
+
+        // Lazily fetch schema columns (only when needed for column existence checks)
+        let mut cached_columns: Option<Vec<String>> = None;
+
+        // Helper function to fetch schema
+        fn fetch_schema<F>(query: &str, execute_query: &F) -> Result<Vec<String>>
+        where
+            F: Fn(&str) -> Result<DataFrame>,
+        {
+            let schema_query = format!(
+                "SELECT * FROM ({query}) AS __schema__ LIMIT 0",
+                query = query
+            );
+            let schema_df = execute_query(&schema_query)?;
+            Ok(schema_df
+                .get_column_names()
+                .iter()
+                .map(|s| s.to_string())
+                .collect())
+        }
+
+        // Check if y is mapped
+        if let Some(y_value) = aesthetics.get("y") {
+            // Case 1: y is a literal value - use identity (no transformation)
+            if y_value.is_literal() {
+                return Ok(None);
+            }
+
+            // Case 2: y is a column reference - check if it exists in the data
+            if let Some(y_col) = y_value.column_name() {
+                if cached_columns.is_none() {
+                    cached_columns = Some(fetch_schema(query, execute_query)?);
+                }
+                let columns = cached_columns.as_ref().unwrap();
+
+                if columns.iter().any(|c| c == &y_col) {
+                    // y column exists - use identity (no transformation)
+                    return Ok(None);
+                } else if !y_value.is_from_wildcard() {
+                    // y explicitly mapped but column doesn't exist - error
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Bar y aesthetic mapped to non-existent column '{}'",
+                        y_col
+                    )));
+                }
+                // y from wildcard but column doesn't exist - fall through to aggregation
+            }
+        }
+
+        // y not mapped or wildcard y doesn't exist - apply aggregation (COUNT or SUM)
+        // Determine aggregation expression based on weight aesthetic
+        let agg_expr = if let Some(weight_value) = aesthetics.get("weight") {
+            // weight is mapped - check if it's valid
+            if weight_value.is_literal() {
+                return Err(GgsqlError::ValidationError(
+                    "Bar weight aesthetic must be a column, not a literal".to_string(),
+                ));
+            }
+
+            if let Some(weight_col) = weight_value.column_name() {
+                if cached_columns.is_none() {
+                    cached_columns = Some(fetch_schema(query, execute_query)?);
+                }
+                let columns = cached_columns.as_ref().unwrap();
+
+                if columns.iter().any(|c| c == &weight_col) {
+                    // weight column exists - use SUM
+                    format!("SUM({}) AS y", weight_col)
+                } else if !weight_value.is_from_wildcard() {
+                    // weight explicitly mapped but column doesn't exist - error
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Bar weight aesthetic mapped to non-existent column '{}'",
+                        weight_col
+                    )));
+                } else {
+                    // weight from wildcard but column doesn't exist - fall back to COUNT
+                    "COUNT(*) AS y".to_string()
+                }
+            } else {
+                // Shouldn't happen (not literal, not column), fall back to COUNT
+                "COUNT(*) AS y".to_string()
+            }
+        } else {
+            // weight not mapped - use COUNT
+            "COUNT(*) AS y".to_string()
+        };
 
         // Build grouped columns (group_by includes partition_by + facet variables + x)
         let group_cols = if group_by.is_empty() {
@@ -563,28 +661,25 @@ impl Geom {
         };
 
         let select_cols = if group_by.is_empty() {
-            format!("{x} AS x, COUNT(*) AS y", x = x_col)
+            format!("{x} AS x, {agg}", x = x_col, agg = agg_expr)
         } else {
             let grp_cols = group_by.join(", ");
-            format!("{g}, {x} AS x, COUNT(*) AS y", g = grp_cols, x = x_col)
+            format!("{g}, {x} AS x, {agg}", g = grp_cols, x = x_col, agg = agg_expr)
         };
 
-        Ok(format!(
+        Ok(Some(format!(
             "WITH __stat_src__ AS ({query}) SELECT {select} FROM __stat_src__ GROUP BY {group}",
             query = query,
             select = select_cols,
             group = group_cols
-        ))
+        )))
     }
 }
 
 /// Helper to extract column name from aesthetic value
-fn get_column_name(
-    aesthetics: &HashMap<String, AestheticValue>,
-    aesthetic: &str,
-) -> Option<String> {
+fn get_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String> {
     aesthetics.get(aesthetic).and_then(|v| match v {
-        AestheticValue::Column(col) => Some(col.clone()),
+        AestheticValue::Column { name, .. } => Some(name.clone()),
         _ => None,
     })
 }
@@ -645,10 +740,53 @@ fn compute_bin_width(min_val: f64, max_val: f64, n: usize) -> f64 {
 /// Value for aesthetic mappings
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AestheticValue {
-    /// Column reference (unquoted identifier)
-    Column(String),
+    /// Column reference with optional wildcard origin tracking
+    Column {
+        name: String,
+        /// Whether this mapping came from wildcard expansion
+        from_wildcard: bool,
+    },
     /// Literal value (quoted string, number, or boolean)
     Literal(LiteralValue),
+}
+
+impl AestheticValue {
+    /// Create a column mapping (not from wildcard)
+    pub fn column(name: impl Into<String>) -> Self {
+        Self::Column {
+            name: name.into(),
+            from_wildcard: false,
+        }
+    }
+
+    /// Create a column mapping from wildcard expansion
+    pub fn wildcard_column(name: impl Into<String>) -> Self {
+        Self::Column {
+            name: name.into(),
+            from_wildcard: true,
+        }
+    }
+
+    /// Get column name if this is a column mapping
+    pub fn column_name(&self) -> Option<&str> {
+        match self {
+            Self::Column { name, .. } => Some(name),
+            _ => None,
+        }
+    }
+
+    /// Check if this mapping came from wildcard expansion
+    pub fn is_from_wildcard(&self) -> bool {
+        match self {
+            Self::Column { from_wildcard, .. } => *from_wildcard,
+            _ => false,
+        }
+    }
+
+    /// Check if this is a literal value (not a column mapping)
+    pub fn is_literal(&self) -> bool {
+        matches!(self, Self::Literal(_))
+    }
 }
 
 /// Literal values in aesthetic mappings
@@ -854,7 +992,7 @@ impl VizSpec {
     /// Create a new empty VizSpec
     pub fn new() -> Self {
         Self {
-            global_mapping: GlobalMapping::Empty,
+            global_mapping: Mappings::new(),
             source: None,
             layers: Vec::new(),
             scales: Vec::new(),
@@ -867,7 +1005,7 @@ impl VizSpec {
     }
 
     /// Create a new VizSpec with the given global mapping
-    pub fn with_global_mapping(global_mapping: GlobalMapping) -> Self {
+    pub fn with_global_mapping(global_mapping: Mappings) -> Self {
         Self {
             global_mapping,
             source: None,
@@ -905,58 +1043,6 @@ impl VizSpec {
             .find(|guide| guide.aesthetic == aesthetic)
     }
 
-    /// Resolve global mappings into layer aesthetics.
-    ///
-    /// For each layer, global mappings are merged as defaults.
-    /// Layer-specific MAPPING clauses override global mappings.
-    ///
-    /// For wildcard (`VISUALISE *`), columns are mapped to aesthetics
-    /// based on what each layer's geom type supports.
-    pub fn resolve_global_mappings(&mut self, available_columns: &[&str]) -> Result<()> {
-        // Handle non-wildcard cases first (same for all layers)
-        let explicit_mappings: HashMap<String, AestheticValue> = match &self.global_mapping {
-            GlobalMapping::Empty => HashMap::new(),
-            GlobalMapping::Wildcard => HashMap::new(), // Handled per-layer below
-            GlobalMapping::Mappings(items) => items
-                .iter()
-                .map(|item| match item {
-                    GlobalMappingItem::Explicit { column, aesthetic } => {
-                        (aesthetic.clone(), AestheticValue::Column(column.clone()))
-                    }
-                    GlobalMappingItem::Implicit { name } => {
-                        (name.clone(), AestheticValue::Column(name.clone()))
-                    }
-                    GlobalMappingItem::Literal { value, aesthetic } => {
-                        (aesthetic.clone(), AestheticValue::Literal(value.clone()))
-                    }
-                })
-                .collect(),
-        };
-
-        // For each layer, merge mappings (layer overrides global)
-        for layer in &mut self.layers {
-            // For wildcard, build mappings based on this geom's supported aesthetics
-            let base_aesthetics: HashMap<String, AestheticValue> =
-                if matches!(self.global_mapping, GlobalMapping::Wildcard) {
-                    let supported = layer.geom.aesthetics().supported;
-                    available_columns
-                        .iter()
-                        .filter(|col| supported.contains(col))
-                        .map(|col| (col.to_string(), AestheticValue::Column(col.to_string())))
-                        .collect()
-                } else {
-                    explicit_mappings.clone()
-                };
-
-            // Merge: layer aesthetics override global
-            for (aesthetic, value) in base_aesthetics {
-                layer.aesthetics.entry(aesthetic).or_insert(value);
-            }
-        }
-
-        Ok(())
-    }
-
     /// Compute aesthetic labels for axes and legends.
     ///
     /// For each aesthetic used in any layer, determines the appropriate label:
@@ -978,7 +1064,7 @@ impl VizSpec {
         // Collect all aesthetics used across all layers
         let mut all_aesthetics: HashSet<String> = HashSet::new();
         for layer in &self.layers {
-            for aesthetic in layer.aesthetics.keys() {
+            for aesthetic in layer.aesthetics.aesthetics.keys() {
                 all_aesthetics.insert(aesthetic.clone());
             }
         }
@@ -993,10 +1079,11 @@ impl VizSpec {
             // Find first non-constant column mapping
             let mut label = aesthetic.clone(); // Default to aesthetic name
             for layer in &self.layers {
-                if let Some(AestheticValue::Column(col)) = layer.aesthetics.get(&aesthetic) {
+                if let Some(AestheticValue::Column { name, .. }) = layer.aesthetics.get(&aesthetic)
+                {
                     // Skip synthetic constant columns
-                    if !col.starts_with("__ggsql_const_") {
-                        label = col.clone();
+                    if !name.starts_with("__ggsql_const_") {
+                        label = name.clone();
                         break;
                     }
                 }
@@ -1012,7 +1099,7 @@ impl Layer {
     pub fn new(geom: Geom) -> Self {
         Self {
             geom,
-            aesthetics: HashMap::new(),
+            aesthetics: Mappings::new(),
             parameters: HashMap::new(),
             source: None,
             filter: None,
@@ -1022,26 +1109,32 @@ impl Layer {
     }
 
     /// Set the filter expression
-    pub fn with_filter(mut self, filter: FilterExpression) -> Self {
+    pub fn with_filter(mut self, filter: SqlExpression) -> Self {
         self.filter = Some(filter);
         self
     }
 
     /// Set the ORDER BY expression
-    pub fn with_order_by(mut self, order: OrderExpression) -> Self {
+    pub fn with_order_by(mut self, order: SqlExpression) -> Self {
         self.order_by = Some(order);
         self
     }
 
     /// Set the data source for this layer
-    pub fn with_source(mut self, source: LayerSource) -> Self {
+    pub fn with_source(mut self, source: DataSource) -> Self {
         self.source = Some(source);
         self
     }
 
     /// Add an aesthetic mapping
-    pub fn with_aesthetic(mut self, aesthetic: String, value: AestheticValue) -> Self {
+    pub fn with_aesthetic(mut self, aesthetic: impl Into<String>, value: AestheticValue) -> Self {
         self.aesthetics.insert(aesthetic, value);
+        self
+    }
+
+    /// Set the wildcard flag
+    pub fn with_wildcard(mut self) -> Self {
+        self.aesthetics.wildcard = true;
         self
     }
 
@@ -1060,7 +1153,7 @@ impl Layer {
     /// Get a column reference from an aesthetic, if it's mapped to a column
     pub fn get_column(&self, aesthetic: &str) -> Option<&str> {
         match self.aesthetics.get(aesthetic) {
-            Some(AestheticValue::Column(col)) => Some(col),
+            Some(AestheticValue::Column { name, .. }) => Some(name),
             _ => None,
         }
     }
@@ -1076,7 +1169,7 @@ impl Layer {
     /// Check if this layer has the required aesthetics for its geom
     pub fn validate_required_aesthetics(&self) -> std::result::Result<(), String> {
         for aesthetic in self.geom.aesthetics().required {
-            if !self.aesthetics.contains_key(*aesthetic) {
+            if !self.aesthetics.contains_key(aesthetic) {
                 return Err(format!(
                     "Geom '{}' requires aesthetic '{}' but it was not provided",
                     self.geom, aesthetic
@@ -1097,7 +1190,7 @@ impl Default for VizSpec {
 impl std::fmt::Display for AestheticValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AestheticValue::Column(col) => write!(f, "{}", col),
+            AestheticValue::Column { name, .. } => write!(f, "{}", name),
             AestheticValue::Literal(lit) => write!(f, "{}", lit),
         }
     }
@@ -1120,7 +1213,7 @@ mod tests {
     #[test]
     fn test_viz_spec_creation() {
         let spec = VizSpec::new();
-        assert_eq!(spec.global_mapping, GlobalMapping::Empty);
+        assert!(spec.global_mapping.is_empty());
         assert_eq!(spec.layers.len(), 0);
         assert!(!spec.has_layers());
         assert_eq!(spec.layer_count(), 0);
@@ -1128,33 +1221,26 @@ mod tests {
 
     #[test]
     fn test_viz_spec_with_global_mapping() {
-        let mapping = GlobalMapping::Mappings(vec![
-            GlobalMappingItem::Explicit {
-                column: "date".to_string(),
-                aesthetic: "x".to_string(),
-            },
-            GlobalMappingItem::Implicit {
-                name: "y".to_string(),
-            },
-        ]);
+        let mut mapping = Mappings::new();
+        mapping.insert("x", AestheticValue::column("date"));
+        mapping.insert("y", AestheticValue::column("y"));
         let spec = VizSpec::with_global_mapping(mapping.clone());
-        assert_eq!(spec.global_mapping, mapping);
+        assert_eq!(spec.global_mapping.aesthetics.len(), 2);
+        assert!(spec.global_mapping.aesthetics.contains_key("x"));
     }
 
     #[test]
     fn test_global_mapping_wildcard() {
-        let spec = VizSpec::with_global_mapping(GlobalMapping::Wildcard);
-        assert_eq!(spec.global_mapping, GlobalMapping::Wildcard);
+        let mapping = Mappings::with_wildcard();
+        let spec = VizSpec::with_global_mapping(mapping);
+        assert!(spec.global_mapping.wildcard);
     }
 
     #[test]
     fn test_layer_creation() {
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
-            .with_aesthetic(
-                "y".to_string(),
-                AestheticValue::Column("revenue".to_string()),
-            )
+            .with_aesthetic("x".to_string(), AestheticValue::column("date"))
+            .with_aesthetic("y".to_string(), AestheticValue::column("revenue"))
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::Literal(LiteralValue::String("blue".to_string())),
@@ -1169,7 +1255,7 @@ mod tests {
 
     #[test]
     fn test_layer_with_filter() {
-        let filter = FilterExpression::new("year > 2020");
+        let filter = SqlExpression::new("year > 2020");
         let layer = Layer::new(Geom::Point).with_filter(filter);
         assert!(layer.filter.is_some());
         assert_eq!(layer.filter.as_ref().unwrap().as_str(), "year > 2020");
@@ -1178,26 +1264,20 @@ mod tests {
     #[test]
     fn test_layer_validation() {
         let valid_point = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::Column("y".to_string()));
+            .with_aesthetic("x".to_string(), AestheticValue::column("x"))
+            .with_aesthetic("y".to_string(), AestheticValue::column("y"));
 
         assert!(valid_point.validate_required_aesthetics().is_ok());
 
-        let invalid_point = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("x".to_string()));
+        let invalid_point =
+            Layer::new(Geom::Point).with_aesthetic("x".to_string(), AestheticValue::column("x"));
 
         assert!(invalid_point.validate_required_aesthetics().is_err());
 
         let valid_ribbon = Layer::new(Geom::Ribbon)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("x".to_string()))
-            .with_aesthetic(
-                "ymin".to_string(),
-                AestheticValue::Column("ymin".to_string()),
-            )
-            .with_aesthetic(
-                "ymax".to_string(),
-                AestheticValue::Column("ymax".to_string()),
-            );
+            .with_aesthetic("x".to_string(), AestheticValue::column("x"))
+            .with_aesthetic("ymin".to_string(), AestheticValue::column("ymin"))
+            .with_aesthetic("ymax".to_string(), AestheticValue::column("ymax"));
 
         assert!(valid_ribbon.validate_required_aesthetics().is_ok());
     }
@@ -1220,7 +1300,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_value_display() {
-        let column = AestheticValue::Column("sales".to_string());
+        let column = AestheticValue::column("sales");
         let string_lit = AestheticValue::Literal(LiteralValue::String("blue".to_string()));
         let number_lit = AestheticValue::Literal(LiteralValue::Number(3.53));
         let bool_lit = AestheticValue::Literal(LiteralValue::Boolean(true));
@@ -1239,146 +1319,62 @@ mod tests {
     }
 
     // ========================================
-    // Global Mapping Resolution Tests
+    // Mappings Struct Tests
     // ========================================
 
     #[test]
-    fn test_explicit_global_mapping_resolution() {
-        let mut spec = VizSpec::new();
-        spec.global_mapping = GlobalMapping::Mappings(vec![
-            GlobalMappingItem::Explicit {
-                column: "date".to_string(),
-                aesthetic: "x".to_string(),
-            },
-            GlobalMappingItem::Explicit {
-                column: "revenue".to_string(),
-                aesthetic: "y".to_string(),
-            },
-        ]);
-        spec.layers.push(Layer::new(Geom::Point));
-        spec.layers.push(Layer::new(Geom::Line));
-
-        spec.resolve_global_mappings(&["date", "revenue", "region"])
-            .unwrap();
-
-        // Both layers should have x and y aesthetics
-        assert_eq!(spec.layers[0].aesthetics.len(), 2);
-        assert_eq!(spec.layers[1].aesthetics.len(), 2);
-        assert!(matches!(
-            spec.layers[0].aesthetics.get("x"),
-            Some(AestheticValue::Column(c)) if c == "date"
-        ));
-        assert!(matches!(
-            spec.layers[0].aesthetics.get("y"),
-            Some(AestheticValue::Column(c)) if c == "revenue"
-        ));
+    fn test_mappings_new() {
+        let mappings = Mappings::new();
+        assert!(!mappings.wildcard);
+        assert!(mappings.aesthetics.is_empty());
+        assert!(mappings.is_empty());
     }
 
     #[test]
-    fn test_implicit_global_mapping_resolution() {
-        let mut spec = VizSpec::new();
-        spec.global_mapping = GlobalMapping::Mappings(vec![
-            GlobalMappingItem::Implicit {
-                name: "x".to_string(),
-            },
-            GlobalMappingItem::Implicit {
-                name: "y".to_string(),
-            },
-        ]);
-        spec.layers.push(Layer::new(Geom::Point));
-
-        spec.resolve_global_mappings(&["x", "y", "z"]).unwrap();
-
-        assert!(matches!(
-            spec.layers[0].aesthetics.get("x"),
-            Some(AestheticValue::Column(c)) if c == "x"
-        ));
-        assert!(matches!(
-            spec.layers[0].aesthetics.get("y"),
-            Some(AestheticValue::Column(c)) if c == "y"
-        ));
+    fn test_mappings_with_wildcard() {
+        let mappings = Mappings::with_wildcard();
+        assert!(mappings.wildcard);
+        assert!(mappings.aesthetics.is_empty());
+        assert!(!mappings.is_empty()); // wildcard counts as non-empty
     }
 
     #[test]
-    fn test_wildcard_global_mapping_resolution() {
-        let mut spec = VizSpec::new();
-        spec.global_mapping = GlobalMapping::Wildcard;
-        spec.layers.push(Layer::new(Geom::Point));
+    fn test_mappings_insert_and_get() {
+        let mut mappings = Mappings::new();
+        mappings.insert("x", AestheticValue::column("date"));
+        mappings.insert("y", AestheticValue::column("value"));
 
-        // Point geom supports: x, y, color, size, shape, opacity, etc.
-        // Columns "x", "y", "color" match supported aesthetics
-        // Columns "date", "revenue" do NOT match any supported aesthetic
-        spec.resolve_global_mappings(&["x", "y", "color", "date", "revenue"])
-            .unwrap();
+        assert_eq!(mappings.len(), 2);
+        assert!(mappings.contains_key("x"));
+        assert!(mappings.contains_key("y"));
+        assert!(!mappings.contains_key("color"));
 
-        // Should only map columns that match geom's supported aesthetics
-        assert_eq!(spec.layers[0].aesthetics.len(), 3);
-        assert!(spec.layers[0].aesthetics.contains_key("x"));
-        assert!(spec.layers[0].aesthetics.contains_key("y"));
-        assert!(spec.layers[0].aesthetics.contains_key("color"));
-        assert!(!spec.layers[0].aesthetics.contains_key("date"));
-        assert!(!spec.layers[0].aesthetics.contains_key("revenue"));
+        let x_val = mappings.get("x").unwrap();
+        assert_eq!(x_val.column_name(), Some("date"));
     }
 
     #[test]
-    fn test_wildcard_different_geoms_get_different_aesthetics() {
-        let mut spec = VizSpec::new();
-        spec.global_mapping = GlobalMapping::Wildcard;
-        spec.layers.push(Layer::new(Geom::Point)); // supports size, shape
-        spec.layers.push(Layer::new(Geom::Line)); // supports linetype, linewidth
+    fn test_aesthetic_value_column_constructors() {
+        let col = AestheticValue::column("date");
+        assert!(!col.is_from_wildcard());
+        assert_eq!(col.column_name(), Some("date"));
 
-        spec.resolve_global_mappings(&["x", "y", "size", "linetype"])
-            .unwrap();
-
-        // Point layer should get x, y, size (not linetype)
-        assert!(spec.layers[0].aesthetics.contains_key("size"));
-        assert!(!spec.layers[0].aesthetics.contains_key("linetype"));
-
-        // Line layer should get x, y, linetype (not size)
-        assert!(spec.layers[1].aesthetics.contains_key("linetype"));
-        assert!(!spec.layers[1].aesthetics.contains_key("size"));
+        let wildcard_col = AestheticValue::wildcard_column("x");
+        assert!(wildcard_col.is_from_wildcard());
+        assert_eq!(wildcard_col.column_name(), Some("x"));
     }
 
     #[test]
-    fn test_layer_mapping_overrides_global() {
-        let mut spec = VizSpec::new();
-        spec.global_mapping = GlobalMapping::Mappings(vec![GlobalMappingItem::Explicit {
-            column: "date".to_string(),
-            aesthetic: "x".to_string(),
-        }]);
-
-        let mut layer = Layer::new(Geom::Point);
-        layer.aesthetics.insert(
-            "x".to_string(),
-            AestheticValue::Column("other_date".to_string()),
-        );
-        spec.layers.push(layer);
-
-        spec.resolve_global_mappings(&["date", "other_date"])
-            .unwrap();
-
-        // Layer's explicit mapping should override global
-        assert!(matches!(
-            spec.layers[0].aesthetics.get("x"),
-            Some(AestheticValue::Column(c)) if c == "other_date"
-        ));
+    fn test_aesthetic_value_literal() {
+        let lit = AestheticValue::Literal(LiteralValue::String("red".to_string()));
+        assert!(!lit.is_from_wildcard());
+        assert_eq!(lit.column_name(), None);
     }
 
     #[test]
-    fn test_empty_global_mapping_no_change() {
-        let mut spec = VizSpec::new();
-        spec.global_mapping = GlobalMapping::Empty;
-
-        let mut layer = Layer::new(Geom::Point);
-        layer
-            .aesthetics
-            .insert("x".to_string(), AestheticValue::Column("col".to_string()));
-        spec.layers.push(layer);
-
-        spec.resolve_global_mappings(&["col"]).unwrap();
-
-        // Layer should be unchanged
-        assert_eq!(spec.layers[0].aesthetics.len(), 1);
+    fn test_layer_with_wildcard() {
+        let layer = Layer::new(Geom::Point).with_wildcard();
+        assert!(layer.aesthetics.wildcard);
     }
 
     #[test]
@@ -1398,11 +1394,12 @@ mod tests {
         assert!(!line.supported.contains(&"size"));
         assert_eq!(line.required, &["x", "y"]);
 
-        // Bar geom
+        // Bar geom - optional y (stat decides COUNT vs identity)
         let bar = Geom::Bar.aesthetics();
         assert!(bar.supported.contains(&"fill"));
         assert!(bar.supported.contains(&"width"));
-        assert_eq!(bar.required, &["x", "y"]);
+        assert!(bar.supported.contains(&"y")); // Bar accepts optional y
+        assert_eq!(bar.required, &["x"]); // Only x required
 
         // Text geom
         let text = Geom::Text.aesthetics();

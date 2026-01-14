@@ -46,8 +46,7 @@ pub mod execute;
 
 // Re-export key types for convenience
 pub use parser::{
-    AestheticValue, Facet, FilterExpression, Geom, GlobalMapping, GlobalMappingItem, Layer,
-    LayerSource, Scale, VizSpec,
+    AestheticValue, DataSource, Facet, Geom, Layer, Mappings, Scale, SqlExpression, VizSpec,
 };
 
 // Future modules - not yet implemented
@@ -126,10 +125,10 @@ mod integration_tests {
         // Create visualization spec
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
+            .with_aesthetic("x".to_string(), AestheticValue::column("date".to_string()))
             .with_aesthetic(
                 "y".to_string(),
-                AestheticValue::Column("revenue".to_string()),
+                AestheticValue::column("revenue".to_string()),
             );
         spec.layers.push(layer);
 
@@ -181,9 +180,9 @@ mod integration_tests {
         let layer = Layer::new(Geom::Area)
             .with_aesthetic(
                 "x".to_string(),
-                AestheticValue::Column("timestamp".to_string()),
+                AestheticValue::column("timestamp".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()));
+            .with_aesthetic("y".to_string(), AestheticValue::column("value".to_string()));
         spec.layers.push(layer);
 
         // Generate Vega-Lite JSON
@@ -232,11 +231,11 @@ mod integration_tests {
         let layer = Layer::new(Geom::Point)
             .with_aesthetic(
                 "x".to_string(),
-                AestheticValue::Column("int_col".to_string()),
+                AestheticValue::column("int_col".to_string()),
             )
             .with_aesthetic(
                 "y".to_string(),
-                AestheticValue::Column("float_col".to_string()),
+                AestheticValue::column("float_col".to_string()),
             );
         spec.layers.push(layer);
 
@@ -284,11 +283,11 @@ mod integration_tests {
         let layer = Layer::new(Geom::Point)
             .with_aesthetic(
                 "x".to_string(),
-                AestheticValue::Column("int_col".to_string()),
+                AestheticValue::column("int_col".to_string()),
             )
             .with_aesthetic(
                 "y".to_string(),
-                AestheticValue::Column("float_col".to_string()),
+                AestheticValue::column("float_col".to_string()),
             );
         spec.layers.push(layer);
 
@@ -317,9 +316,9 @@ mod integration_tests {
         let layer = Layer::new(Geom::Bar)
             .with_aesthetic(
                 "x".to_string(),
-                AestheticValue::Column("category".to_string()),
+                AestheticValue::column("category".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()));
+            .with_aesthetic("y".to_string(), AestheticValue::column("value".to_string()));
         spec.layers.push(layer);
 
         let writer = VegaLiteWriter::new();
@@ -366,10 +365,10 @@ mod integration_tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("day".to_string()))
+            .with_aesthetic("x".to_string(), AestheticValue::column("day".to_string()))
             .with_aesthetic(
                 "y".to_string(),
-                AestheticValue::Column("total_sales".to_string()),
+                AestheticValue::column("total_sales".to_string()),
             );
         spec.layers.push(layer);
 
@@ -407,10 +406,10 @@ mod integration_tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("small".to_string()))
+            .with_aesthetic("x".to_string(), AestheticValue::column("small".to_string()))
             .with_aesthetic(
                 "y".to_string(),
-                AestheticValue::Column("medium".to_string()),
+                AestheticValue::column("medium".to_string()),
             );
         spec.layers.push(layer);
 
@@ -458,8 +457,8 @@ mod integration_tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Bar)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("int".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::Column("big".to_string()));
+            .with_aesthetic("x".to_string(), AestheticValue::column("int".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::column("big".to_string()));
         spec.layers.push(layer);
 
         let writer = VegaLiteWriter::new();
