@@ -1989,8 +1989,14 @@ mod tests {
             .collect();
 
         // Sum of A should be 30, sum of B should be 30
-        assert!(y_values.contains(&30.0), "Should have sum of 30 for category A");
-        assert!(y_values.contains(&30.0), "Should have sum of 30 for category B");
+        assert!(
+            y_values.contains(&30.0),
+            "Should have sum of 30 for category A"
+        );
+        assert!(
+            y_values.contains(&30.0),
+            "Should have sum of 30 for category B"
+        );
     }
 
     #[cfg(feature = "duckdb")]
@@ -2036,8 +2042,14 @@ mod tests {
             .flatten()
             .collect();
 
-        assert!(y_values.contains(&2), "Should have count of 2 for category A");
-        assert!(y_values.contains(&1), "Should have count of 1 for category B");
+        assert!(
+            y_values.contains(&2),
+            "Should have count of 2 for category A"
+        );
+        assert!(
+            y_values.contains(&1),
+            "Should have count of 1 for category B"
+        );
     }
 
     #[cfg(feature = "duckdb")]
@@ -2148,10 +2160,7 @@ mod tests {
         "#;
 
         let result = prepare_data(query, &reader);
-        assert!(
-            result.is_err(),
-            "Bar with literal weight should error"
-        );
+        assert!(result.is_err(), "Bar with literal weight should error");
 
         if let Err(err) = result {
             let err_msg = format!("{}", err);

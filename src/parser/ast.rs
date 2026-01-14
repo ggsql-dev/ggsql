@@ -287,7 +287,9 @@ impl Geom {
             Geom::Bar => GeomAesthetics {
                 // Bar supports optional y - stat decides COUNT vs identity
                 // weight: optional, if mapped uses SUM(weight) instead of COUNT(*)
-                supported: &["x", "y", "weight", "color", "colour", "fill", "width", "opacity"],
+                supported: &[
+                    "x", "y", "weight", "color", "colour", "fill", "width", "opacity",
+                ],
                 required: &["x"],
             },
             Geom::Area => GeomAesthetics {
@@ -664,7 +666,12 @@ impl Geom {
             format!("{x} AS x, {agg}", x = x_col, agg = agg_expr)
         } else {
             let grp_cols = group_by.join(", ");
-            format!("{g}, {x} AS x, {agg}", g = grp_cols, x = x_col, agg = agg_expr)
+            format!(
+                "{g}, {x} AS x, {agg}",
+                g = grp_cols,
+                x = x_col,
+                agg = agg_expr
+            )
         };
 
         Ok(Some(format!(
