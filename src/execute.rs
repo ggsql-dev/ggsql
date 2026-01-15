@@ -3,7 +3,7 @@
 //! Provides shared execution logic for building data maps from queries,
 //! handling both global SQL and layer-specific data sources.
 
-use crate::parser::ast::{AestheticValue, Layer, LiteralValue, StatResult};
+use crate::parser::ast::{AestheticValue, ColumnInfo, Layer, LiteralValue, Schema, StatResult};
 use crate::{parser, DataFrame, DataSource, Facet, GgsqlError, Result, VizSpec};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Parser};
@@ -175,6 +175,38 @@ fn literal_to_sql(lit: &LiteralValue) -> String {
             }
         }
     }
+}
+
+/// Fetch schema for a query using LIMIT 0
+///
+/// Executes a schema-only query to determine column names and types.
+/// Used to:
+/// 1. Resolve wildcard mappings to actual columns
+/// 2. Filter group_by to discrete columns only
+/// 3. Pass to stat transforms for column validation
+fn fetch_layer_schema<F>(query: &str, execute_query: &F) -> Result<Schema>
+where
+    F: Fn(&str) -> Result<DataFrame>,
+{
+    let schema_query = format!("SELECT * FROM ({}) AS __schema__ LIMIT 0", query);
+    let df = execute_query(&schema_query)?;
+
+    Ok(df
+        .get_columns()
+        .iter()
+        .map(|col| {
+            use polars::prelude::DataType;
+            let dtype = col.dtype();
+            // Discrete: String, Boolean, Date (grouping by day makes sense), Categorical
+            // Continuous: numeric types, Datetime, Time (too granular for grouping)
+            let is_discrete = matches!(dtype, DataType::String | DataType::Boolean | DataType::Date)
+                || dtype.is_categorical();
+            ColumnInfo {
+                name: col.name().to_string(),
+                is_discrete,
+            }
+        })
+        .collect())
 }
 
 /// Extract constant aesthetics from a layer
@@ -404,11 +436,6 @@ where
         format!("SELECT *, {} FROM {}", const_cols.join(", "), table_name)
     };
 
-    // Apply filter
-    if let Some(f) = filter {
-        query = format!("{} WHERE {}", query, f);
-    }
-
     // Combine partition_by and facet variables for grouping
     let mut group_by = layer.partition_by.clone();
     if let Some(f) = facet {
@@ -419,12 +446,71 @@ where
         }
     }
 
+    // Only fetch schema and validate aesthetic columns for stat transforms
+    // Non-stat geoms don't need grouping, so no validation needed
+    let needs_stat = layer.geom.needs_stat_transform(&layer.aesthetics);
+    let schema = if needs_stat {
+        // Fetch schema once for the layer to validate columns and check types
+        let schema = fetch_layer_schema(&query, execute_query)?;
+        let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
+        let discrete_columns: HashSet<&str> = schema
+            .iter()
+            .filter(|c| c.is_discrete)
+            .map(|c| c.name.as_str())
+            .collect();
+
+        // Add columns for non-consumed aesthetics to group_by for preservation
+        // This ensures columns mapped to fill, color, shape, etc. are kept during stat transforms
+        // Uses schema to validate column existence and discreteness
+        let consumed_aesthetics = layer.geom.stat_consumed_aesthetics();
+        for (aesthetic, value) in &layer.aesthetics.aesthetics {
+            if consumed_aesthetics.contains(&aesthetic.as_str()) {
+                continue;
+            }
+            if let Some(col) = value.column_name() {
+                // Check if column exists in schema
+                if !schema_columns.contains(col) {
+                    // Column doesn't exist - skip if from wildcard, error if explicit
+                    if !value.is_from_wildcard() {
+                        return Err(GgsqlError::ValidationError(format!(
+                            "Column '{}' mapped to '{}' does not exist in data source",
+                            col, aesthetic
+                        )));
+                    }
+                    continue;
+                }
+
+                // Check if column is discrete (suitable for grouping)
+                if !discrete_columns.contains(col) {
+                    continue;
+                }
+
+                // Add discrete column to group_by
+                if !group_by.contains(&col.to_string()) {
+                    group_by.push(col.to_string());
+                }
+            }
+        }
+        schema
+    } else {
+        // For non-stat geoms, create empty schema (stat transform will return Identity anyway)
+        Vec::new()
+    };
+
+    // Apply filter
+    if let Some(f) = filter {
+        query = format!("{} WHERE {}", query, f);
+    }
+
     // Apply statistical transformation (after filter, uses combined group_by)
     // Returns StatResult::Identity for no transformation, StatResult::Transformed for transformed query
-    let stat_result =
-        layer
-            .geom
-            .apply_stat_transform(&query, &layer.aesthetics, &group_by, execute_query)?;
+    let stat_result = layer.geom.apply_stat_transform(
+        &query,
+        &schema,
+        &layer.aesthetics,
+        &group_by,
+        execute_query,
+    )?;
 
     match stat_result {
         StatResult::Transformed {

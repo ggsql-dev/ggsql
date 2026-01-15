@@ -24,6 +24,20 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{DataFrame, GgsqlError, Result};
 
+/// Column information from a data source schema
+#[derive(Debug, Clone)]
+pub struct ColumnInfo {
+    /// Column name
+    pub name: String,
+    /// Whether this column is discrete (suitable for grouping)
+    /// Discrete: String, Boolean, Categorical, Date
+    /// Continuous: numeric types, Datetime, Time
+    pub is_discrete: bool,
+}
+
+/// Schema of a data source - list of columns with type info
+pub type Schema = Vec<ColumnInfo>;
+
 /// Complete ggSQL visualization specification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VizSpec {
@@ -466,6 +480,20 @@ impl Geom {
         }
     }
 
+    /// Returns aesthetics consumed as input by this geom's stat transform.
+    ///
+    /// Columns mapped to these aesthetics are used by the stat and don't need
+    /// separate preservation in GROUP BY. All other aesthetic columns will be
+    /// automatically preserved during stat transforms.
+    pub fn stat_consumed_aesthetics(&self) -> &[&str] {
+        match self {
+            Geom::Histogram => &["x"],
+            Geom::Bar => &["x", "y", "weight"],
+            // Other geoms with stats would be added here
+            _ => &[],
+        }
+    }
+
     /// Check if this geom requires a statistical transformation
     ///
     /// Returns true if the geom needs data to be transformed before rendering.
@@ -504,6 +532,7 @@ impl Geom {
     pub fn apply_stat_transform<F>(
         &self,
         query: &str,
+        schema: &Schema,
         aesthetics: &Mappings,
         group_by: &[String],
         execute_query: &F,
@@ -513,7 +542,7 @@ impl Geom {
     {
         match self {
             Geom::Histogram => self.stat_histogram(query, aesthetics, group_by, execute_query),
-            Geom::Bar => self.stat_bar_count(query, aesthetics, group_by, execute_query),
+            Geom::Bar => self.stat_bar_count(query, schema, aesthetics, group_by),
             // Future: Geom::Density, Geom::Smooth, etc.
             _ => Ok(StatResult::Identity),
         }
@@ -588,6 +617,8 @@ impl Geom {
 
     /// Statistical transformation for bar: COUNT/SUM vs identity based on y and weight mappings
     ///
+    /// Uses pre-fetched schema to check column existence (avoiding redundant queries).
+    ///
     /// Decision logic for y:
     /// - y mapped to literal → identity (use original data)
     /// - y mapped to column that exists → identity (use original data)
@@ -604,39 +635,19 @@ impl Geom {
     ///
     /// Returns `StatResult::Identity` for identity (no transformation),
     /// `StatResult::Transformed` for aggregation with new y mapping.
-    fn stat_bar_count<F>(
+    fn stat_bar_count(
         &self,
         query: &str,
+        schema: &Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        execute_query: &F,
-    ) -> Result<StatResult>
-    where
-        F: Fn(&str) -> Result<DataFrame>,
-    {
+    ) -> Result<StatResult> {
         // x is now optional - if not mapped, we'll use a dummy constant
         let x_col = get_column_name(aesthetics, "x");
         let use_dummy_x = x_col.is_none();
 
-        // Lazily fetch schema columns (only when needed for column existence checks)
-        let mut cached_columns: Option<Vec<String>> = None;
-
-        // Helper function to fetch schema
-        fn fetch_schema<F>(query: &str, execute_query: &F) -> Result<Vec<String>>
-        where
-            F: Fn(&str) -> Result<DataFrame>,
-        {
-            let schema_query = format!(
-                "SELECT * FROM ({query}) AS __schema__ LIMIT 0",
-                query = query
-            );
-            let schema_df = execute_query(&schema_query)?;
-            Ok(schema_df
-                .get_column_names()
-                .iter()
-                .map(|s| s.to_string())
-                .collect())
-        }
+        // Build column lookup set from pre-fetched schema
+        let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
 
         // Check if y is mapped
         if let Some(y_value) = aesthetics.get("y") {
@@ -647,12 +658,7 @@ impl Geom {
 
             // Case 2: y is a column reference - check if it exists in the data
             if let Some(y_col) = y_value.column_name() {
-                if cached_columns.is_none() {
-                    cached_columns = Some(fetch_schema(query, execute_query)?);
-                }
-                let columns = cached_columns.as_ref().unwrap();
-
-                if columns.iter().any(|c| c == y_col) {
+                if schema_columns.contains(y_col) {
                     // y column exists - use identity (no transformation)
                     return Ok(StatResult::Identity);
                 } else if !y_value.is_from_wildcard() {
@@ -678,12 +684,7 @@ impl Geom {
             }
 
             if let Some(weight_col) = weight_value.column_name() {
-                if cached_columns.is_none() {
-                    cached_columns = Some(fetch_schema(query, execute_query)?);
-                }
-                let columns = cached_columns.as_ref().unwrap();
-
-                if columns.iter().any(|c| c == weight_col) {
+                if schema_columns.contains(weight_col) {
                     // weight column exists - use SUM (but still call it "count")
                     format!("SUM({}) AS __ggsql_stat__count", weight_col)
                 } else if !weight_value.is_from_wildcard() {
