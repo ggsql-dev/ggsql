@@ -51,7 +51,6 @@ pub fn init_builtin_data(sql: &str) -> Result<Vec<String>, GgsqlError> {
     ))
     "#;
     let tokens = tokens_from_tree(sql, token_def, "select")?;
-    eprintln!("Tokens {:?}", tokens);
     let mut result = Vec::new();
     if tokens.is_empty() {
         return Ok(result);
@@ -117,9 +116,6 @@ fn tokens_from_tree(
         ));
     }
     let index = index.unwrap();
-    eprintln!("SQL: {}", sql_query);
-    eprintln!("Tree: {}", tree.root_node().to_sexp());
-    eprintln!("Index: {}", index);
 
     // Find matches of `tree_query` in the parsed tree
     let mut cursor = tree_sitter::QueryCursor::new();
@@ -139,4 +135,40 @@ fn tokens_from_tree(
         }
     }
     Ok(result)
+}
+
+#[cfg(feature = "duckdb")]
+#[test]
+fn test_builtin_data_is_available() {
+    let reader = crate::reader::DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+    // We need the VISUALISE here so `prepare_data` doesn't get tripped up
+    let query = "SELECT * FROM 'penguins' VISUALISE";
+    let result = crate::execute::prepare_data(query, &reader).unwrap();
+    let dataframe = result.data.get("__global__").unwrap();
+    let colnames = dataframe.get_column_names();
+
+    assert_eq!(
+        colnames,
+        &[
+            "species",
+            "island",
+            "bill_len",
+            "bill_dep",
+            "flipper_len",
+            "body_mass",
+            "sex",
+            "year"
+        ]
+    );
+
+    let query = "SELECT * FROM airquality VISUALISE";
+    let result = crate::execute::prepare_data(query, &reader).unwrap();
+    let dataframe = result.data.get("__global__").unwrap();
+    let colnames = dataframe.get_column_names();
+
+    assert_eq!(
+        colnames,
+        &["Ozone", "Solar.R", "Wind", "Temp", "Month", "Day", "Date"]
+    );
 }
