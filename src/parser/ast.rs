@@ -858,48 +858,64 @@ impl Geom {
         };
 
         // Build the query based on whether x is mapped or not
+        // Use two-stage query: first GROUP BY, then calculate proportion with window function
         let (transformed_query, stat_columns, dummy_columns) = if use_dummy_x {
             // x is not mapped - use dummy constant, no GROUP BY on x
-            let select_cols = if group_by.is_empty() {
-                format!(
-                    "'__ggsql_stat__dummy__' AS __ggsql_stat__x, {agg}",
-                    agg = agg_expr
+            let (grouped_select, final_select) = if group_by.is_empty() {
+                (
+                    format!(
+                        "'__ggsql_stat__dummy__' AS __ggsql_stat__x, {agg}",
+                        agg = agg_expr
+                    ),
+                    "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER () AS __ggsql_stat__proportion".to_string()
                 )
             } else {
                 let grp_cols = group_by.join(", ");
-                format!(
-                    "{g}, '__ggsql_stat__dummy__' AS __ggsql_stat__x, {agg}",
-                    g = grp_cols,
-                    agg = agg_expr
+                (
+                    format!(
+                        "{g}, '__ggsql_stat__dummy__' AS __ggsql_stat__x, {agg}",
+                        g = grp_cols,
+                        agg = agg_expr
+                    ),
+                    format!(
+                        "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER (PARTITION BY {}) AS __ggsql_stat__proportion",
+                        grp_cols
+                    )
                 )
             };
 
             let query_str = if group_by.is_empty() {
                 // No grouping at all - single aggregate
                 format!(
-                    "WITH __stat_src__ AS ({query}) SELECT {select} FROM __stat_src__",
+                    "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__) SELECT {final} FROM __grouped__",
                     query = query,
-                    select = select_cols
+                    grouped = grouped_select,
+                    final = final_select
                 )
             } else {
                 // Group by partition/facet variables only
                 let group_cols = group_by.join(", ");
                 format!(
-                    "WITH __stat_src__ AS ({query}) SELECT {select} FROM __stat_src__ GROUP BY {group}",
+                    "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __grouped__",
                     query = query,
-                    select = select_cols,
-                    group = group_cols
+                    grouped = grouped_select,
+                    group = group_cols,
+                    final = final_select
                 )
             };
 
-            // Stat columns: x (dummy) and count - x is a dummy placeholder
+            // Stat columns: x (dummy), count, and proportion - x is a dummy placeholder
             (
                 query_str,
-                vec!["x".to_string(), "count".to_string()],
+                vec![
+                    "x".to_string(),
+                    "count".to_string(),
+                    "proportion".to_string(),
+                ],
                 vec!["x".to_string()],
             )
         } else {
-            // x is mapped - use existing logic
+            // x is mapped - use existing logic with two-stage query
             let x_col = x_col.unwrap();
 
             // Build grouped columns (group_by includes partition_by + facet variables + x)
@@ -912,22 +928,36 @@ impl Geom {
             };
 
             // Keep original x column name, only add the aggregated stat column
-            let select_cols = if group_by.is_empty() {
-                format!("{x}, {agg}", x = x_col, agg = agg_expr)
+            let (grouped_select, final_select) = if group_by.is_empty() {
+                (
+                    format!("{x}, {agg}", x = x_col, agg = agg_expr),
+                    "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER () AS __ggsql_stat__proportion".to_string()
+                )
             } else {
                 let grp_cols = group_by.join(", ");
-                format!("{g}, {x}, {agg}", g = grp_cols, x = x_col, agg = agg_expr)
+                (
+                    format!("{g}, {x}, {agg}", g = grp_cols, x = x_col, agg = agg_expr),
+                    format!(
+                        "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER (PARTITION BY {}) AS __ggsql_stat__proportion",
+                        grp_cols
+                    )
+                )
             };
 
             let query_str = format!(
-                "WITH __stat_src__ AS ({query}) SELECT {select} FROM __stat_src__ GROUP BY {group}",
+                "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __grouped__",
                 query = query,
-                select = select_cols,
-                group = group_cols
+                grouped = grouped_select,
+                group = group_cols,
+                final = final_select
             );
 
-            // Only count stat column (x is preserved from original data), no dummies
-            (query_str, vec!["count".to_string()], vec![])
+            // count and proportion stat columns (x is preserved from original data), no dummies
+            (
+                query_str,
+                vec!["count".to_string(), "proportion".to_string()],
+                vec![],
+            )
         };
 
         // Return with stat column names
