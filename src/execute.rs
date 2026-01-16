@@ -788,13 +788,16 @@ where
     datasets.dedup();
 
     for dataset in datasets {
+        use crate::reader::data::*;
         let materialize_query = match dataset {
-            "penguins" => &crate::reader::data::prep_penguins_query(),
-            "__MY_OTHER_DATASET__" => "",
+            "penguins" => &prep_penguins_query(),
+            "airquality" => &prep_airquality_query(),
             // We'll ignore other options for now
             _ => "",
         };
-        execute(materialize_query)?;
+        if !materialize_query.is_empty() {
+            execute(materialize_query)?;
+        }
     }
     Ok(())
 }
