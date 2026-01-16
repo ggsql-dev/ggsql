@@ -1,4 +1,7 @@
 use std::{env, fs};
+use tree_sitter::{Parser, Query, StreamingIterator};
+
+use crate::GgsqlError;
 
 static PENGUINS: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -31,4 +34,109 @@ fn prep_builtin_dataset_query(name: &str, data: &[u8]) -> String {
         name,
         tmp_path.display()
     )
+}
+
+pub fn init_builtin_data(sql: &str) -> Result<Vec<String>, GgsqlError> {
+    // This definition pulls out the dataset from SELECT {} FROM {string/identifiers} by
+    // @select'ing the string/identifier token.
+    let token_def = r#"
+    (select_statement
+      (select_body
+        (sql_keyword) @key
+        [
+          (string)
+          (identifier)
+        ] @select
+        (#eq? @key "FROM")
+    ))
+    "#;
+    let tokens = tokens_from_tree(sql, token_def, "select")?;
+    eprintln!("Tokens {:?}", tokens);
+    let mut result = Vec::new();
+    if tokens.is_empty() {
+        return Ok(result);
+    }
+
+    // Remove quotation marks from tokens
+    let mut tokens: Vec<&str> = tokens.iter().map(|s| s.trim_matches(['"', '\''])).collect();
+    tokens.sort_unstable();
+    tokens.dedup();
+
+    for dataset in tokens {
+        let materialize_query = match dataset {
+            "penguins" => &prep_penguins_query(),
+            "airquality" => &prep_airquality_query(),
+            _ => "",
+        };
+        if !materialize_query.is_empty() {
+            result.push(materialize_query.to_string());
+        }
+    }
+    Ok(result)
+}
+
+fn tokens_from_tree(
+    sql_query: &str,
+    tree_query: &str,
+    name: &str,
+) -> Result<Vec<String>, GgsqlError> {
+    // Setup parser
+    let mut parser = Parser::new();
+    if let Err(e) = parser.set_language(&tree_sitter_ggsql::language()) {
+        return Err(GgsqlError::ParseError(format!(
+            "Failed to initialise parser: {}",
+            e
+        )));
+    }
+
+    // Digest SQL to tree
+    let tree = parser.parse(sql_query, None);
+    if tree.is_none() {
+        return Err(GgsqlError::ParseError(format!(
+            "Failed to parse query: {}",
+            sql_query
+        )));
+    }
+    let tree = tree.unwrap();
+
+    // Setup query for tree
+    let query = Query::new(&tree.language(), tree_query);
+    if let Err(e) = query {
+        return Err(GgsqlError::ParseError(format!(
+            "Failed to initialise `tree_query`: {}",
+            e
+        )));
+    }
+    let query = query.unwrap();
+
+    // Find `name` in `tree_query`
+    let index = query.capture_index_for_name(name);
+    if index.is_none() {
+        return Err(GgsqlError::ParseError(
+            "Failed to capture index for `tree_query`".to_string(),
+        ));
+    }
+    let index = index.unwrap();
+    eprintln!("SQL: {}", sql_query);
+    eprintln!("Tree: {}", tree.root_node().to_sexp());
+    eprintln!("Index: {}", index);
+
+    // Find matches of `tree_query` in the parsed tree
+    let mut cursor = tree_sitter::QueryCursor::new();
+    let mut matches = cursor.matches(&query, tree.root_node(), sql_query.as_bytes());
+
+    // Collect results
+    let mut result: Vec<String> = Vec::new();
+    while let Some(matching) = matches.next() {
+        for item in matching.captures {
+            if item.index != index {
+                // We have a match with a different @keyword than the one defined by `name`.
+                continue;
+            }
+            let node = item.node;
+            let token = &sql_query[node.start_byte()..node.end_byte()];
+            result.push(token.to_string());
+        }
+    }
+    Ok(result)
 }
