@@ -1337,8 +1337,14 @@ mod tests {
         // Create a simple spec
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer);
 
         // Create simple DataFrame
@@ -1371,8 +1377,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         let mut labels = Labels {
@@ -1402,8 +1414,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::Literal(LiteralValue::String("blue".to_string())),
@@ -1428,8 +1446,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("foo".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("foo".to_string()),
+            );
         spec.layers.push(layer);
 
         let df = df! {
@@ -1456,13 +1480,22 @@ mod tests {
 
         // First layer is valid
         let layer1 = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer1);
 
         // Second layer references non-existent column
         let layer2 = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
             .with_aesthetic(
                 "y".to_string(),
                 AestheticValue::standard_column("missing_col".to_string()),
@@ -1505,8 +1538,14 @@ mod tests {
         for (geom, expected_mark) in geoms {
             let mut spec = VizSpec::new();
             let layer = Layer::new(geom.clone())
-                .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-                .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+                .with_aesthetic(
+                    "x".to_string(),
+                    AestheticValue::standard_column("x".to_string()),
+                )
+                .with_aesthetic(
+                    "y".to_string(),
+                    AestheticValue::standard_column("y".to_string()),
+                );
             spec.layers.push(layer);
 
             let df = df! {
@@ -1540,8 +1579,14 @@ mod tests {
         for (geom, expected_mark) in geoms {
             let mut spec = VizSpec::new();
             let layer = Layer::new(geom.clone())
-                .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-                .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+                .with_aesthetic(
+                    "x".to_string(),
+                    AestheticValue::standard_column("x".to_string()),
+                )
+                .with_aesthetic(
+                    "y".to_string(),
+                    AestheticValue::standard_column("y".to_string()),
+                );
             spec.layers.push(layer);
 
             let df = df! {
@@ -1564,8 +1609,14 @@ mod tests {
         for geom in [Geom::Text, Geom::Label] {
             let mut spec = VizSpec::new();
             let layer = Layer::new(geom.clone())
-                .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-                .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+                .with_aesthetic(
+                    "x".to_string(),
+                    AestheticValue::standard_column("x".to_string()),
+                )
+                .with_aesthetic(
+                    "y".to_string(),
+                    AestheticValue::standard_column("y".to_string()),
+                );
             spec.layers.push(layer);
 
             let df = df! {
@@ -1587,8 +1638,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -1618,8 +1675,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "size".to_string(),
                 AestheticValue::standard_column("value".to_string()),
@@ -1653,7 +1716,10 @@ mod tests {
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()))
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            )
             .with_aesthetic(
                 "fill".to_string(),
                 AestheticValue::standard_column("region".to_string()),
@@ -1680,8 +1746,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -1724,8 +1796,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "size".to_string(),
                 AestheticValue::Literal(LiteralValue::Number(100.0)),
@@ -1750,8 +1828,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "linetype".to_string(),
                 AestheticValue::Literal(LiteralValue::Boolean(true)),
@@ -1778,14 +1862,26 @@ mod tests {
 
         // First layer: line
         let layer1 = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer1);
 
         // Second layer: points
         let layer2 = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::Literal(LiteralValue::String("red".to_string())),
@@ -1825,22 +1921,40 @@ mod tests {
         // Layer 1: area
         spec.layers.push(
             Layer::new(Geom::Area)
-                .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-                .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string())),
+                .with_aesthetic(
+                    "x".to_string(),
+                    AestheticValue::standard_column("x".to_string()),
+                )
+                .with_aesthetic(
+                    "y".to_string(),
+                    AestheticValue::standard_column("y".to_string()),
+                ),
         );
 
         // Layer 2: line
         spec.layers.push(
             Layer::new(Geom::Line)
-                .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-                .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string())),
+                .with_aesthetic(
+                    "x".to_string(),
+                    AestheticValue::standard_column("x".to_string()),
+                )
+                .with_aesthetic(
+                    "y".to_string(),
+                    AestheticValue::standard_column("y".to_string()),
+                ),
         );
 
         // Layer 3: points
         spec.layers.push(
             Layer::new(Geom::Point)
-                .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-                .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string())),
+                .with_aesthetic(
+                    "x".to_string(),
+                    AestheticValue::standard_column("x".to_string()),
+                )
+                .with_aesthetic(
+                    "y".to_string(),
+                    AestheticValue::standard_column("y".to_string()),
+                ),
         );
 
         let df = df! {
@@ -1865,8 +1979,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer);
 
         let mut labels = Labels {
@@ -1895,7 +2015,10 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
             .with_aesthetic(
                 "y".to_string(),
                 AestheticValue::standard_column("revenue".to_string()),
@@ -1937,7 +2060,10 @@ mod tests {
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         let mut labels = Labels {
@@ -1980,8 +2106,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer);
 
         let df = df! {
@@ -2007,7 +2139,10 @@ mod tests {
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         let df = df! {
@@ -2029,8 +2164,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer);
 
         let df = df! {
@@ -2095,8 +2236,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer);
 
         let df = df! {
@@ -2118,8 +2265,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer);
 
         // Create dataset with 100 rows
@@ -2155,8 +2308,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -2194,8 +2353,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -2238,8 +2403,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "size".to_string(),
                 AestheticValue::standard_column("value".to_string()),
@@ -2283,8 +2454,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::standard_column("temperature".to_string()),
@@ -2335,7 +2512,10 @@ mod tests {
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         // Add axis guide for x
@@ -2378,8 +2558,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -2455,7 +2641,10 @@ mod tests {
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()))
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            )
             .with_aesthetic(
                 "fill".to_string(),
                 AestheticValue::standard_column("region".to_string()),
@@ -2504,8 +2693,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer);
 
         // Add COORD cartesian with xlim
@@ -2543,8 +2738,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer);
 
         // Add COORD cartesian with ylim
@@ -2585,8 +2786,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer);
 
         // Add COORD cartesian with both xlim and ylim
@@ -2632,8 +2839,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer);
 
         // Add COORD with reversed xlim (should auto-swap)
@@ -2671,8 +2884,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -2721,14 +2940,26 @@ mod tests {
 
         // First layer: line
         let layer1 = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer1);
 
         // Second layer: points
         let layer2 = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer2);
 
         // Add COORD with xlim and ylim
@@ -2783,7 +3014,10 @@ mod tests {
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         // Add custom axis labels
@@ -2834,7 +3068,10 @@ mod tests {
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer1);
 
         // Second layer: point
@@ -2843,7 +3080,10 @@ mod tests {
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer2);
 
         // Add COORD flip
@@ -2879,8 +3119,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -2932,7 +3178,10 @@ mod tests {
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         // Add COORD polar (defaults to theta = y)
@@ -2986,7 +3235,10 @@ mod tests {
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         // Add COORD polar with explicit theta = y
@@ -3022,8 +3274,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         // Create DataFrame with Date type
@@ -3055,7 +3313,10 @@ mod tests {
                 "x".to_string(),
                 AestheticValue::standard_column("datetime".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         // Create DataFrame with Datetime type (microseconds since epoch)
@@ -3083,8 +3344,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("time".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("time".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         // Create DataFrame with Time type (nanoseconds since midnight)
@@ -3112,7 +3379,10 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
             .with_aesthetic(
                 "y".to_string(),
                 AestheticValue::standard_column("revenue".to_string()),
@@ -3151,7 +3421,10 @@ mod tests {
                 "x".to_string(),
                 AestheticValue::standard_column("timestamp".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         // Create DataFrame with Datetime type
@@ -3186,8 +3459,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            )
             .with_partition_by(vec!["category".to_string()]);
         spec.layers.push(layer);
 
@@ -3218,8 +3497,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            )
             .with_partition_by(vec!["category".to_string(), "region".to_string()]);
         spec.layers.push(layer);
 
@@ -3254,8 +3539,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         let dates = Series::new("date".into(), &["2024-01-01", "2024-01-02"]);
@@ -3279,8 +3570,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            )
             .with_partition_by(vec!["nonexistent_column".to_string()]);
         spec.layers.push(layer);
 
@@ -3305,8 +3602,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer);
         spec.facet = Some(Facet::Wrap {
             variables: vec!["region".to_string()],
@@ -3355,8 +3658,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()));
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
         spec.layers.push(layer);
         spec.facet = Some(Facet::Grid {
             rows: vec!["region".to_string()],
@@ -3407,8 +3716,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            )
             .with_parameter(
                 "color".to_string(),
                 ParameterValue::String("red".to_string()),
@@ -3438,8 +3753,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_parameter("size".to_string(), ParameterValue::Number(100.0))
             .with_parameter("opacity".to_string(), ParameterValue::Number(0.5));
         spec.layers.push(layer);
@@ -3471,8 +3792,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -3514,12 +3841,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let mut layer = Layer::new(Geom::Path);
-        layer
-            .mappings
-            .insert("x".to_string(), AestheticValue::standard_column("lon".to_string()));
-        layer
-            .mappings
-            .insert("y".to_string(), AestheticValue::standard_column("lat".to_string()));
+        layer.mappings.insert(
+            "x".to_string(),
+            AestheticValue::standard_column("lon".to_string()),
+        );
+        layer.mappings.insert(
+            "y".to_string(),
+            AestheticValue::standard_column("lat".to_string()),
+        );
         spec.layers.push(layer);
 
         let df = df! {
@@ -3553,12 +3882,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let mut layer = Layer::new(Geom::Path);
-        layer
-            .mappings
-            .insert("x".to_string(), AestheticValue::standard_column("lon".to_string()));
-        layer
-            .mappings
-            .insert("y".to_string(), AestheticValue::standard_column("lat".to_string()));
+        layer.mappings.insert(
+            "x".to_string(),
+            AestheticValue::standard_column("lon".to_string()),
+        );
+        layer.mappings.insert(
+            "y".to_string(),
+            AestheticValue::standard_column("lat".to_string()),
+        );
         layer.partition_by = vec!["trip_id".to_string()];
         spec.layers.push(layer);
 
@@ -3587,12 +3918,14 @@ mod tests {
 
         let mut spec = VizSpec::new();
         let mut layer = Layer::new(Geom::Line);
-        layer
-            .mappings
-            .insert("x".to_string(), AestheticValue::standard_column("date".to_string()));
-        layer
-            .mappings
-            .insert("y".to_string(), AestheticValue::standard_column("value".to_string()));
+        layer.mappings.insert(
+            "x".to_string(),
+            AestheticValue::standard_column("date".to_string()),
+        );
+        layer.mappings.insert(
+            "y".to_string(),
+            AestheticValue::standard_column("value".to_string()),
+        );
         spec.layers.push(layer);
 
         let df = df! {

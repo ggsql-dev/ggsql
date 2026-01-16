@@ -1365,8 +1365,7 @@ impl VizSpec {
             // Find first non-constant column mapping
             let mut label = aesthetic.clone(); // Default to aesthetic name
             for layer in &self.layers {
-                if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(&aesthetic)
-                {
+                if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(&aesthetic) {
                     // Skip synthetic constant columns
                     if name.starts_with("__ggsql_const_") {
                         continue;

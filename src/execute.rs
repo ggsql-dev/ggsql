@@ -215,10 +215,7 @@ where
 /// Returns the table/CTE name to query from:
 /// - Layer with explicit source (CTE, table, file) → that source name
 /// - Layer using global data → None (caller should use global schema)
-fn determine_layer_source(
-    layer: &Layer,
-    materialized_ctes: &HashSet<String>,
-) -> Option<String> {
+fn determine_layer_source(layer: &Layer, materialized_ctes: &HashSet<String>) -> Option<String> {
     match &layer.source {
         Some(DataSource::Identifier(name)) => {
             // Check if it's a materialized CTE
@@ -254,14 +251,14 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
         let supported = layer.geom.aesthetics().supported;
 
         // Validate required aesthetics for this geom
-        layer.validate_required_aesthetics().map_err(|e| {
-            GgsqlError::ValidationError(format!("Layer {}: {}", idx + 1, e))
-        })?;
+        layer
+            .validate_required_aesthetics()
+            .map_err(|e| GgsqlError::ValidationError(format!("Layer {}: {}", idx + 1, e)))?;
 
         // Validate SETTING parameters are valid for this geom
-        layer.validate_settings().map_err(|e| {
-            GgsqlError::ValidationError(format!("Layer {}: {}", idx + 1, e))
-        })?;
+        layer
+            .validate_settings()
+            .map_err(|e| GgsqlError::ValidationError(format!("Layer {}: {}", idx + 1, e)))?;
 
         // Validate aesthetic columns exist in schema
         for (aesthetic, value) in &layer.mappings.aesthetics {
@@ -272,7 +269,8 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 
             if let Some(col_name) = value.column_name() {
                 // Skip synthetic columns (stat-generated or constants)
-                if col_name.starts_with("__ggsql_stat__") || col_name.starts_with("__ggsql_const_") {
+                if col_name.starts_with("__ggsql_stat__") || col_name.starts_with("__ggsql_const_")
+                {
                     continue;
                 }
                 if !schema_columns.contains(col_name) {
