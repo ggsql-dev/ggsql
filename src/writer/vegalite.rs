@@ -1074,6 +1074,23 @@ impl Writer for VegaLiteWriter {
                 })
             };
 
+            // For Bar geom, set mark with width parameter
+            if matches!(layer.geom, Geom::Bar) {
+                use crate::parser::ast::ParameterValue;
+                let width = layer
+                    .parameters
+                    .get("width")
+                    .and_then(|p| match p {
+                        ParameterValue::Number(n) => Some(*n),
+                        _ => None,
+                    })
+                    .unwrap_or(0.9);
+                layer_spec["mark"] = json!({
+                    "type": "bar",
+                    "width": {"band": width}
+                });
+            }
+
             // Add window transform for Path geoms to preserve data order
             // (Line geom uses Vega-Lite's default x-axis sorting)
             if matches!(layer.geom, Geom::Path) {
@@ -1501,12 +1518,12 @@ mod tests {
             let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-            assert_eq!(
-                vl_spec["layer"][0]["mark"].as_str().unwrap(),
-                expected_mark,
-                "Failed for geom: {:?}",
-                geom
-            );
+            // Handle both string marks and object marks (e.g., Bar has {"type": "bar", "width": ...})
+            let mark_type = vl_spec["layer"][0]["mark"]
+                .as_str()
+                .or_else(|| vl_spec["layer"][0]["mark"]["type"].as_str())
+                .unwrap();
+            assert_eq!(mark_type, expected_mark, "Failed for geom: {:?}", geom);
         }
     }
 

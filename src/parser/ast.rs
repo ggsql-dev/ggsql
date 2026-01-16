@@ -520,6 +520,10 @@ impl Geom {
                     default: DefaultParamValue::Null,
                 },
             ],
+            Geom::Bar => &[DefaultParam {
+                name: "width",
+                default: DefaultParamValue::Number(0.9),
+            }],
             // Future: Density might have bandwidth, Smooth might have span/method
             _ => &[],
         }
