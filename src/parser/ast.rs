@@ -1,8 +1,8 @@
-//! AST (Abstract Syntax Tree) types for ggSQL specification
+//! AST (Abstract Syntax Tree) types for ggsql specification
 //!
-//! This module defines the typed AST structures that represent parsed ggSQL queries.
+//! This module defines the typed AST structures that represent parsed ggsql queries.
 //! The AST is built from the tree-sitter CST (Concrete Syntax Tree) and provides
-//! a more convenient, typed interface for working with ggSQL specifications.
+//! a more convenient, typed interface for working with ggsql specifications.
 //!
 //! # AST Structure
 //!
@@ -22,7 +22,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-use crate::{DataFrame, GgsqlError, Result};
+use crate::{DataFrame, ggsqlError, Result};
 
 /// Column information from a data source schema
 #[derive(Debug, Clone)]
@@ -38,7 +38,7 @@ pub struct ColumnInfo {
 /// Schema of a data source - list of columns with type info
 pub type Schema = Vec<ColumnInfo>;
 
-/// Complete ggSQL visualization specification
+/// Complete ggsql visualization specification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VizSpec {
     /// Global aesthetic mappings (from VISUALISE clause)
@@ -668,7 +668,7 @@ impl Geom {
     {
         // Get x column name from aesthetics
         let x_col = get_column_name(aesthetics, "x").ok_or_else(|| {
-            GgsqlError::ValidationError("Histogram requires 'x' aesthetic mapping".to_string())
+            ggsqlError::ValidationError("Histogram requires 'x' aesthetic mapping".to_string())
         })?;
 
         // Get bins from parameters (default: 30)
@@ -749,7 +749,7 @@ impl Geom {
         // Determine aggregation expression based on weight aesthetic
         let agg_expr = if let Some(weight_value) = aesthetics.get("weight") {
             if weight_value.is_literal() {
-                return Err(GgsqlError::ValidationError(
+                return Err(ggsqlError::ValidationError(
                     "Histogram weight aesthetic must be a column, not a literal".to_string(),
                 ));
             }
@@ -871,7 +871,7 @@ impl Geom {
         let agg_expr = if let Some(weight_value) = aesthetics.get("weight") {
             // weight is mapped - check if it's valid
             if weight_value.is_literal() {
-                return Err(GgsqlError::ValidationError(
+                return Err(ggsqlError::ValidationError(
                     "Bar weight aesthetic must be a column, not a literal".to_string(),
                 ));
             }
@@ -1022,7 +1022,7 @@ fn get_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String> {
 /// Extract min and max from histogram stats DataFrame
 fn extract_histogram_min_max(df: &DataFrame) -> Result<(f64, f64)> {
     if df.height() == 0 {
-        return Err(GgsqlError::ValidationError(
+        return Err(ggsqlError::ValidationError(
             "No data for histogram statistics".to_string(),
         ));
     }
@@ -1033,7 +1033,7 @@ fn extract_histogram_min_max(df: &DataFrame) -> Result<(f64, f64)> {
         .and_then(|s| s.f64().ok())
         .and_then(|ca| ca.get(0))
         .ok_or_else(|| {
-            GgsqlError::ValidationError("Could not extract min value for histogram".to_string())
+            ggsqlError::ValidationError("Could not extract min value for histogram".to_string())
         })?;
 
     let max_val = df
@@ -1042,7 +1042,7 @@ fn extract_histogram_min_max(df: &DataFrame) -> Result<(f64, f64)> {
         .and_then(|s| s.f64().ok())
         .and_then(|ca| ca.get(0))
         .ok_or_else(|| {
-            GgsqlError::ValidationError("Could not extract max value for histogram".to_string())
+            ggsqlError::ValidationError("Could not extract max value for histogram".to_string())
         })?;
 
     Ok((min_val, max_val))
