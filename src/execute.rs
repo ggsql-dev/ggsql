@@ -4,7 +4,7 @@
 //! handling both global SQL and layer-specific data sources.
 
 use crate::parser::ast::{AestheticValue, ColumnInfo, Layer, LiteralValue, Schema, StatResult};
-use crate::{parser, DataFrame, DataSource, Facet, ggsqlError, Result, VizSpec};
+use crate::{ggsqlError, parser, DataFrame, DataSource, Facet, Result, VizSpec};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Parser};
 

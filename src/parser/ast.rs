@@ -22,7 +22,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-use crate::{DataFrame, ggsqlError, Result};
+use crate::{ggsqlError, DataFrame, Result};
 
 /// Column information from a data source schema
 #[derive(Debug, Clone)]
