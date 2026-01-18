@@ -1,5 +1,6 @@
 ---
 title: "Create layers with `DRAW`"
+sidebar: syntax
 ---
 
 `DRAW` is perhaps the most important clause in ggsql as it defines a layer in your visualisation. A layer is a single instance of a visual representation of a dataset. A visualisation can contain multiple layers, either showing the same dataset in different ways or showing different data in each. Layers are drawn in the order they are defined, so that layers defined first will be behind layers defined last.

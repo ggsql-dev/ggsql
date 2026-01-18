@@ -1,0 +1,4 @@
+---
+title: "Specify aesthetic scaling with `SCALE`"
+sidebar: syntax
+---

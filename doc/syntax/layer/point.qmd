@@ -1,5 +1,6 @@
 ---
 title: "Point layer"
+sidebar: syntax
 ---
 
 > Layers are declared with the `DRAW` clause. Read the documentation for this clause for a thorough description of how to use it.

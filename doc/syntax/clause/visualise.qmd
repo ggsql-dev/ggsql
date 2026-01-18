@@ -1,5 +1,6 @@
 ---
 title: "Initialise a visualisation with `VISUALISE`"
+sidebar: syntax
 ---
 
 The `VISUALISE` (or `VISUALIZE`) clause marks the beginning of a ggsql visualisation declaration. As such it demarcates where the regular query ends and the visualisation query starts. Everything that comes before the `VISUALISE` clause is considered a standard SQL query that is sent to the backend. Any CTEs defined therein will be available to the ggsql query, and if it ends with a `SELECT` query this will automatically be added as the global data for the plot.
