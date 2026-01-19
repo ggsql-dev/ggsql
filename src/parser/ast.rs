@@ -678,7 +678,7 @@ impl Geom {
                 ParameterValue::Number(n) => Some(*n as usize),
                 _ => None,
             })
-            .unwrap_or(30);
+            .expect("bins is not the correct format. Expected a number");
 
         // Get closed parameter (default: "right")
         let closed = parameters
@@ -687,7 +687,7 @@ impl Geom {
                 ParameterValue::String(s) => Some(s.as_str()),
                 _ => None,
             })
-            .unwrap_or("right");
+            .expect("closed is not the correct format. Expected a string");
 
         // Get binwidth from parameters (default: None - use bins to calculate)
         let explicit_binwidth = parameters.get("binwidth").and_then(|p| match p {
