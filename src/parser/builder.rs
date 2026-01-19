@@ -348,9 +348,6 @@ fn parse_mapping_clause(node: &Node, source: &str) -> Result<(Mappings, Option<D
             "mapping_list" => {
                 parse_mapping_list(&child, source, &mut mappings)?;
             }
-            // Note: We no longer handle bare identifiers here since they belong
-            // to the FROM clause (layer_source field). All aesthetic mappings
-            // should be inside mapping_list.
             _ => continue,
         }
     }
