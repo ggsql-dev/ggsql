@@ -4,7 +4,7 @@
 
 use crate::reader::data::init_builtin_data;
 use crate::reader::{connection::ConnectionInfo, Reader};
-use crate::{DataFrame, GgsqlError, Result};
+use crate::{GgsqlError, DataFrame, Result};
 use duckdb::{params, Connection};
 
 /// DuckDB database reader

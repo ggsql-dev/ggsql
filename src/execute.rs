@@ -1,4 +1,4 @@
-//! Query execution module for ggSQL
+//! Query execution module for ggsql
 //!
 //! Provides shared execution logic for building data maps from queries,
 //! handling both global SQL and layer-specific data sources.
@@ -477,7 +477,7 @@ pub struct PreparedData {
 /// including shared state readers in REST API contexts.
 ///
 /// # Arguments
-/// * `query` - The full ggSQL query string
+/// * `query` - The full ggsql query string
 /// * `execute_query` - A function that executes SQL and returns a DataFrame
 pub fn prepare_data_with_executor<F>(query: &str, execute_query: F) -> Result<PreparedData>
 where

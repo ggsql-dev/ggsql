@@ -1,13 +1,13 @@
 //! Vega-Lite JSON writer implementation
 //!
-//! Converts ggSQL specifications and DataFrames into Vega-Lite JSON format
+//! Converts ggsql specifications and DataFrames into Vega-Lite JSON format
 //! for web-based interactive visualizations.
 //!
 //! # Mapping Strategy
 //!
-//! - ggSQL Geom → Vega-Lite mark type
-//! - ggSQL aesthetics → Vega-Lite encoding channels
-//! - ggSQL layers → Vega-Lite layer composition
+//! - ggsql Geom → Vega-Lite mark type
+//! - ggsql aesthetics → Vega-Lite encoding channels
+//! - ggsql layers → Vega-Lite layer composition
 //! - Polars DataFrame → Vega-Lite inline data
 //!
 //! # Example
@@ -22,14 +22,14 @@
 
 use crate::parser::ast::{ArrayElement, Coord, CoordPropertyValue, CoordType, LiteralValue};
 use crate::writer::Writer;
-use crate::{AestheticValue, DataFrame, Geom, GgsqlError, Result, VizSpec};
+use crate::{GgsqlError, AestheticValue, DataFrame, Geom, Result, VizSpec};
 use polars::prelude::*;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 
 /// Vega-Lite JSON writer
 ///
-/// Generates Vega-Lite v5 specifications from ggSQL specs and data.
+/// Generates Vega-Lite v5 specifications from ggsql specs and data.
 pub struct VegaLiteWriter {
     /// Vega-Lite schema version
     schema: String,
@@ -194,7 +194,7 @@ impl VegaLiteWriter {
         }
     }
 
-    /// Map ggSQL Geom to Vega-Lite mark type
+    /// Map ggsql Geom to Vega-Lite mark type
     fn geom_to_mark(&self, geom: &Geom) -> String {
         match geom {
             Geom::Point => "point",
@@ -386,7 +386,7 @@ impl VegaLiteWriter {
         }
     }
 
-    /// Map ggSQL aesthetic name to Vega-Lite encoding channel name
+    /// Map ggsql aesthetic name to Vega-Lite encoding channel name
     fn map_aesthetic_name(&self, aesthetic: &str) -> String {
         match aesthetic {
             "fill" => "color",
