@@ -1,0 +1,14 @@
+.navbar {
+  .navbar-brand-logo {
+    width: 20px;
+  }
+  .nav-item.dropdown {
+    .dropdown-menu {
+      .dropdown-item {
+        code {
+          color: var(--brand-black);
+        }
+      }
+    }
+  }
+}

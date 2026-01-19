@@ -30,7 +30,7 @@ ul.task-list li input[type="checkbox"] {
 <script src="../site_libs/quarto-search/fuse.min.js"></script>
 <script src="../site_libs/quarto-search/quarto-search.js"></script>
 <meta name="quarto:offset" content="../">
-<link href="../assets/icon.png" rel="icon" type="image/png">
+<link href="../assets/icon.svg" rel="icon" type="image/svg+xml">
 <script src="../site_libs/quarto-html/quarto.js" type="module"></script>
 <script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
 <script src="../site_libs/quarto-html/axe/axe-check.js" type="module"></script>
@@ -75,7 +75,7 @@ ul.task-list li input[type="checkbox"] {
 }</script>
 
 
-<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../styles.scss">
 </head>
 
 <body class="nav-sidebar floating nav-fixed quarto-light">
@@ -86,8 +86,8 @@ ul.task-list li input[type="checkbox"] {
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
     <a href="../index.html" class="navbar-brand navbar-brand-logo">
-    <img src="../assets/icon.png" alt="" class="navbar-logo light-content">
-    <img src="../assets/icon.png" alt="" class="navbar-logo dark-content">
+    <img src="../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../assets/icon.svg" alt="" class="navbar-logo dark-content">
     </a>
     <a class="navbar-brand" href="../index.html">
     <span class="navbar-title">ggsql</span>
@@ -119,27 +119,27 @@ ul.task-list li input[type="checkbox"] {
         <li><hr class="dropdown-divider"></li>
         <li>
     <a class="dropdown-item" href="../syntax/clause/visualise.html">
- <span class="dropdown-text">VISUALISE</span></a>
+ <span class="dropdown-text"><code>VISUALISE</code></span></a>
   </li>  
         <li>
     <a class="dropdown-item" href="../syntax/clause/draw.html">
- <span class="dropdown-text">DRAW</span></a>
+ <span class="dropdown-text"><code>DRAW</code></span></a>
   </li>  
         <li>
     <a class="dropdown-item" href="../syntax/clause/scale.html">
- <span class="dropdown-text">SCALE</span></a>
+ <span class="dropdown-text"><code>SCALE</code></span></a>
   </li>  
         <li>
     <a class="dropdown-item" href="../syntax/clause/facet.html">
- <span class="dropdown-text">FACET</span></a>
+ <span class="dropdown-text"><code>FACET</code></span></a>
   </li>  
         <li>
     <a class="dropdown-item" href="../syntax/clause/project.html">
- <span class="dropdown-text">PROJECT</span></a>
+ <span class="dropdown-text"><code>PROJECT</code></span></a>
   </li>  
         <li>
     <a class="dropdown-item" href="../syntax/clause/label.html">
- <span class="dropdown-text">LABEL</span></a>
+ <span class="dropdown-text"><code>LABEL</code></span></a>
   </li>  
     </ul>
   </li>
@@ -248,14 +248,32 @@ ul.task-list li input[type="checkbox"] {
       <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../syntax/layer/bar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Bar</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../syntax/layer/histogram.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Histogram</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../syntax/layer/line.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Line layer</span></a>
+ <span class="menu-text">Line</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../syntax/layer/path.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Path</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../syntax/layer/point.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Point layer</span></a>
+ <span class="menu-text">Point</span></a>
   </div>
 </li>
       </ul>
@@ -316,10 +334,10 @@ ul.task-list li input[type="checkbox"] {
 <p>There are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g.&nbsp;the histogram layer. A layer is selected by providing the layer name after the <code>DRAW</code> clause</p>
 <ul>
 <li><a href="../syntax/layer/point.html"><code>point</code></a> is used to create a scatterplot layer</li>
-<li><code>line</code> is used to produce lineplots with the data sorted along the x axis</li>
-<li><code>path</code> is like <code>line</code> above but does not sort the data but plot it according to its own order</li>
-<li><code>bar</code> creates a bar chart, optionally calculating y from the number of records in each bar</li>
-<li><code>histogram</code> bins the data along the x axis and produces a bar for each bin showing the number of records in it</li>
+<li><a href="../syntax/layer/line.html"><code>line</code></a> is used to produce lineplots with the data sorted along the x axis</li>
+<li><a href="../syntax/layer/path.html"><code>path</code></a> is like <code>line</code> above but does not sort the data but plot it according to its own order</li>
+<li><a href="../syntax/layer/bar.html"><code>bar</code></a> creates a bar chart, optionally calculating y from the number of records in each bar</li>
+<li><a href="../syntax/layer/histogram.html"><code>histogram</code></a> bins the data along the x axis and produces a bar for each bin showing the number of records in it</li>
 </ul>
 </section>
 <section id="scales" class="level2">

@@ -9,116 +9,181 @@
   {
     "objectID": "syntax/layer/line.html",
     "href": "syntax/layer/line.html",
-    "title": "Line layer",
+    "title": "Line",
     "section": "",
     "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe line layer is used to create lineplots. Lineplots always connects records along the x-axis, in contrast to path layers which use the order of data to connect records. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers PARTITION BY.",
     "crumbs": [
       "Home",
       "Layers",
-      "Line layer"
+      "Line"
     ]
   },
   {
     "objectID": "syntax/layer/line.html#aesthetics",
     "href": "syntax/layer/line.html#aesthetics",
-    "title": "Line layer",
+    "title": "Line",
     "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the point layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\nsize: The size of each point\ncolour: The default colour of the each point\nstroke: The colour of the stroke around each point (if any). Overrides colour\nopacity: The opacity of the point\nlinewidth: The width of the line\nlinetype: The type of line, i.e. the dashing pattern",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the line layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\ncolour/stroke: The colour of the line\nopacity: The opacity of the line\nlinewidth: The width of the line\nlinetype: The type of line, i.e. the dashing pattern",
     "crumbs": [
       "Home",
       "Layers",
-      "Line layer"
+      "Line"
     ]
   },
   {
     "objectID": "syntax/layer/line.html#settings",
     "href": "syntax/layer/line.html#settings",
-    "title": "Line layer",
+    "title": "Line",
     "section": "Settings",
     "text": "Settings\nThe line layer has no additional settings",
     "crumbs": [
       "Home",
       "Layers",
-      "Line layer"
+      "Line"
     ]
   },
   {
     "objectID": "syntax/layer/line.html#data-transformation",
     "href": "syntax/layer/line.html#data-transformation",
-    "title": "Line layer",
+    "title": "Line",
     "section": "Data transformation",
     "text": "Data transformation\nThe line layer does not transform its data but passes it through unchanged",
     "crumbs": [
       "Home",
       "Layers",
-      "Line layer"
+      "Line"
     ]
   },
   {
     "objectID": "syntax/layer/line.html#examples",
     "href": "syntax/layer/line.html#examples",
-    "title": "Line layer",
+    "title": "Line",
     "section": "Examples",
     "text": "Examples\nTBD",
     "crumbs": [
       "Home",
       "Layers",
-      "Line layer"
+      "Line"
     ]
   },
   {
-    "objectID": "syntax/index.html",
-    "href": "syntax/index.html",
-    "title": "Syntax",
+    "objectID": "syntax/layer/bar.html",
+    "href": "syntax/layer/bar.html",
+    "title": "Bar",
     "section": "",
-    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe bar layer is used to create bar plots. You can either specify the height of the bars directly or let the layer calculate it either as the count of records within the same group or as a weighted sum of the records.",
     "crumbs": [
       "Home",
-      "Overview"
+      "Layers",
+      "Bar"
     ]
   },
   {
-    "objectID": "syntax/index.html#main-clauses",
-    "href": "syntax/index.html#main-clauses",
-    "title": "Syntax",
+    "objectID": "syntax/layer/bar.html#aesthetics",
+    "href": "syntax/layer/bar.html#aesthetics",
+    "title": "Bar",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the bar layer.\n\nRequired\nThe bar layer has no required aesthetics\n\n\nOptional\n\nx: Position on the x-axis. If missing all records will be shown in the same bar\ny: The height of the plot. If missing, it will be calculated by the layer\ncolour: The default colour of each bar\nstroke: The colour of the stroke around each bar. Overrides colour\nfill: The fill colour of each bar. Overrides colour\nopacity: The opacity of the bar fill\nlinewidth: The width of the stroke\nlinetype: The type of stroke, i.e. the dashing pattern",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Bar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/bar.html#settings",
+    "href": "syntax/layer/bar.html#settings",
+    "title": "Bar",
+    "section": "Settings",
+    "text": "Settings\n\nwidth: The width of the bars as a proportion of the available width",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Bar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/bar.html#data-transformation",
+    "href": "syntax/layer/bar.html#data-transformation",
+    "title": "Bar",
+    "section": "Data transformation",
+    "text": "Data transformation\nIf y has not been mapped the layer will calculate it for you.\n\nProperties\n\nweight: If mapped, the sum of the weights within each group is calculated instead of the count in each group\n\n\n\nCalculated statistics\n\ncount: The count or, if weight have been mapped, sum of weights in each group.\nproportion: The groupwise proportion, i.e. the count divided by the sum of count within each group\n\n\n\nDefault remappings\n\ncount AS y: By default the barplot will show count as the height of the bars",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Bar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/bar.html#examples",
+    "href": "syntax/layer/bar.html#examples",
+    "title": "Bar",
+    "section": "Examples",
+    "text": "Examples\nShow the number of each species in the data\nVISUALISE FROM penguins\nDRAW bar\n    MAPPING species AS x\nUse weight to instead show the collective mass of each species\nVISUALISE FROM penguins\nDRAW bar\n    MAPPING species AS x, body_mass AS weight\nMap fill to a discrete value to create a stacked bar chart\nVISUALISE FROM penguins\nDRAW bar\n    MAPPING species AS x, island AS fill\nMap to y if the dataset already contains the value you want to show\nSELECT MAX(body_mass) AS max_mass FROM penguins\nGROUP BY species\nVISUALISE\nDRAW bar\n    MAPPING species AS x, max_mass AS y",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Bar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/point.html",
+    "href": "syntax/layer/point.html",
+    "title": "Point",
     "section": "",
-    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe point layer is used to create scatterplots. The scatterplot is most useful for displaying the relationship between two continuous variables. A bubblechart is a scatterplot with a third variable mapped to the size of points.",
     "crumbs": [
       "Home",
-      "Overview"
+      "Layers",
+      "Point"
     ]
   },
   {
-    "objectID": "syntax/index.html#layers",
-    "href": "syntax/index.html#layers",
-    "title": "Syntax",
-    "section": "Layers",
-    "text": "Layers\nThere are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the DRAW clause\n\npoint is used to create a scatterplot layer\nline is used to produce lineplots with the data sorted along the x axis\npath is like line above but does not sort the data but plot it according to its own order\nbar creates a bar chart, optionally calculating y from the number of records in each bar\nhistogram bins the data along the x axis and produces a bar for each bin showing the number of records in it",
+    "objectID": "syntax/layer/point.html#aesthetics",
+    "href": "syntax/layer/point.html#aesthetics",
+    "title": "Point",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the point layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\nsize: The size of each point\ncolour: The default colour of each point\nstroke: The colour of the stroke around each point (if any). Overrides colour\nfill: The fill colour of each point (if any). Overrides colour\nopacity: The opacity of the point\nshape: The shape used to draw the point",
     "crumbs": [
       "Home",
-      "Overview"
+      "Layers",
+      "Point"
     ]
   },
   {
-    "objectID": "syntax/index.html#scales",
-    "href": "syntax/index.html#scales",
-    "title": "Syntax",
-    "section": "Scales",
-    "text": "Scales",
+    "objectID": "syntax/layer/point.html#settings",
+    "href": "syntax/layer/point.html#settings",
+    "title": "Point",
+    "section": "Settings",
+    "text": "Settings\nThe point layer has no additional settings",
     "crumbs": [
       "Home",
-      "Overview"
+      "Layers",
+      "Point"
     ]
   },
   {
-    "objectID": "syntax/index.html#coordinate-systems",
-    "href": "syntax/index.html#coordinate-systems",
-    "title": "Syntax",
-    "section": "Coordinate systems",
-    "text": "Coordinate systems",
+    "objectID": "syntax/layer/point.html#data-transformation",
+    "href": "syntax/layer/point.html#data-transformation",
+    "title": "Point",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe point layer does not transform its data but passes it through unchanged",
     "crumbs": [
       "Home",
-      "Overview"
+      "Layers",
+      "Point"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/point.html#examples",
+    "href": "syntax/layer/point.html#examples",
+    "title": "Point",
+    "section": "Examples",
+    "text": "Examples\nCreate a classic scatterplot\nVISUALISE FROM penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, species AS fill\n    SETTING size =&gt; 30\nMap to size to create a bubble chart\nVISUALISE FROM penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, body_mass AS size\nUse filter to only plot a subset of the data\nVISUALISE FROM penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, species AS fill\n    SETTING size =&gt; 30\n    FILTER sex = 'female'",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Point"
     ]
   },
   {
@@ -178,63 +243,178 @@
     "text": "CLI\n\nInstallation\ncargo install --path src"
   },
   {
-    "objectID": "syntax/layer/point.html",
-    "href": "syntax/layer/point.html",
-    "title": "Point layer",
+    "objectID": "syntax/index.html",
+    "href": "syntax/index.html",
+    "title": "Syntax",
     "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe point layer is used to create scatterplots. The scatterplot is most useful for displaying the relationship between two continuous variables. A bubblechart is a scatterplot with a third variable mapped to the size of points.",
+    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
     "crumbs": [
       "Home",
-      "Layers",
-      "Point layer"
+      "Overview"
     ]
   },
   {
-    "objectID": "syntax/layer/point.html#aesthetics",
-    "href": "syntax/layer/point.html#aesthetics",
-    "title": "Point layer",
+    "objectID": "syntax/index.html#main-clauses",
+    "href": "syntax/index.html#main-clauses",
+    "title": "Syntax",
+    "section": "",
+    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#layers",
+    "href": "syntax/index.html#layers",
+    "title": "Syntax",
+    "section": "Layers",
+    "text": "Layers\nThere are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the DRAW clause\n\npoint is used to create a scatterplot layer\nline is used to produce lineplots with the data sorted along the x axis\npath is like line above but does not sort the data but plot it according to its own order\nbar creates a bar chart, optionally calculating y from the number of records in each bar\nhistogram bins the data along the x axis and produces a bar for each bin showing the number of records in it",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#scales",
+    "href": "syntax/index.html#scales",
+    "title": "Syntax",
+    "section": "Scales",
+    "text": "Scales",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#coordinate-systems",
+    "href": "syntax/index.html#coordinate-systems",
+    "title": "Syntax",
+    "section": "Coordinate systems",
+    "text": "Coordinate systems",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/path.html",
+    "href": "syntax/layer/path.html",
+    "title": "Path",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe path layer is used to create lineplots, but contrary to the line layer the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Because of this the ordering is quite important and you may want to use the ORDER BY clause to ensure data comes out of the back-end in the desired order. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers PARTITION BY.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Path"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/path.html#aesthetics",
+    "href": "syntax/layer/path.html#aesthetics",
+    "title": "Path",
     "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the point layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\nsize: The size of each point\ncolour: The default colour of the each point\nstroke: The colour of the stroke around each point (if any). Overrides colour\nfill: The fill colour of each point (if any). Overrides colour\nopacity: The opacity of the point\nshape: The shape used to draw the point",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the path layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\ncolour/stroke: The colour of the path\nopacity: The opacity of the path\nlinewidth: The width of the path\nlinetype: The type of path, i.e. the dashing pattern",
     "crumbs": [
       "Home",
       "Layers",
-      "Point layer"
+      "Path"
     ]
   },
   {
-    "objectID": "syntax/layer/point.html#settings",
-    "href": "syntax/layer/point.html#settings",
-    "title": "Point layer",
+    "objectID": "syntax/layer/path.html#settings",
+    "href": "syntax/layer/path.html#settings",
+    "title": "Path",
     "section": "Settings",
-    "text": "Settings\nThe point layer has no additional settings",
+    "text": "Settings\nThe line layer has no additional settings",
     "crumbs": [
       "Home",
       "Layers",
-      "Point layer"
+      "Path"
     ]
   },
   {
-    "objectID": "syntax/layer/point.html#data-transformation",
-    "href": "syntax/layer/point.html#data-transformation",
-    "title": "Point layer",
+    "objectID": "syntax/layer/path.html#data-transformation",
+    "href": "syntax/layer/path.html#data-transformation",
+    "title": "Path",
     "section": "Data transformation",
-    "text": "Data transformation\nThe point layer does not transform its data but passes it through unchanged",
+    "text": "Data transformation\nThe line layer does not transform its data but passes it through unchanged",
     "crumbs": [
       "Home",
       "Layers",
-      "Point layer"
+      "Path"
     ]
   },
   {
-    "objectID": "syntax/layer/point.html#examples",
-    "href": "syntax/layer/point.html#examples",
-    "title": "Point layer",
+    "objectID": "syntax/layer/path.html#examples",
+    "href": "syntax/layer/path.html#examples",
+    "title": "Path",
     "section": "Examples",
-    "text": "Examples\nCreate a classic scatterplot\nVISUALISE FROM penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, species AS fill\n    SETTING size =&gt; 30\nMap to size to create a bubble chart\nVISUALISE FROM penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, body_mass AS size\nUse filter to only plot a subset of the data\nVISUALISE FROM penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, species AS fill\n    SETTING size =&gt; 30\n    FILTER sex = 'female'",
+    "text": "Examples\nTBD",
     "crumbs": [
       "Home",
       "Layers",
-      "Point layer"
+      "Path"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/histogram.html",
+    "href": "syntax/layer/histogram.html",
+    "title": "Histogram",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nVisualise the distribution of a single continuous variable by dividing the x axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/histogram.html#aesthetics",
+    "href": "syntax/layer/histogram.html#aesthetics",
+    "title": "Histogram",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the bar layer.\n\nRequired\n\nx: Position on the x-axis\n\n\n\nOptional\n\ncolour: The default colour of each bar\nstroke: The colour of the stroke around each bar. Overrides colour\nfill: The fill colour of each bar. Overrides colour\nopacity: The opacity of the bar fill\nlinewidth: The width of the stroke\nlinetype: The type of stroke, i.e. the dashing pattern",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/histogram.html#settings",
+    "href": "syntax/layer/histogram.html#settings",
+    "title": "Histogram",
+    "section": "Settings",
+    "text": "Settings\n\nbins: The number of bins to calculate. Defaults to 30\nbinwidth: The width of each bin. If provided it will override the binwidth calculated from bins\nclosed: Either 'left' or 'right' (default). Determines whether the bin intervals are closed to the left or right side",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/histogram.html#data-transformation",
+    "href": "syntax/layer/histogram.html#data-transformation",
+    "title": "Histogram",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe histogram layer will bin the records in each group and count them. By default it will map the count to y.\n\nProperties\n\nweight: If mapped, the sum of the weights within each bin is calculated instead of the count in each bin\n\n\n\nCalculated statistics\n\ncount: The count or, if weight have been mapped, sum of weights in each bin.\ndensity: The groupwise density, i.e. the count divided by the sum of count among all bins within each group\n\n\n\nDefault remappings\n\ncount AS y: By default the histogram will show count as the height of the bars",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/histogram.html#examples",
+    "href": "syntax/layer/histogram.html#examples",
+    "title": "Histogram",
+    "section": "Examples",
+    "text": "Examples\nShow the number of each species in the data\nVISUALISE FROM penguins\nDRAW histogram\n    MAPPING body_mass AS x\nSplit the histogram in two by mapping sex to fill\nVISUALISE FROM penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\nMake the two histograms the same scale by remapping to density\nVISUALISE FROM penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n    REMAPPING density AS y\nSpecify an exact binwidth if needed\nVISUALISE FROM penguins\nDRAW histogram\n    MAPPING body_mass AS x\n    SETTING binwidth =&gt; 100",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Histogram"
     ]
   },
   {

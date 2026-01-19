@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Line layer – ggsql</title>
+<title>Line – ggsql</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -30,7 +30,7 @@ ul.task-list li input[type="checkbox"] {
 <script src="../../site_libs/quarto-search/fuse.min.js"></script>
 <script src="../../site_libs/quarto-search/quarto-search.js"></script>
 <meta name="quarto:offset" content="../../">
-<link href="../../assets/icon.png" rel="icon" type="image/png">
+<link href="../../assets/icon.svg" rel="icon" type="image/svg+xml">
 <script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
 <script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
 <script src="../../site_libs/quarto-html/axe/axe-check.js" type="module"></script>
@@ -75,7 +75,7 @@ ul.task-list li input[type="checkbox"] {
 }</script>
 
 
-<link rel="stylesheet" href="../../styles.css">
+<link rel="stylesheet" href="../../styles.scss">
 </head>
 
 <body class="nav-sidebar floating nav-fixed quarto-light">
@@ -86,8 +86,8 @@ ul.task-list li input[type="checkbox"] {
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
     <a href="../../index.html" class="navbar-brand navbar-brand-logo">
-    <img src="../../assets/icon.png" alt="" class="navbar-logo light-content">
-    <img src="../../assets/icon.png" alt="" class="navbar-logo dark-content">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo dark-content">
     </a>
     <a class="navbar-brand" href="../../index.html">
     <span class="navbar-title">ggsql</span>
@@ -119,27 +119,27 @@ ul.task-list li input[type="checkbox"] {
         <li><hr class="dropdown-divider"></li>
         <li>
     <a class="dropdown-item" href="../../syntax/clause/visualise.html">
- <span class="dropdown-text">VISUALISE</span></a>
+ <span class="dropdown-text"><code>VISUALISE</code></span></a>
   </li>  
         <li>
     <a class="dropdown-item" href="../../syntax/clause/draw.html">
- <span class="dropdown-text">DRAW</span></a>
+ <span class="dropdown-text"><code>DRAW</code></span></a>
   </li>  
         <li>
     <a class="dropdown-item" href="../../syntax/clause/scale.html">
- <span class="dropdown-text">SCALE</span></a>
+ <span class="dropdown-text"><code>SCALE</code></span></a>
   </li>  
         <li>
     <a class="dropdown-item" href="../../syntax/clause/facet.html">
- <span class="dropdown-text">FACET</span></a>
+ <span class="dropdown-text"><code>FACET</code></span></a>
   </li>  
         <li>
     <a class="dropdown-item" href="../../syntax/clause/project.html">
- <span class="dropdown-text">PROJECT</span></a>
+ <span class="dropdown-text"><code>PROJECT</code></span></a>
   </li>  
         <li>
     <a class="dropdown-item" href="../../syntax/clause/label.html">
- <span class="dropdown-text">LABEL</span></a>
+ <span class="dropdown-text"><code>LABEL</code></span></a>
   </li>  
     </ul>
   </li>
@@ -158,7 +158,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/line.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/line.html">Line layer</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/bar.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/line.html">Line</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -248,14 +248,32 @@ ul.task-list li input[type="checkbox"] {
       <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/bar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Bar</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/histogram.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Histogram</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../../syntax/layer/line.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">Line layer</span></a>
+ <span class="menu-text">Line</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/path.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Path</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../../syntax/layer/point.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Point layer</span></a>
+ <span class="menu-text">Point</span></a>
   </div>
 </li>
       </ul>
@@ -284,9 +302,9 @@ ul.task-list li input[type="checkbox"] {
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/line.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/line.html">Line layer</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/bar.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/line.html">Line</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">Line layer</h1>
+<h1 class="title">Line</h1>
 </div>
 
 
@@ -306,10 +324,10 @@ ul.task-list li input[type="checkbox"] {
 <blockquote class="blockquote">
 <p>Layers are declared with the <a href="../../syntax/clause/draw.html"><code>DRAW</code> clause</a>. Read the documentation for this clause for a thorough description of how to use it.</p>
 </blockquote>
-<p>The line layer is used to create lineplots. Lineplots always connects records along the x-axis, in contrast to path layers which use the order of data to connect records. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers <code>PARTITION BY</code>.</p>
+<p>The line layer is used to create lineplots. Lineplots always connects records along the x-axis, in contrast to <a href="../../syntax/layer/path.html">path layers</a> which use the order of data to connect records. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers <a href="../../syntax/clause/draw.html#partition-by"><code>PARTITION BY</code></a>.</p>
 <section id="aesthetics" class="level2">
 <h2 class="anchored" data-anchor-id="aesthetics">Aesthetics</h2>
-<p>The following aesthetics are recognised by the point layer.</p>
+<p>The following aesthetics are recognised by the line layer.</p>
 <section id="required" class="level3">
 <h3 class="anchored" data-anchor-id="required">Required</h3>
 <ul>
@@ -320,10 +338,8 @@ ul.task-list li input[type="checkbox"] {
 <section id="optional" class="level3">
 <h3 class="anchored" data-anchor-id="optional">Optional</h3>
 <ul>
-<li><code>size</code>: The size of each point</li>
-<li><code>colour</code>: The default colour of the each point</li>
-<li><code>stroke</code>: The colour of the stroke around each point (if any). Overrides <code>colour</code></li>
-<li><code>opacity</code>: The opacity of the point</li>
+<li><code>colour</code>/<code>stroke</code>: The colour of the line</li>
+<li><code>opacity</code>: The opacity of the line</li>
 <li><code>linewidth</code>: The width of the line</li>
 <li><code>linetype</code>: The type of line, i.e.&nbsp;the dashing pattern</li>
 </ul>

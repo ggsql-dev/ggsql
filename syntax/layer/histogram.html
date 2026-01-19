@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Installing ggsql – ggsql</title>
+<title>Histogram – ggsql</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -58,29 +58,29 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 
 
-<script src="site_libs/quarto-nav/quarto-nav.js"></script>
-<script src="site_libs/quarto-nav/headroom.min.js"></script>
-<script src="site_libs/clipboard/clipboard.min.js"></script>
-<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
-<script src="site_libs/quarto-search/fuse.min.js"></script>
-<script src="site_libs/quarto-search/quarto-search.js"></script>
-<meta name="quarto:offset" content="./">
-<link href="./assets/icon.svg" rel="icon" type="image/svg+xml">
-<script src="site_libs/quarto-html/quarto.js" type="module"></script>
-<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
-<script src="site_libs/quarto-html/axe/axe-check.js" type="module"></script>
-<script src="site_libs/quarto-html/popper.min.js"></script>
-<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
-<script src="site_libs/quarto-html/anchor.min.js"></script>
-<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-8caf6eaa0938078aad3b4e3e78d03e50.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-391dc9eaa9d5ee7385b50e8209b8eefe.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-8caf6eaa0938078aad3b4e3e78d03e50.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
-<script src="site_libs/bootstrap/bootstrap.min.js"></script>
-<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-2bea5e025bcd7632f21b195ba37df41f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-dark-da29f69b7697bf38274a2a930f28a4d2.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-2bea5e025bcd7632f21b195ba37df41f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<link href="../../assets/icon.svg" rel="icon" type="image/svg+xml">
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-8caf6eaa0938078aad3b4e3e78d03e50.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-391dc9eaa9d5ee7385b50e8209b8eefe.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-8caf6eaa0938078aad3b4e3e78d03e50.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-2bea5e025bcd7632f21b195ba37df41f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-dark-da29f69b7697bf38274a2a930f28a4d2.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-2bea5e025bcd7632f21b195ba37df41f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -110,21 +110,21 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 }</script>
 
 
-<link rel="stylesheet" href="styles.scss">
+<link rel="stylesheet" href="../../styles.scss">
 </head>
 
-<body class="nav-fixed quarto-light">
+<body class="nav-sidebar floating nav-fixed quarto-light">
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top">
     <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
-    <a href="./index.html" class="navbar-brand navbar-brand-logo">
-    <img src="./assets/icon.svg" alt="" class="navbar-logo light-content">
-    <img src="./assets/icon.svg" alt="" class="navbar-logo dark-content">
+    <a href="../../index.html" class="navbar-brand navbar-brand-logo">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo dark-content">
     </a>
-    <a class="navbar-brand" href="./index.html">
+    <a class="navbar-brand" href="../../index.html">
     <span class="navbar-title">ggsql</span>
     </a>
   </div>
@@ -135,11 +135,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll me-auto">
   <li class="nav-item">
-    <a class="nav-link" href="./index.html"> 
+    <a class="nav-link" href="../../index.html"> 
 <span class="menu-text">Home</span></a>
   </li>  
   <li class="nav-item">
-    <a class="nav-link active" href="./installation.html" aria-current="page"> 
+    <a class="nav-link" href="../../installation.html"> 
 <span class="menu-text">Installing ggsql</span></a>
   </li>  
   <li class="nav-item dropdown ">
@@ -148,38 +148,38 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     </a>
     <ul class="dropdown-menu" aria-labelledby="nav-menu-syntax">    
         <li>
-    <a class="dropdown-item" href="./syntax/index.html">
+    <a class="dropdown-item" href="../../syntax/index.html">
  <span class="dropdown-text">Overview</span></a>
   </li>  
         <li><hr class="dropdown-divider"></li>
         <li>
-    <a class="dropdown-item" href="./syntax/clause/visualise.html">
+    <a class="dropdown-item" href="../../syntax/clause/visualise.html">
  <span class="dropdown-text"><code>VISUALISE</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="./syntax/clause/draw.html">
+    <a class="dropdown-item" href="../../syntax/clause/draw.html">
  <span class="dropdown-text"><code>DRAW</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="./syntax/clause/scale.html">
+    <a class="dropdown-item" href="../../syntax/clause/scale.html">
  <span class="dropdown-text"><code>SCALE</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="./syntax/clause/facet.html">
+    <a class="dropdown-item" href="../../syntax/clause/facet.html">
  <span class="dropdown-text"><code>FACET</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="./syntax/clause/project.html">
+    <a class="dropdown-item" href="../../syntax/clause/project.html">
  <span class="dropdown-text"><code>PROJECT</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="./syntax/clause/label.html">
+    <a class="dropdown-item" href="../../syntax/clause/label.html">
  <span class="dropdown-text"><code>LABEL</code></span></a>
   </li>  
     </ul>
   </li>
   <li class="nav-item">
-    <a class="nav-link" href="./examples.html"> 
+    <a class="nav-link" href="../../examples.html"> 
 <span class="menu-text">Examples</span></a>
   </li>  
 </ul>
@@ -188,20 +188,163 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
       </div> <!-- /container-fluid -->
     </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/bar.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/histogram.html">Histogram</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
 </header>
 <!-- content -->
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header sidebar-header-stacked">
+      <a href="../../index.html" class="sidebar-logo-link">
+      <img src="../../assets/logo.png" alt="" class="sidebar-logo light-content py-0 d-lg-inline d-none">
+      <img src="../../assets/logo.png" alt="" class="sidebar-logo dark-content py-0 d-lg-inline d-none">
+      </a>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Overview</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Main clauses</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/visualise.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>VISUALISE</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/draw.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>DRAW</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/scale.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>SCALE</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/facet.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>FACET</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/project.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>PROJECT</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/label.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>LABEL</code></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Layers</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/bar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Bar</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/histogram.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Histogram</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/line.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Line</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/path.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Path</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/point.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Point</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
-    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
-        
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#aesthetics" id="toc-aesthetics" class="nav-link active" data-scroll-target="#aesthetics">Aesthetics</a>
+  <ul class="collapse">
+  <li><a href="#required" id="toc-required" class="nav-link" data-scroll-target="#required">Required</a></li>
+  <li><a href="#optional" id="toc-optional" class="nav-link" data-scroll-target="#optional">Optional</a></li>
+  </ul></li>
+  <li><a href="#settings" id="toc-settings" class="nav-link" data-scroll-target="#settings">Settings</a></li>
+  <li><a href="#data-transformation" id="toc-data-transformation" class="nav-link" data-scroll-target="#data-transformation">Data transformation</a>
+  <ul class="collapse">
+  <li><a href="#properties" id="toc-properties" class="nav-link" data-scroll-target="#properties">Properties</a></li>
+  <li><a href="#calculated-statistics" id="toc-calculated-statistics" class="nav-link" data-scroll-target="#calculated-statistics">Calculated statistics</a></li>
+  <li><a href="#default-remappings" id="toc-default-remappings" class="nav-link" data-scroll-target="#default-remappings">Default remappings</a></li>
+  </ul></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  </ul>
+</nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default">
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/bar.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/histogram.html">Histogram</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">Installing ggsql</h1>
+<h1 class="title">Histogram</h1>
 </div>
 
 
@@ -218,21 +361,85 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 
-<p>ggsql is very much still a work in progress and the installation process reflects this. Eventually we will have proper installers but for now please follow this process if you wish to play around with it:</p>
-<ol type="1">
-<li><p><strong>Clone the repository:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/georgestagg/ggsql</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> ggsql</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-<li><p><strong>Install tree-sitter CLI:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">npm</span> install <span class="at">-g</span> tree-sitter-cli</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-<li><p><strong>Build the project:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> tree-sitter-ggsql <span class="kw">&amp;&amp;</span> <span class="ex">tree-sitter</span> generate <span class="kw">&amp;&amp;</span> <span class="bu">cd</span> ..</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> build</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-<li><p><strong>Install the Jupyter kernel:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> run <span class="at">--package</span> ggsql-jupyter <span class="at">--</span> <span class="at">--install</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-</ol>
+<blockquote class="blockquote">
+<p>Layers are declared with the <a href="../../syntax/clause/draw.html"><code>DRAW</code> clause</a>. Read the documentation for this clause for a thorough description of how to use it.</p>
+</blockquote>
+<p>Visualise the distribution of a single continuous variable by dividing the x axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.</p>
+<section id="aesthetics" class="level2">
+<h2 class="anchored" data-anchor-id="aesthetics">Aesthetics</h2>
+<p>The following aesthetics are recognised by the bar layer.</p>
+<section id="required" class="level3">
+<h3 class="anchored" data-anchor-id="required">Required</h3>
+<ul>
+<li><code>x</code>: Position on the x-axis</li>
+</ul>
+</section>
+<section id="optional" class="level3">
+<h3 class="anchored" data-anchor-id="optional">Optional</h3>
+<ul>
+<li><code>colour</code>: The default colour of each bar</li>
+<li><code>stroke</code>: The colour of the stroke around each bar. Overrides <code>colour</code></li>
+<li><code>fill</code>: The fill colour of each bar. Overrides <code>colour</code></li>
+<li><code>opacity</code>: The opacity of the bar fill</li>
+<li><code>linewidth</code>: The width of the stroke</li>
+<li><code>linetype</code>: The type of stroke, i.e.&nbsp;the dashing pattern</li>
+</ul>
+</section>
+</section>
+<section id="settings" class="level2">
+<h2 class="anchored" data-anchor-id="settings">Settings</h2>
+<ul>
+<li><code>bins</code>: The number of bins to calculate. Defaults to <code>30</code></li>
+<li><code>binwidth</code>: The width of each bin. If provided it will override the binwidth calculated from <code>bins</code></li>
+<li><code>closed</code>: Either <code>'left'</code> or <code>'right'</code> (default). Determines whether the bin intervals are closed to the left or right side</li>
+</ul>
+</section>
+<section id="data-transformation" class="level2">
+<h2 class="anchored" data-anchor-id="data-transformation">Data transformation</h2>
+<p>The histogram layer will bin the records in each group and count them. By default it will map the count to <code>y</code>.</p>
+<section id="properties" class="level3">
+<h3 class="anchored" data-anchor-id="properties">Properties</h3>
+<ul>
+<li><code>weight</code>: If mapped, the sum of the weights within each bin is calculated instead of the count in each bin</li>
+</ul>
+</section>
+<section id="calculated-statistics" class="level3">
+<h3 class="anchored" data-anchor-id="calculated-statistics">Calculated statistics</h3>
+<ul>
+<li><code>count</code>: The count or, if <code>weight</code> have been mapped, sum of weights in each bin.</li>
+<li><code>density</code>: The groupwise density, i.e.&nbsp;the <code>count</code> divided by the sum of <code>count</code> among all bins within each group</li>
+</ul>
+</section>
+<section id="default-remappings" class="level3">
+<h3 class="anchored" data-anchor-id="default-remappings">Default remappings</h3>
+<ul>
+<li><code>count AS y</code>: By default the histogram will show count as the height of the bars</li>
+</ul>
+</section>
+</section>
+<section id="examples" class="level2">
+<h2 class="anchored" data-anchor-id="examples">Examples</h2>
+<p>Show the number of each species in the data</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>VISUALISE <span class="kw">FROM</span> penguins</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>DRAW histogram</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    MAPPING body_mass <span class="kw">AS</span> x</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Split the histogram in two by mapping sex to fill</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>VISUALISE <span class="kw">FROM</span> penguins</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>DRAW histogram</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    MAPPING body_mass <span class="kw">AS</span> x, sex <span class="kw">AS</span> fill</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Make the two histograms the same scale by remapping to density</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>VISUALISE <span class="kw">FROM</span> penguins</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>DRAW histogram</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    MAPPING body_mass <span class="kw">AS</span> x, sex <span class="kw">AS</span> fill</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    REMAPPING density <span class="kw">AS</span> y</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Specify an exact binwidth if needed</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>VISUALISE <span class="kw">FROM</span> penguins</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>DRAW histogram</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    MAPPING body_mass <span class="kw">AS</span> x</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    SETTING binwidth <span class="op">=&gt;</span> <span class="dv">100</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
+</section>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
