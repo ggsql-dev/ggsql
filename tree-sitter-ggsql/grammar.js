@@ -175,6 +175,7 @@ module.exports = grammar({
             $.number,
             $.identifier,
             $.subquery,
+            $.typecast_value,
             ',', '*', '.', '=', '<', '>', '!'
           )))
         ),
@@ -186,6 +187,7 @@ module.exports = grammar({
           $.number,
           $.identifier,
           $.subquery,
+          $.typecast_value,
           ',', '*', '.', '=', '<', '>', '!'
         ))
       ),
@@ -287,8 +289,11 @@ module.exports = grammar({
       $.identifier,
       $.number,
       $.string,
+      $.typecast_value,
       '*'
     ),
+
+    typecast_value: $ => seq($.literal_value, "::", $.identifier),
 
     window_specification: $ => seq(
       '(',
@@ -335,7 +340,7 @@ module.exports = grammar({
     table_ref: $ => prec.right(seq(
       choice(
         field('table', choice($.identifier, $.string)),
-        $.subquery
+        $.subquery,
       ),
       optional(seq('.', field('schema_table', $.identifier))), // Not sure what this is
       optional(seq(
