@@ -1,0 +1,80 @@
+name: Python
+
+on:
+  push:
+    paths: ['ggsql-python/**', '.github/workflows/python.yml']
+  pull_request:
+    paths: ['ggsql-python/**', '.github/workflows/python.yml']
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.10', '3.11', '3.12', '3.13', '3.14']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: ggsql-python
+          command: build
+          args: --release
+
+      - name: Install wheel and test
+        shell: bash
+        run: |
+          pip install ggsql-python/target/wheels/*.whl
+          pip install pytest polars
+          pytest ggsql-python/tests/test_ggsql.py -v
+
+  e2e-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: ggsql-python
+          command: build
+          args: --release
+
+      - name: Install wheel and E2E dependencies
+        shell: bash
+        run: |
+          pip install ggsql-python/target/wheels/*.whl
+          pip install pytest polars altair
+
+      - name: Run E2E tests
+        shell: bash
+        run: |
+          pytest ggsql-python/tests/test_altair_e2e.py -v
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Rust formatting
+        run: cargo fmt --package ggsql-python -- --check
+
+      - name: Clippy
+        run: cargo clippy --package ggsql-python -- -D warnings

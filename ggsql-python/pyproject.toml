@@ -1,0 +1,26 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ggsql"
+version = "0.1.0"
+description = "SQL extension for declarative data visualization"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["sql", "visualization", "vega-lite", "grammar-of-graphics"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+dependencies = ["polars>=1.0", "pyarrow>=12"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "maturin>=1.4"]
+e2e = ["altair>=5.0"]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "ggsql._ggsql"
