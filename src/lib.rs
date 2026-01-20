@@ -124,7 +124,7 @@ mod integration_tests {
 
         // Create visualization spec
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("date".to_string()),
@@ -180,7 +180,7 @@ mod integration_tests {
 
         // Create visualization spec
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Area)
+        let layer = Layer::new(Geom::area())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("timestamp".to_string()),
@@ -234,7 +234,7 @@ mod integration_tests {
 
         // Create visualization spec
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("int_col".to_string()),
@@ -286,7 +286,7 @@ mod integration_tests {
 
         // Create viz spec
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("int_col".to_string()),
@@ -319,7 +319,7 @@ mod integration_tests {
         let df = reader.execute(sql).unwrap();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Bar)
+        let layer = Layer::new(Geom::bar())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -373,7 +373,7 @@ mod integration_tests {
         ));
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("day".to_string()),
@@ -417,7 +417,7 @@ mod integration_tests {
         ));
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("small".to_string()),
@@ -471,7 +471,7 @@ mod integration_tests {
         ));
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Bar)
+        let layer = Layer::new(Geom::bar())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("int".to_string()),

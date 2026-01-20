@@ -1338,7 +1338,7 @@ mod tests {
         materialized.insert("sales".to_string());
         let empty_schema: Schema = Vec::new();
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("sales".to_string()));
 
         let result = build_layer_query(
@@ -1365,7 +1365,7 @@ mod tests {
         materialized.insert("sales".to_string());
         let empty_schema: Schema = Vec::new();
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("sales".to_string()));
         layer.filter = Some(SqlExpression::new("year = 2024"));
 
@@ -1391,7 +1391,7 @@ mod tests {
         let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("some_table".to_string()));
 
         let result = build_layer_query(
@@ -1417,7 +1417,7 @@ mod tests {
         let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("some_table".to_string()));
         layer.filter = Some(SqlExpression::new("value > 100"));
 
@@ -1443,7 +1443,7 @@ mod tests {
         let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::FilePath("data/sales.csv".to_string()));
 
         let result = build_layer_query(
@@ -1469,7 +1469,7 @@ mod tests {
         let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::FilePath("data.parquet".to_string()));
         layer.filter = Some(SqlExpression::new("x > 10"));
 
@@ -1495,7 +1495,7 @@ mod tests {
         let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
         layer.filter = Some(SqlExpression::new("category = 'A'"));
 
         let result = build_layer_query(
@@ -1521,7 +1521,7 @@ mod tests {
         let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
 
         let result = build_layer_query(
             &mut layer,
@@ -1543,7 +1543,7 @@ mod tests {
         let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
         layer.filter = Some(SqlExpression::new("x > 10"));
 
         let result = build_layer_query(
@@ -1569,7 +1569,7 @@ mod tests {
         let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("some_table".to_string()));
         layer.order_by = Some(SqlExpression::new("date ASC"));
 
@@ -1595,7 +1595,7 @@ mod tests {
         let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("some_table".to_string()));
         layer.filter = Some(SqlExpression::new("year = 2024"));
         layer.order_by = Some(SqlExpression::new("date DESC, value ASC"));
@@ -1625,7 +1625,7 @@ mod tests {
         let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
         layer.order_by = Some(SqlExpression::new("x ASC"));
 
         let result = build_layer_query(
@@ -1661,7 +1661,7 @@ mod tests {
             ),
         ];
 
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("some_table".to_string()));
 
         let result = build_layer_query(
@@ -1693,7 +1693,7 @@ mod tests {
         )];
 
         // No source but has constants - should use __ggsql_global__
-        let mut layer = Layer::new(Geom::Point);
+        let mut layer = Layer::new(Geom::point());
 
         let result = build_layer_query(
             &mut layer,

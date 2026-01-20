@@ -22,6 +22,7 @@
 
 use crate::parser::ast::{ArrayElement, Coord, CoordPropertyValue, CoordType, LiteralValue};
 use crate::writer::Writer;
+use crate::parser::geom::GeomType;
 use crate::{AestheticValue, DataFrame, Geom, GgsqlError, Result, VizSpec};
 use polars::prelude::*;
 use serde_json::{json, Map, Value};
@@ -196,19 +197,19 @@ impl VegaLiteWriter {
 
     /// Map ggsql Geom to Vega-Lite mark type
     fn geom_to_mark(&self, geom: &Geom) -> String {
-        match geom {
-            Geom::Point => "point",
-            Geom::Line => "line",
-            Geom::Path => "line",
-            Geom::Bar => "bar",
-            Geom::Area => "area",
-            Geom::Tile => "rect",
-            Geom::Ribbon => "area",
-            Geom::Histogram => "bar",
-            Geom::Density => "area",
-            Geom::Boxplot => "boxplot",
-            Geom::Text => "text",
-            Geom::Label => "text",
+        match geom.geom_type() {
+            GeomType::Point => "point",
+            GeomType::Line => "line",
+            GeomType::Path => "line",
+            GeomType::Bar => "bar",
+            GeomType::Area => "area",
+            GeomType::Tile => "rect",
+            GeomType::Ribbon => "area",
+            GeomType::Histogram => "bar",
+            GeomType::Density => "area",
+            GeomType::Boxplot => "boxplot",
+            GeomType::Text => "text",
+            GeomType::Label => "text",
             _ => "point", // Default fallback
         }
         .to_string()
@@ -1075,7 +1076,7 @@ impl Writer for VegaLiteWriter {
             };
 
             // For Bar geom, set mark with width parameter
-            if matches!(layer.geom, Geom::Bar) {
+            if layer.geom.geom_type() == GeomType::Bar {
                 use crate::parser::ast::ParameterValue;
                 let width = layer
                     .parameters
@@ -1093,7 +1094,7 @@ impl Writer for VegaLiteWriter {
 
             // Add window transform for Path geoms to preserve data order
             // (Line geom uses Vega-Lite's default x-axis sorting)
-            if matches!(layer.geom, Geom::Path) {
+            if layer.geom.geom_type() == GeomType::Path {
                 let mut window_transform = json!({
                     "window": [{"op": "row_number", "as": "__ggsql_order__"}]
                 });
@@ -1146,7 +1147,7 @@ impl Writer for VegaLiteWriter {
             }
 
             // Add order encoding for Path geoms (preserves data order instead of x-axis sorting)
-            if matches!(layer.geom, Geom::Path) {
+            if layer.geom.geom_type() == GeomType::Path {
                 encoding.insert(
                     "order".to_string(),
                     json!({
@@ -1309,11 +1310,11 @@ mod tests {
     #[test]
     fn test_geom_to_mark_mapping() {
         let writer = VegaLiteWriter::new();
-        assert_eq!(writer.geom_to_mark(&Geom::Point), "point");
-        assert_eq!(writer.geom_to_mark(&Geom::Line), "line");
-        assert_eq!(writer.geom_to_mark(&Geom::Bar), "bar");
-        assert_eq!(writer.geom_to_mark(&Geom::Area), "area");
-        assert_eq!(writer.geom_to_mark(&Geom::Tile), "rect");
+        assert_eq!(writer.geom_to_mark(&Geom::point()), "point");
+        assert_eq!(writer.geom_to_mark(&Geom::line()), "line");
+        assert_eq!(writer.geom_to_mark(&Geom::bar()), "bar");
+        assert_eq!(writer.geom_to_mark(&Geom::area()), "area");
+        assert_eq!(writer.geom_to_mark(&Geom::tile()), "rect");
     }
 
     #[test]
@@ -1336,7 +1337,7 @@ mod tests {
 
         // Create a simple spec
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1376,7 +1377,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("date".to_string()),
@@ -1413,7 +1414,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1445,7 +1446,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1479,7 +1480,7 @@ mod tests {
         let mut spec = VizSpec::new();
 
         // First layer is valid
-        let layer1 = Layer::new(Geom::Line)
+        let layer1 = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1491,7 +1492,7 @@ mod tests {
         spec.layers.push(layer1);
 
         // Second layer references non-existent column
-        let layer2 = Layer::new(Geom::Point)
+        let layer2 = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1526,13 +1527,13 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let geoms = vec![
-            (Geom::Point, "point"),
-            (Geom::Line, "line"),
-            (Geom::Path, "line"),
-            (Geom::Bar, "bar"),
-            (Geom::Area, "area"),
-            (Geom::Tile, "rect"),
-            (Geom::Ribbon, "area"),
+            (Geom::point(), "point"),
+            (Geom::line(), "line"),
+            (Geom::path(), "line"),
+            (Geom::bar(), "bar"),
+            (Geom::area(), "area"),
+            (Geom::tile(), "rect"),
+            (Geom::ribbon(), "area"),
         ];
 
         for (geom, expected_mark) in geoms {
@@ -1571,9 +1572,9 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let geoms = vec![
-            (Geom::Histogram, "bar"),
-            (Geom::Density, "area"),
-            (Geom::Boxplot, "boxplot"),
+            (Geom::histogram(), "bar"),
+            (Geom::density(), "area"),
+            (Geom::boxplot(), "boxplot"),
         ];
 
         for (geom, expected_mark) in geoms {
@@ -1606,7 +1607,7 @@ mod tests {
     fn test_text_geom_types() {
         let writer = VegaLiteWriter::new();
 
-        for geom in [Geom::Text, Geom::Label] {
+        for geom in [Geom::text(), Geom::label()] {
             let mut spec = VizSpec::new();
             let layer = Layer::new(geom.clone())
                 .with_aesthetic(
@@ -1637,7 +1638,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1674,7 +1675,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1711,7 +1712,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Bar)
+        let layer = Layer::new(Geom::bar())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -1745,7 +1746,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1795,7 +1796,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1827,7 +1828,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1861,7 +1862,7 @@ mod tests {
         let mut spec = VizSpec::new();
 
         // First layer: line
-        let layer1 = Layer::new(Geom::Line)
+        let layer1 = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1873,7 +1874,7 @@ mod tests {
         spec.layers.push(layer1);
 
         // Second layer: points
-        let layer2 = Layer::new(Geom::Point)
+        let layer2 = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1920,7 +1921,7 @@ mod tests {
 
         // Layer 1: area
         spec.layers.push(
-            Layer::new(Geom::Area)
+            Layer::new(Geom::area())
                 .with_aesthetic(
                     "x".to_string(),
                     AestheticValue::standard_column("x".to_string()),
@@ -1933,7 +1934,7 @@ mod tests {
 
         // Layer 2: line
         spec.layers.push(
-            Layer::new(Geom::Line)
+            Layer::new(Geom::line())
                 .with_aesthetic(
                     "x".to_string(),
                     AestheticValue::standard_column("x".to_string()),
@@ -1946,7 +1947,7 @@ mod tests {
 
         // Layer 3: points
         spec.layers.push(
-            Layer::new(Geom::Point)
+            Layer::new(Geom::point())
                 .with_aesthetic(
                     "x".to_string(),
                     AestheticValue::standard_column("x".to_string()),
@@ -1978,7 +1979,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2014,7 +2015,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("date".to_string()),
@@ -2055,7 +2056,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Bar)
+        let layer = Layer::new(Geom::bar())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -2105,7 +2106,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2134,7 +2135,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Bar)
+        let layer = Layer::new(Geom::bar())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -2163,7 +2164,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2198,7 +2199,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("int_col".to_string()),
@@ -2235,7 +2236,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2264,7 +2265,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2307,7 +2308,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2352,7 +2353,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2402,7 +2403,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2453,7 +2454,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2507,7 +2508,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Bar)
+        let layer = Layer::new(Geom::bar())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -2557,7 +2558,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2636,7 +2637,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Bar)
+        let layer = Layer::new(Geom::bar())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -2692,7 +2693,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2737,7 +2738,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2785,7 +2786,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2838,7 +2839,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2883,7 +2884,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2939,7 +2940,7 @@ mod tests {
         let mut spec = VizSpec::new();
 
         // First layer: line
-        let layer1 = Layer::new(Geom::Line)
+        let layer1 = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -2951,7 +2952,7 @@ mod tests {
         spec.layers.push(layer1);
 
         // Second layer: points
-        let layer2 = Layer::new(Geom::Point)
+        let layer2 = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -3009,7 +3010,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Bar)
+        let layer = Layer::new(Geom::bar())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -3063,7 +3064,7 @@ mod tests {
         let mut spec = VizSpec::new();
 
         // First layer: bar
-        let layer1 = Layer::new(Geom::Bar)
+        let layer1 = Layer::new(Geom::bar())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -3075,7 +3076,7 @@ mod tests {
         spec.layers.push(layer1);
 
         // Second layer: point
-        let layer2 = Layer::new(Geom::Point)
+        let layer2 = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -3118,7 +3119,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -3173,7 +3174,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Bar)
+        let layer = Layer::new(Geom::bar())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -3230,7 +3231,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Bar)
+        let layer = Layer::new(Geom::bar())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("category".to_string()),
@@ -3273,7 +3274,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("date".to_string()),
@@ -3308,7 +3309,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("datetime".to_string()),
@@ -3343,7 +3344,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("time".to_string()),
@@ -3378,7 +3379,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("date".to_string()),
@@ -3416,7 +3417,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Area)
+        let layer = Layer::new(Geom::area())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("timestamp".to_string()),
@@ -3458,7 +3459,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("date".to_string()),
@@ -3496,7 +3497,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("date".to_string()),
@@ -3538,7 +3539,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("date".to_string()),
@@ -3569,7 +3570,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("date".to_string()),
@@ -3601,7 +3602,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -3657,7 +3658,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -3715,7 +3716,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
+        let layer = Layer::new(Geom::line())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("date".to_string()),
@@ -3752,7 +3753,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -3791,7 +3792,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -3840,7 +3841,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let mut layer = Layer::new(Geom::Path);
+        let mut layer = Layer::new(Geom::path());
         layer.mappings.insert(
             "x".to_string(),
             AestheticValue::standard_column("lon".to_string()),
@@ -3881,7 +3882,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let mut layer = Layer::new(Geom::Path);
+        let mut layer = Layer::new(Geom::path());
         layer.mappings.insert(
             "x".to_string(),
             AestheticValue::standard_column("lon".to_string()),
@@ -3917,7 +3918,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = VizSpec::new();
-        let mut layer = Layer::new(Geom::Line);
+        let mut layer = Layer::new(Geom::line());
         layer.mappings.insert(
             "x".to_string(),
             AestheticValue::standard_column("date".to_string()),

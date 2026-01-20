@@ -22,7 +22,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-use crate::{DataFrame, GgsqlError, Result};
+
+// Re-export Geom and related types from the geom module
+pub use super::geom::{Geom, GeomType, GeomTrait, GeomAesthetics, DefaultParam, DefaultParamValue, StatResult};
 
 /// Column information from a data source schema
 #[derive(Debug, Clone)]
@@ -116,33 +118,6 @@ impl Mappings {
     }
 }
 
-/// Result of a statistical transformation
-///
-/// Stat transforms like histogram and bar count produce new columns with computed values.
-/// This enum captures both the transformed query and the mappings from aesthetics to the
-/// new column names.
-#[derive(Debug, Clone, PartialEq)]
-pub enum StatResult {
-    /// No transformation needed - use original data as-is
-    Identity,
-    /// Transformation applied, with stat-computed columns
-    Transformed {
-        /// The transformed SQL query that produces the stat-computed columns
-        query: String,
-        /// Names of stat-computed columns (e.g., ["count", "bin", "x"])
-        /// These are semantic names that will be prefixed with __ggsql_stat__
-        /// and mapped to aesthetics via default_remappings or REMAPPING clause
-        stat_columns: Vec<String>,
-        /// Names of stat columns that are dummy/placeholder values
-        /// (e.g., "x" when bar chart has no x mapped - produces a constant value)
-        dummy_columns: Vec<String>,
-        /// Names of aesthetics consumed by this stat transform
-        /// These aesthetics were used as input to the stat and should be removed
-        /// from the layer mappings after the transform completes
-        consumed_aesthetics: Vec<String>,
-    },
-}
-
 /// Data source for visualization or layer (from VISUALISE FROM or MAPPING ... FROM clause)
 ///
 /// Allows specification of a data source - either a CTE/table name or a file path.
@@ -222,831 +197,6 @@ impl SqlExpression {
     }
 }
 
-/// Geometric object types
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Geom {
-    // Basic geoms
-    Point,
-    Line,
-    Path,
-    Bar,
-    Area,
-    Tile,
-    Polygon,
-    Ribbon,
-
-    // Statistical geoms
-    Histogram,
-    Density,
-    Smooth,
-    Boxplot,
-    Violin,
-
-    // Annotation geoms
-    Text,
-    Label,
-    Segment,
-    Arrow,
-    HLine,
-    VLine,
-    AbLine,
-    ErrorBar,
-}
-
-/// Aesthetic information for a geom type
-#[derive(Debug, Clone, Copy)]
-pub struct GeomAesthetics {
-    /// All aesthetics this geom type supports for user MAPPING
-    pub supported: &'static [&'static str],
-    /// Aesthetics required for this geom type to be valid
-    pub required: &'static [&'static str],
-    /// Hidden aesthetics (valid REMAPPING targets, not valid MAPPING targets)
-    /// These are produced by stat transforms but shouldn't be manually mapped
-    pub hidden: &'static [&'static str],
-}
-
-/// Default value for a layer parameter
-#[derive(Debug, Clone)]
-pub enum DefaultParamValue {
-    String(&'static str),
-    Number(f64),
-    Boolean(bool),
-    Null,
-}
-
-/// Layer parameter definition: name and default value
-#[derive(Debug, Clone)]
-pub struct DefaultParam {
-    pub name: &'static str,
-    pub default: DefaultParamValue,
-}
-
-impl std::fmt::Display for Geom {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            Geom::Point => "point",
-            Geom::Line => "line",
-            Geom::Path => "path",
-            Geom::Bar => "bar",
-            Geom::Area => "area",
-            Geom::Tile => "tile",
-            Geom::Polygon => "polygon",
-            Geom::Ribbon => "ribbon",
-            Geom::Histogram => "histogram",
-            Geom::Density => "density",
-            Geom::Smooth => "smooth",
-            Geom::Boxplot => "boxplot",
-            Geom::Violin => "violin",
-            Geom::Text => "text",
-            Geom::Label => "label",
-            Geom::Segment => "segment",
-            Geom::Arrow => "arrow",
-            Geom::HLine => "hline",
-            Geom::VLine => "vline",
-            Geom::AbLine => "abline",
-            Geom::ErrorBar => "errorbar",
-        };
-        write!(f, "{}", s)
-    }
-}
-
-impl Geom {
-    /// Returns aesthetic information for this geom type.
-    /// Includes both supported aesthetics (for wildcard mapping) and
-    /// required aesthetics (for validation).
-    pub fn aesthetics(&self) -> GeomAesthetics {
-        match self {
-            // Position geoms
-            Geom::Point => GeomAesthetics {
-                supported: &[
-                    "x", "y", "color", "colour", "fill", "size", "shape", "opacity",
-                ],
-                required: &["x", "y"],
-                hidden: &[],
-            },
-            Geom::Line => GeomAesthetics {
-                supported: &[
-                    "x",
-                    "y",
-                    "color",
-                    "colour",
-                    "linetype",
-                    "linewidth",
-                    "opacity",
-                ],
-                required: &["x", "y"],
-                hidden: &[],
-            },
-            Geom::Path => GeomAesthetics {
-                supported: &[
-                    "x",
-                    "y",
-                    "color",
-                    "colour",
-                    "linetype",
-                    "linewidth",
-                    "opacity",
-                ],
-                required: &["x", "y"],
-                hidden: &[],
-            },
-            Geom::Bar => GeomAesthetics {
-                // Bar supports optional x and y - stat decides aggregation
-                // If x is missing: single bar showing total
-                // If y is missing: stat computes COUNT or SUM(weight)
-                // weight: optional, if mapped uses SUM(weight) instead of COUNT(*)
-                supported: &[
-                    "x", "y", "weight", "color", "colour", "fill", "width", "opacity",
-                ],
-                required: &[],
-                hidden: &[],
-            },
-            Geom::Area => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "fill", "opacity"],
-                required: &["x", "y"],
-                hidden: &[],
-            },
-            Geom::Tile => GeomAesthetics {
-                supported: &[
-                    "x", "y", "color", "colour", "fill", "width", "height", "opacity",
-                ],
-                required: &["x", "y"],
-                hidden: &[],
-            },
-            Geom::Polygon => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "fill", "opacity"],
-                required: &["x", "y"],
-                hidden: &[],
-            },
-            Geom::Ribbon => GeomAesthetics {
-                supported: &["x", "ymin", "ymax", "color", "colour", "fill", "opacity"],
-                required: &["x", "ymin", "ymax"],
-                hidden: &[],
-            },
-
-            // Statistical geoms
-            Geom::Histogram => GeomAesthetics {
-                supported: &["x", "weight", "color", "colour", "fill", "opacity"],
-                required: &["x"],
-                // y and x2 are produced by stat_histogram but not valid for manual MAPPING
-                hidden: &["y", "x2"],
-            },
-            Geom::Density => GeomAesthetics {
-                supported: &["x", "color", "colour", "fill", "opacity"],
-                required: &["x"],
-                hidden: &[],
-            },
-            Geom::Smooth => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "linetype", "opacity"],
-                required: &["x", "y"],
-                hidden: &[],
-            },
-            Geom::Boxplot => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "fill", "opacity"],
-                required: &["x", "y"],
-                hidden: &[],
-            },
-            Geom::Violin => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "fill", "opacity"],
-                required: &["x", "y"],
-                hidden: &[],
-            },
-
-            // Annotation geoms
-            Geom::Text => GeomAesthetics {
-                supported: &[
-                    "x", "y", "label", "color", "colour", "size", "opacity", "family", "fontface",
-                    "hjust", "vjust",
-                ],
-                required: &["x", "y"],
-                hidden: &[],
-            },
-            Geom::Label => GeomAesthetics {
-                supported: &[
-                    "x", "y", "label", "color", "colour", "fill", "size", "opacity", "family",
-                    "fontface", "hjust", "vjust",
-                ],
-                required: &["x", "y"],
-                hidden: &[],
-            },
-            Geom::Segment => GeomAesthetics {
-                supported: &[
-                    "x",
-                    "y",
-                    "xend",
-                    "yend",
-                    "color",
-                    "colour",
-                    "linetype",
-                    "linewidth",
-                    "opacity",
-                ],
-                required: &["x", "y", "xend", "yend"],
-                hidden: &[],
-            },
-            Geom::Arrow => GeomAesthetics {
-                supported: &[
-                    "x",
-                    "y",
-                    "xend",
-                    "yend",
-                    "color",
-                    "colour",
-                    "linetype",
-                    "linewidth",
-                    "opacity",
-                ],
-                required: &["x", "y", "xend", "yend"],
-                hidden: &[],
-            },
-            Geom::HLine => GeomAesthetics {
-                supported: &[
-                    "yintercept",
-                    "color",
-                    "colour",
-                    "linetype",
-                    "linewidth",
-                    "opacity",
-                ],
-                required: &["yintercept"],
-                hidden: &[],
-            },
-            Geom::VLine => GeomAesthetics {
-                supported: &[
-                    "xintercept",
-                    "color",
-                    "colour",
-                    "linetype",
-                    "linewidth",
-                    "opacity",
-                ],
-                required: &["xintercept"],
-                hidden: &[],
-            },
-            Geom::AbLine => GeomAesthetics {
-                supported: &[
-                    "slope",
-                    "intercept",
-                    "color",
-                    "colour",
-                    "linetype",
-                    "linewidth",
-                    "opacity",
-                ],
-                required: &["slope", "intercept"],
-                hidden: &[],
-            },
-            Geom::ErrorBar => GeomAesthetics {
-                supported: &[
-                    "x",
-                    "y",
-                    "ymin",
-                    "ymax",
-                    "xmin",
-                    "xmax",
-                    "color",
-                    "colour",
-                    "linewidth",
-                    "opacity",
-                ],
-                required: &[],
-                hidden: &[],
-            },
-        }
-    }
-
-    /// Returns default remappings for stat-computed columns to aesthetics.
-    ///
-    /// Each tuple is (stat_column_name, aesthetic_name).
-    /// These defaults can be overridden by a REMAPPING clause.
-    pub fn default_remappings(&self) -> &[(&str, &str)] {
-        match self {
-            Geom::Bar => &[("count", "y"), ("x", "x")],
-            Geom::Histogram => &[("bin", "x"), ("bin_end", "x2"), ("count", "y")],
-            // Other geoms don't have stat transforms yet
-            _ => &[],
-        }
-    }
-
-    /// Returns valid stat column names that can be used in REMAPPING.
-    ///
-    /// These are the columns produced by the geom's stat transform.
-    /// REMAPPING can only map these columns to aesthetics.
-    pub fn valid_stat_columns(&self) -> &[&str] {
-        match self {
-            Geom::Bar => &["count", "x", "proportion"],
-            Geom::Histogram => &["bin", "bin_end", "count", "density"],
-            // Other geoms don't have stat transforms
-            _ => &[],
-        }
-    }
-
-    /// Returns non-aesthetic parameters with their default values.
-    ///
-    /// These control stat behavior (e.g., bins for histogram).
-    /// Defaults are applied to layer.parameters during execution via
-    /// `Layer::apply_default_params()`.
-    pub fn default_params(&self) -> &[DefaultParam] {
-        match self {
-            Geom::Histogram => &[
-                DefaultParam {
-                    name: "bins",
-                    default: DefaultParamValue::Number(30.0),
-                },
-                DefaultParam {
-                    name: "closed",
-                    default: DefaultParamValue::String("right"),
-                },
-                DefaultParam {
-                    name: "binwidth",
-                    default: DefaultParamValue::Null,
-                },
-            ],
-            Geom::Bar => &[DefaultParam {
-                name: "width",
-                default: DefaultParamValue::Number(0.9),
-            }],
-            // Future: Density might have bandwidth, Smooth might have span/method
-            _ => &[],
-        }
-    }
-
-    /// Returns aesthetics consumed as input by this geom's stat transform.
-    ///
-    /// Columns mapped to these aesthetics are used by the stat and don't need
-    /// separate preservation in GROUP BY. All other aesthetic columns will be
-    /// automatically preserved during stat transforms.
-    pub fn stat_consumed_aesthetics(&self) -> &[&str] {
-        match self {
-            Geom::Histogram => &["x"],
-            Geom::Bar => &["x", "y", "weight"],
-            // Other geoms with stats would be added here
-            _ => &[],
-        }
-    }
-
-    /// Returns valid parameter names for SETTING clause.
-    ///
-    /// Combines supported aesthetics with non-aesthetic parameters from `default_params()`.
-    /// Used for validation - invalid settings will produce an error.
-    pub fn valid_settings(&self) -> Vec<&'static str> {
-        let mut valid: Vec<&'static str> = self.aesthetics().supported.to_vec();
-        for param in self.default_params() {
-            valid.push(param.name);
-        }
-        valid
-    }
-
-    /// Check if this geom requires a statistical transformation
-    ///
-    /// Returns true if the geom needs data to be transformed before rendering.
-    /// This is used to determine if a layer needs to query data even when
-    /// it has no explicit source or filter.
-    pub fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
-        match self {
-            Geom::Histogram => true,
-            Geom::Bar => true, // Bar stat decides COUNT vs identity based on y mapping
-            Geom::Density => true,
-            Geom::Smooth => true,
-            Geom::Boxplot => true,
-            Geom::Violin => true,
-            _ => false,
-        }
-    }
-
-    /// Apply statistical transformation to the layer query.
-    ///
-    /// Some geoms require data transformations before rendering:
-    /// - Histogram: bin continuous values and count
-    /// - Bar (with only x mapped): count occurrences per category
-    /// - Density: kernel density estimation (future)
-    /// - Smooth: regression/smoothing (future)
-    ///
-    /// The default implementation returns the query unchanged.
-    ///
-    /// # Arguments
-    /// * `query` - The base SQL query (with filter applied)
-    /// * `aesthetics` - Layer aesthetic mappings (to find x, y columns)
-    /// * `group_by` - Combined partition_by + facet variables for grouping
-    /// * `execute_query` - Closure to execute SQL for data inspection
-    ///
-    /// Returns `StatResult::Identity` for no transformation (use original data),
-    /// or `StatResult::Transformed` with the query and new aesthetic mappings.
-    pub fn apply_stat_transform<F>(
-        &self,
-        query: &str,
-        schema: &Schema,
-        aesthetics: &Mappings,
-        group_by: &[String],
-        parameters: &HashMap<String, ParameterValue>,
-        execute_query: &F,
-    ) -> Result<StatResult>
-    where
-        F: Fn(&str) -> Result<DataFrame>,
-    {
-        match self {
-            Geom::Histogram => {
-                self.stat_histogram(query, aesthetics, group_by, parameters, execute_query)
-            }
-            Geom::Bar => self.stat_bar_count(query, schema, aesthetics, group_by),
-            // Future: Geom::Density, Geom::Smooth, etc.
-            _ => Ok(StatResult::Identity),
-        }
-    }
-
-    /// Statistical transformation for histogram: bin continuous values and count
-    fn stat_histogram<F>(
-        &self,
-        query: &str,
-        aesthetics: &Mappings,
-        group_by: &[String],
-        parameters: &HashMap<String, ParameterValue>,
-        execute_query: &F,
-    ) -> Result<StatResult>
-    where
-        F: Fn(&str) -> Result<DataFrame>,
-    {
-        // Get x column name from aesthetics
-        let x_col = get_column_name(aesthetics, "x").ok_or_else(|| {
-            GgsqlError::ValidationError("Histogram requires 'x' aesthetic mapping".to_string())
-        })?;
-
-        // Get bins from parameters (default: 30)
-        let bins = parameters
-            .get("bins")
-            .and_then(|p| match p {
-                ParameterValue::Number(n) => Some(*n as usize),
-                _ => None,
-            })
-            .expect("bins is not the correct format. Expected a number");
-
-        // Get closed parameter (default: "right")
-        let closed = parameters
-            .get("closed")
-            .and_then(|p| match p {
-                ParameterValue::String(s) => Some(s.as_str()),
-                _ => None,
-            })
-            .expect("closed is not the correct format. Expected a string");
-
-        // Get binwidth from parameters (default: None - use bins to calculate)
-        let explicit_binwidth = parameters.get("binwidth").and_then(|p| match p {
-            ParameterValue::Number(n) => Some(*n),
-            _ => None,
-        });
-
-        // Query min/max to compute bin width
-        let stats_query = format!(
-            "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query})",
-            x = x_col,
-            query = query
-        );
-        let stats_df = execute_query(&stats_query)?;
-
-        let (min_val, max_val) = extract_histogram_min_max(&stats_df)?;
-
-        // Compute bin width: use explicit binwidth if provided, otherwise calculate from bins
-        // Round to 10 decimal places to avoid SQL DECIMAL overflow issues
-        let bin_width = if let Some(bw) = explicit_binwidth {
-            bw
-        } else if min_val >= max_val {
-            1.0 // Fallback for edge case
-        } else {
-            ((max_val - min_val) / (bins - 1) as f64 * 1e10).round() / 1e10
-        };
-        let min_val = (min_val * 1e10).round() / 1e10;
-
-        // Build the bin expression (bin start)
-        let bin_expr = if closed == "left" {
-            // Left-closed [a, b): use FLOOR
-            format!(
-                "(FLOOR(({x} - {min} + {w} * 0.5) / {w})) * {w} + {min} - {w} * 0.5",
-                x = x_col,
-                min = min_val,
-                w = bin_width
-            )
-        } else {
-            // Right-closed (a, b]: use CEIL - 1 with GREATEST for min value
-            format!(
-                "(GREATEST(CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1, 0)) * {w} + {min} - {w} * 0.5",
-                x = x_col,
-                min = min_val,
-                w = bin_width
-            )
-        };
-        // Build the bin end expression (bin start + bin width)
-        let bin_end_expr = format!("{expr} + {w}", expr = bin_expr, w = bin_width);
-
-        // Build grouped columns (group_by includes partition_by + facet variables)
-        let group_cols = if group_by.is_empty() {
-            bin_expr.clone()
-        } else {
-            let mut cols: Vec<String> = group_by.to_vec();
-            cols.push(bin_expr.clone());
-            cols.join(", ")
-        };
-
-        // Determine aggregation expression based on weight aesthetic
-        let agg_expr = if let Some(weight_value) = aesthetics.get("weight") {
-            if weight_value.is_literal() {
-                return Err(GgsqlError::ValidationError(
-                    "Histogram weight aesthetic must be a column, not a literal".to_string(),
-                ));
-            }
-            if let Some(weight_col) = weight_value.column_name() {
-                format!("SUM({})", weight_col)
-            } else {
-                "COUNT(*)".to_string()
-            }
-        } else {
-            "COUNT(*)".to_string()
-        };
-
-        // Use semantically meaningful column names with prefix to avoid conflicts
-        // Include bin (start), bin_end (end), count/sum, and density
-        // Use a two-stage query: first GROUP BY, then calculate density with window function
-        let (binned_select, final_select) = if group_by.is_empty() {
-            (
-                format!(
-                    "{} AS __ggsql_stat__bin, {} AS __ggsql_stat__bin_end, {} AS __ggsql_stat__count",
-                    bin_expr, bin_end_expr, agg_expr
-                ),
-                "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER () AS __ggsql_stat__density".to_string()
-            )
-        } else {
-            let grp_cols = group_by.join(", ");
-            (
-                format!(
-                    "{}, {} AS __ggsql_stat__bin, {} AS __ggsql_stat__bin_end, {} AS __ggsql_stat__count",
-                    grp_cols, bin_expr, bin_end_expr, agg_expr
-                ),
-                format!(
-                    "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER (PARTITION BY {}) AS __ggsql_stat__density",
-                    grp_cols
-                )
-            )
-        };
-
-        let transformed_query = format!(
-            "WITH __stat_src__ AS ({query}), __binned__ AS (SELECT {binned} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __binned__",
-            query = query,
-            binned = binned_select,
-            group = group_cols,
-            final = final_select
-        );
-
-        // Histogram always transforms - produces bin, bin_end, count, and density columns
-        // Consumed aesthetics: x (transformed into bin/bin_end) and weight (used for weighted counts)
-        Ok(StatResult::Transformed {
-            query: transformed_query,
-            stat_columns: vec![
-                "bin".to_string(),
-                "bin_end".to_string(),
-                "count".to_string(),
-                "density".to_string(),
-            ],
-            dummy_columns: vec![],
-            consumed_aesthetics: vec!["x".to_string(), "weight".to_string()],
-        })
-    }
-
-    /// Statistical transformation for bar: COUNT/SUM vs identity based on y and weight mappings
-    ///
-    /// Uses pre-fetched schema to check column existence (avoiding redundant queries).
-    ///
-    /// Decision logic for y:
-    /// - y mapped to literal → identity (use original data)
-    /// - y mapped to column that exists → identity (use original data)
-    /// - y mapped to column that doesn't exist + from wildcard → aggregation
-    /// - y mapped to column that doesn't exist + explicit → error
-    /// - y not mapped → aggregation
-    ///
-    /// Decision logic for aggregation (when y triggers aggregation):
-    /// - weight not mapped → COUNT(*)
-    /// - weight mapped to literal → error (weight must be a column)
-    /// - weight mapped to column that exists → SUM(weight_col)
-    /// - weight mapped to column that doesn't exist + from wildcard → COUNT(*)
-    /// - weight mapped to column that doesn't exist + explicit → error
-    ///
-    /// Returns `StatResult::Identity` for identity (no transformation),
-    /// `StatResult::Transformed` for aggregation with new y mapping.
-    fn stat_bar_count(
-        &self,
-        query: &str,
-        schema: &Schema,
-        aesthetics: &Mappings,
-        group_by: &[String],
-    ) -> Result<StatResult> {
-        // x is now optional - if not mapped, we'll use a dummy constant
-        let x_col = get_column_name(aesthetics, "x");
-        let use_dummy_x = x_col.is_none();
-
-        // Build column lookup set from pre-fetched schema
-        let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
-
-        // Check if y is mapped
-        // Note: With upfront validation, if y is mapped to a column, that column must exist
-        if let Some(y_value) = aesthetics.get("y") {
-            // y is a literal value - use identity (no transformation)
-            if y_value.is_literal() {
-                return Ok(StatResult::Identity);
-            }
-
-            // y is a column reference - if it exists in schema, use identity
-            // (column existence validated upfront, but we still check schema for stat decision)
-            if let Some(y_col) = y_value.column_name() {
-                if schema_columns.contains(y_col) {
-                    // y column exists - use identity (no transformation)
-                    return Ok(StatResult::Identity);
-                }
-                // y mapped but column doesn't exist in schema - fall through to aggregation
-                // (this shouldn't happen with upfront validation, but handle gracefully)
-            }
-        }
-
-        // y not mapped - apply aggregation (COUNT or SUM)
-        // Determine aggregation expression based on weight aesthetic
-        // Note: stat column is always "count" for predictability, even when using SUM
-        // Note: With upfront validation, if weight is mapped to a column, that column must exist
-        let agg_expr = if let Some(weight_value) = aesthetics.get("weight") {
-            // weight is mapped - check if it's valid
-            if weight_value.is_literal() {
-                return Err(GgsqlError::ValidationError(
-                    "Bar weight aesthetic must be a column, not a literal".to_string(),
-                ));
-            }
-
-            if let Some(weight_col) = weight_value.column_name() {
-                if schema_columns.contains(weight_col) {
-                    // weight column exists - use SUM (but still call it "count")
-                    format!("SUM({}) AS __ggsql_stat__count", weight_col)
-                } else {
-                    // weight mapped but column doesn't exist - fall back to COUNT
-                    // (this shouldn't happen with upfront validation, but handle gracefully)
-                    "COUNT(*) AS __ggsql_stat__count".to_string()
-                }
-            } else {
-                // Shouldn't happen (not literal, not column), fall back to COUNT
-                "COUNT(*) AS __ggsql_stat__count".to_string()
-            }
-        } else {
-            // weight not mapped - use COUNT
-            "COUNT(*) AS __ggsql_stat__count".to_string()
-        };
-
-        // Build the query based on whether x is mapped or not
-        // Use two-stage query: first GROUP BY, then calculate proportion with window function
-        let (transformed_query, stat_columns, dummy_columns, consumed_aesthetics) = if use_dummy_x {
-            // x is not mapped - use dummy constant, no GROUP BY on x
-            let (grouped_select, final_select) = if group_by.is_empty() {
-                (
-                    format!(
-                        "'__ggsql_stat__dummy__' AS __ggsql_stat__x, {agg}",
-                        agg = agg_expr
-                    ),
-                    "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER () AS __ggsql_stat__proportion".to_string()
-                )
-            } else {
-                let grp_cols = group_by.join(", ");
-                (
-                    format!(
-                        "{g}, '__ggsql_stat__dummy__' AS __ggsql_stat__x, {agg}",
-                        g = grp_cols,
-                        agg = agg_expr
-                    ),
-                    format!(
-                        "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER (PARTITION BY {}) AS __ggsql_stat__proportion",
-                        grp_cols
-                    )
-                )
-            };
-
-            let query_str = if group_by.is_empty() {
-                // No grouping at all - single aggregate
-                format!(
-                    "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__) SELECT {final} FROM __grouped__",
-                    query = query,
-                    grouped = grouped_select,
-                    final = final_select
-                )
-            } else {
-                // Group by partition/facet variables only
-                let group_cols = group_by.join(", ");
-                format!(
-                    "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __grouped__",
-                    query = query,
-                    grouped = grouped_select,
-                    group = group_cols,
-                    final = final_select
-                )
-            };
-
-            // Stat columns: x (dummy), count, and proportion - x is a dummy placeholder
-            // Consumed: weight (used for weighted sums)
-            (
-                query_str,
-                vec![
-                    "x".to_string(),
-                    "count".to_string(),
-                    "proportion".to_string(),
-                ],
-                vec!["x".to_string()],
-                vec!["weight".to_string()],
-            )
-        } else {
-            // x is mapped - use existing logic with two-stage query
-            let x_col = x_col.unwrap();
-
-            // Build grouped columns (group_by includes partition_by + facet variables + x)
-            let group_cols = if group_by.is_empty() {
-                x_col.clone()
-            } else {
-                let mut cols = group_by.to_vec();
-                cols.push(x_col.clone());
-                cols.join(", ")
-            };
-
-            // Keep original x column name, only add the aggregated stat column
-            let (grouped_select, final_select) = if group_by.is_empty() {
-                (
-                    format!("{x}, {agg}", x = x_col, agg = agg_expr),
-                    "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER () AS __ggsql_stat__proportion".to_string()
-                )
-            } else {
-                let grp_cols = group_by.join(", ");
-                (
-                    format!("{g}, {x}, {agg}", g = grp_cols, x = x_col, agg = agg_expr),
-                    format!(
-                        "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER (PARTITION BY {}) AS __ggsql_stat__proportion",
-                        grp_cols
-                    )
-                )
-            };
-
-            let query_str = format!(
-                "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __grouped__",
-                query = query,
-                grouped = grouped_select,
-                group = group_cols,
-                final = final_select
-            );
-
-            // count and proportion stat columns (x is preserved from original data), no dummies
-            // Consumed: weight (used for weighted sums)
-            (
-                query_str,
-                vec!["count".to_string(), "proportion".to_string()],
-                vec![],
-                vec!["weight".to_string()],
-            )
-        };
-
-        // Return with stat column names and consumed aesthetics
-        Ok(StatResult::Transformed {
-            query: transformed_query,
-            stat_columns,
-            dummy_columns,
-            consumed_aesthetics,
-        })
-    }
-}
-
-/// Helper to extract column name from aesthetic value
-fn get_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String> {
-    aesthetics.get(aesthetic).and_then(|v| match v {
-        AestheticValue::Column { name, .. } => Some(name.clone()),
-        _ => None,
-    })
-}
-
-/// Extract min and max from histogram stats DataFrame
-fn extract_histogram_min_max(df: &DataFrame) -> Result<(f64, f64)> {
-    if df.height() == 0 {
-        return Err(GgsqlError::ValidationError(
-            "No data for histogram statistics".to_string(),
-        ));
-    }
-
-    let min_val = df
-        .column("min_val")
-        .ok()
-        .and_then(|s| s.f64().ok())
-        .and_then(|ca| ca.get(0))
-        .ok_or_else(|| {
-            GgsqlError::ValidationError("Could not extract min value for histogram".to_string())
-        })?;
-
-    let max_val = df
-        .column("max_val")
-        .ok()
-        .and_then(|s| s.f64().ok())
-        .and_then(|ca| ca.get(0))
-        .ok_or_else(|| {
-            GgsqlError::ValidationError("Could not extract max value for histogram".to_string())
-        })?;
-
-    Ok((min_val, max_val))
-}
 
 /// Value for aesthetic mappings
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1597,7 +747,7 @@ mod tests {
 
     #[test]
     fn test_layer_creation() {
-        let layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::point())
             .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
             .with_aesthetic("y".to_string(), AestheticValue::standard_column("revenue"))
             .with_aesthetic(
@@ -1605,7 +755,7 @@ mod tests {
                 AestheticValue::Literal(LiteralValue::String("blue".to_string())),
             );
 
-        assert_eq!(layer.geom, Geom::Point);
+        assert_eq!(layer.geom, Geom::point());
         assert_eq!(layer.get_column("x"), Some("date"));
         assert_eq!(layer.get_column("y"), Some("revenue"));
         assert!(matches!(layer.get_literal("color"), Some(LiteralValue::String(s)) if s == "blue"));
@@ -1615,25 +765,25 @@ mod tests {
     #[test]
     fn test_layer_with_filter() {
         let filter = SqlExpression::new("year > 2020");
-        let layer = Layer::new(Geom::Point).with_filter(filter);
+        let layer = Layer::new(Geom::point()).with_filter(filter);
         assert!(layer.filter.is_some());
         assert_eq!(layer.filter.as_ref().unwrap().as_str(), "year > 2020");
     }
 
     #[test]
     fn test_layer_validation() {
-        let valid_point = Layer::new(Geom::Point)
+        let valid_point = Layer::new(Geom::point())
             .with_aesthetic("x".to_string(), AestheticValue::standard_column("x"))
             .with_aesthetic("y".to_string(), AestheticValue::standard_column("y"));
 
         assert!(valid_point.validate_required_aesthetics().is_ok());
 
-        let invalid_point = Layer::new(Geom::Point)
+        let invalid_point = Layer::new(Geom::point())
             .with_aesthetic("x".to_string(), AestheticValue::standard_column("x"));
 
         assert!(invalid_point.validate_required_aesthetics().is_err());
 
-        let valid_ribbon = Layer::new(Geom::Ribbon)
+        let valid_ribbon = Layer::new(Geom::ribbon())
             .with_aesthetic("x".to_string(), AestheticValue::standard_column("x"))
             .with_aesthetic("ymin".to_string(), AestheticValue::standard_column("ymin"))
             .with_aesthetic("ymax".to_string(), AestheticValue::standard_column("ymax"));
@@ -1645,16 +795,16 @@ mod tests {
     fn test_viz_spec_layer_operations() {
         let mut spec = VizSpec::new();
 
-        let layer1 = Layer::new(Geom::Point);
-        let layer2 = Layer::new(Geom::Line);
+        let layer1 = Layer::new(Geom::point());
+        let layer2 = Layer::new(Geom::line());
 
         spec.layers.push(layer1);
         spec.layers.push(layer2);
 
         assert!(spec.has_layers());
         assert_eq!(spec.layer_count(), 2);
-        assert_eq!(spec.layers[0].geom, Geom::Point);
-        assert_eq!(spec.layers[1].geom, Geom::Line);
+        assert_eq!(spec.layers[0].geom, Geom::point());
+        assert_eq!(spec.layers[1].geom, Geom::line());
     }
 
     #[test]
@@ -1672,9 +822,9 @@ mod tests {
 
     #[test]
     fn test_geom_display() {
-        assert_eq!(format!("{}", Geom::Point), "point");
-        assert_eq!(format!("{}", Geom::Histogram), "histogram");
-        assert_eq!(format!("{}", Geom::ErrorBar), "errorbar");
+        assert_eq!(format!("{}", Geom::point()), "point");
+        assert_eq!(format!("{}", Geom::histogram()), "histogram");
+        assert_eq!(format!("{}", Geom::errorbar()), "errorbar");
     }
 
     // ========================================
@@ -1732,14 +882,14 @@ mod tests {
 
     #[test]
     fn test_layer_with_wildcard() {
-        let layer = Layer::new(Geom::Point).with_wildcard();
+        let layer = Layer::new(Geom::point()).with_wildcard();
         assert!(layer.mappings.wildcard);
     }
 
     #[test]
     fn test_geom_aesthetics() {
         // Point geom
-        let point = Geom::Point.aesthetics();
+        let point = Geom::point().aesthetics();
         assert!(point.supported.contains(&"x"));
         assert!(point.supported.contains(&"size"));
         assert!(point.supported.contains(&"shape"));
@@ -1747,14 +897,14 @@ mod tests {
         assert_eq!(point.required, &["x", "y"]);
 
         // Line geom
-        let line = Geom::Line.aesthetics();
+        let line = Geom::line().aesthetics();
         assert!(line.supported.contains(&"linetype"));
         assert!(line.supported.contains(&"linewidth"));
         assert!(!line.supported.contains(&"size"));
         assert_eq!(line.required, &["x", "y"]);
 
         // Bar geom - optional x and y (stat decides aggregation)
-        let bar = Geom::Bar.aesthetics();
+        let bar = Geom::bar().aesthetics();
         assert!(bar.supported.contains(&"fill"));
         assert!(bar.supported.contains(&"width"));
         assert!(bar.supported.contains(&"y")); // Bar accepts optional y
@@ -1762,30 +912,30 @@ mod tests {
         assert_eq!(bar.required, &[] as &[&str]); // No required aesthetics
 
         // Text geom
-        let text = Geom::Text.aesthetics();
+        let text = Geom::text().aesthetics();
         assert!(text.supported.contains(&"label"));
         assert!(text.supported.contains(&"family"));
         assert_eq!(text.required, &["x", "y"]);
 
         // Statistical geoms only require x
-        assert_eq!(Geom::Histogram.aesthetics().required, &["x"]);
-        assert_eq!(Geom::Density.aesthetics().required, &["x"]);
+        assert_eq!(Geom::histogram().aesthetics().required, &["x"]);
+        assert_eq!(Geom::density().aesthetics().required, &["x"]);
 
         // Ribbon requires ymin/ymax
-        assert_eq!(Geom::Ribbon.aesthetics().required, &["x", "ymin", "ymax"]);
+        assert_eq!(Geom::ribbon().aesthetics().required, &["x", "ymin", "ymax"]);
 
         // Segment/arrow require endpoints
         assert_eq!(
-            Geom::Segment.aesthetics().required,
+            Geom::segment().aesthetics().required,
             &["x", "y", "xend", "yend"]
         );
 
         // Reference lines
-        assert_eq!(Geom::HLine.aesthetics().required, &["yintercept"]);
-        assert_eq!(Geom::VLine.aesthetics().required, &["xintercept"]);
-        assert_eq!(Geom::AbLine.aesthetics().required, &["slope", "intercept"]);
+        assert_eq!(Geom::hline().aesthetics().required, &["yintercept"]);
+        assert_eq!(Geom::vline().aesthetics().required, &["xintercept"]);
+        assert_eq!(Geom::abline().aesthetics().required, &["slope", "intercept"]);
 
         // ErrorBar has no strict requirements
-        assert_eq!(Geom::ErrorBar.aesthetics().required, &[] as &[&str]);
+        assert_eq!(Geom::errorbar().aesthetics().required, &[] as &[&str]);
     }
 }

@@ -4,6 +4,7 @@
 //! handling all the node types defined in the grammar.
 
 use super::ast::*;
+use super::geom::Geom;
 use crate::{GgsqlError, Result};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -277,7 +278,7 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut VizSpec) -> Result<(
 /// Build a Layer from a draw_clause node
 /// Syntax: DRAW geom [MAPPING col AS x, ... [FROM source]] [REMAPPING stat AS aes, ...] [SETTING param => val, ...] [PARTITION BY col, ...] [FILTER condition]
 fn build_layer(node: &Node, source: &str) -> Result<Layer> {
-    let mut geom = Geom::Point; // default
+    let mut geom = Geom::point(); // default
     let mut aesthetics = Mappings::new();
     let mut remappings = Mappings::new();
     let mut parameters = HashMap::new();
@@ -538,30 +539,30 @@ fn parse_order_clause(node: &Node, source: &str) -> Result<SqlExpression> {
     ))
 }
 
-/// Parse a geom_type node text into a Geom enum
+/// Parse a geom_type node text into a Geom
 fn parse_geom_type(text: &str) -> Result<Geom> {
     match text.to_lowercase().as_str() {
-        "point" => Ok(Geom::Point),
-        "line" => Ok(Geom::Line),
-        "path" => Ok(Geom::Path),
-        "bar" => Ok(Geom::Bar),
-        "area" => Ok(Geom::Area),
-        "tile" => Ok(Geom::Tile),
-        "polygon" => Ok(Geom::Polygon),
-        "ribbon" => Ok(Geom::Ribbon),
-        "histogram" => Ok(Geom::Histogram),
-        "density" => Ok(Geom::Density),
-        "smooth" => Ok(Geom::Smooth),
-        "boxplot" => Ok(Geom::Boxplot),
-        "violin" => Ok(Geom::Violin),
-        "text" => Ok(Geom::Text),
-        "label" => Ok(Geom::Label),
-        "segment" => Ok(Geom::Segment),
-        "arrow" => Ok(Geom::Arrow),
-        "hline" => Ok(Geom::HLine),
-        "vline" => Ok(Geom::VLine),
-        "abline" => Ok(Geom::AbLine),
-        "errorbar" => Ok(Geom::ErrorBar),
+        "point" => Ok(Geom::point()),
+        "line" => Ok(Geom::line()),
+        "path" => Ok(Geom::path()),
+        "bar" => Ok(Geom::bar()),
+        "area" => Ok(Geom::area()),
+        "tile" => Ok(Geom::tile()),
+        "polygon" => Ok(Geom::polygon()),
+        "ribbon" => Ok(Geom::ribbon()),
+        "histogram" => Ok(Geom::histogram()),
+        "density" => Ok(Geom::density()),
+        "smooth" => Ok(Geom::smooth()),
+        "boxplot" => Ok(Geom::boxplot()),
+        "violin" => Ok(Geom::violin()),
+        "text" => Ok(Geom::text()),
+        "label" => Ok(Geom::label()),
+        "segment" => Ok(Geom::segment()),
+        "arrow" => Ok(Geom::arrow()),
+        "hline" => Ok(Geom::hline()),
+        "vline" => Ok(Geom::vline()),
+        "abline" => Ok(Geom::abline()),
+        "errorbar" => Ok(Geom::errorbar()),
         _ => Err(GgsqlError::ParseError(format!(
             "Unknown geom type: {}",
             text
