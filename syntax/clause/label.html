@@ -20,6 +20,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -282,8 +317,15 @@ ul.task-list li input[type="checkbox"] {
 </nav>
 <div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
-    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
-        
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#clause-syntax" id="toc-clause-syntax" class="nav-link active" data-scroll-target="#clause-syntax">Clause syntax</a></li>
+  <li><a href="#automatic-labelling-logic" id="toc-automatic-labelling-logic" class="nav-link" data-scroll-target="#automatic-labelling-logic">Automatic labelling logic</a></li>
+  </ul>
+</nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
@@ -307,8 +349,34 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
+<p>The <code>LABEL</code> clause is one of the simpler clauses in ggsql an allow you to override the default naming of axes and legends, as well as adding titles to the plot</p>
+<section id="clause-syntax" class="level2">
+<h2 class="anchored" data-anchor-id="clause-syntax">Clause syntax</h2>
+<p>The <code>LABEL</code> clause takes one or more labeling settings.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span> <span class="op">&lt;</span>aesthetic<span class="op">/</span>title<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>string<span class="op">&gt;</span>, <span class="op">..</span>.</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>If an <code>aesthetic</code> is given, then the title will be used for the relevant axis or legend, e.g.&nbsp;<code>x =&gt; 'my x-axis'</code> will label the x axis, whereas <code>fill =&gt; 'Species'</code> will label the legend for fill (if any).</p>
+<p>There are a few additional labels beside the aesthetics that govern the different titles of the plot and can be given instead of an aesthetic name:</p>
+<ul>
+<li><code>title</code>: The main title of the plot</li>
+<li><code>subtitle</code>: An additional, often longer and more descriptive, title beneath the main title</li>
+<li><code>caption</code>: A string placed below the plot, often used to add additional information about the data source etc.</li>
+</ul>
+</section>
+<section id="automatic-labelling-logic" class="level2">
+<h2 class="anchored" data-anchor-id="automatic-labelling-logic">Automatic labelling logic</h2>
+<p>Axes and legends get an automatic label from the mapping. The logic is as follows:</p>
+<ol type="1">
+<li>Start from the global mapping and then go through the layer mappings as they appear.</li>
+<li>Collect mappings for each aesthetic in the order they appear</li>
+<li>For each aesthetic determine the label based on the following priority:</li>
+<li>An explicitly provided one with <code>LABEL</code></li>
+<li>The name of the first appearing column mapping</li>
+<li>The name of the aesthetic</li>
+</ol>
+<p>This means that constants mapped to an aesthetic doesn’t contribute to the derived label, only data columns, and if all else fails the name of the aesthetic will be used.</p>
 
 
+</section>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
