@@ -285,7 +285,10 @@ module.exports = grammar({
 
     // Namespaced identifier: matches "namespace:name" pattern
     // Examples: ggsql:penguins, ggsql:airquality
-    namespaced_identifier: $ => token(/[a-zA-Z_][a-zA-Z0-9_]*:[a-zA-Z_][a-zA-Z0-9_]*/),
+    namespaced_identifier: $ => token(choice(
+      /[a-zA-Z_][a-zA-Z0-9_]*:[a-zA-Z_][a-zA-Z0-9_]*/,
+      seq('`', /[a-zA-Z_][a-zA-Z0-9_]*:[a-zA-Z_][a-zA-Z0-9_]*/, '`')
+    )),
 
     window_specification: $ => seq(
       '(',
