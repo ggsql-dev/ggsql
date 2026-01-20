@@ -25,7 +25,7 @@ module.exports = grammar({
     // Main entry point - SQL followed by VISUALISE statements
     query: $ => seq(
       optional($.sql_portion),
-      repeat1($.visualise_statement)
+      repeat($.visualise_statement)
     ),
 
     // SQL portion - multiple statements separated by semicolons
@@ -355,12 +355,18 @@ module.exports = grammar({
     // VISUALISE/VISUALIZE [global_mapping] [FROM source] with clauses
     // Global mapping sets default aesthetics for all layers
     // FROM source can be an identifier (table/CTE) or string (file path)
-    visualise_statement: $ => seq(
-      choice(caseInsensitive('VISUALISE'), caseInsensitive('VISUALIZE')),
+    visualise_statement: $ => prec.dynamic(1, seq(
+      $.visualise_keyword,
       optional($.global_mapping),
       optional($.from_clause),
       repeat($.viz_clause)
-    ),
+    )),
+
+    // VISUALISE keyword as explicit high-precedence token
+    visualise_keyword: $ => token(prec(10, choice(
+      caseInsensitive("VISUALISE"), 
+      caseInsensitive("VISUALIZE")
+    ))),
 
     // Shared mapping list: comma-separated mapping elements
     // Used by both global (VISUALISE) and layer (MAPPING) mappings
