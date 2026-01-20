@@ -1,5 +1,5 @@
 ---
-title: "Point layer"
+title: "Point"
 ---
 
 > Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
@@ -15,7 +15,7 @@ The following aesthetics are recognised by the point layer.
 
 ### Optional
 * `size`: The size of each point
-* `colour`: The default colour of the each point
+* `colour`: The default colour of each point
 * `stroke`: The colour of the stroke around each point (if any). Overrides `colour`
 * `fill`: The fill colour of each point (if any). Overrides `colour`
 * `opacity`: The opacity of the point
