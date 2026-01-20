@@ -95,7 +95,6 @@ pub fn split_query(query: &str) -> Result<(String, String)> {
 fn extract_from_identifier(node: &Node, source: &str) -> Option<String> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        eprintln!("NODE: {}", get_node_text(&child, source));
         if child.kind() != "from_clause" {
             continue;
         }
@@ -177,17 +176,14 @@ mod tests {
         assert!(sql.contains("CREATE TABLE x AS SELECT 1;"));
         assert!(sql.contains("SELECT * FROM x"));
         assert!(viz.starts_with("VISUALISE FROM x"));
-    }
 
-    #[test]
-    fn test_visualise_from_after_create_without_semicolon_errors() {
+        // Without semicolon, the visualise statement should also be recognised
         let query = "CREATE TABLE x AS SELECT 1 VISUALISE FROM x";
-        let result = split_query(query);
+        let (sql, viz) = split_query(query).unwrap();
 
-        // Should error - tree-sitter doesn't recognize VISUALISE FROM without semicolon
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Error parsing VISUALISE statement"));
+        assert!(sql.contains("CREATE TABLE x AS SELECT 1"));
+        assert!(sql.contains("SELECT * FROM x"));
+        assert!(viz.starts_with("VISUALISE FROM x"));
     }
 
     #[test]
