@@ -773,20 +773,6 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
                 }
             }
 
-            // Divide 'color' over 'fill' and 'stroke
-            if layer.mappings.aesthetics.contains_key("color") {
-                for &aes in &["stroke", "fill"] {
-                    if supported.contains(&aes) {
-                        let color = layer.mappings.aesthetics.get("color").unwrap().clone();
-                        layer
-                            .mappings
-                            .aesthetics
-                            .entry(aes.to_string())
-                            .or_insert(color);
-                    }
-                }
-            }
-
             // Clear wildcard flag since it's been resolved
             layer.mappings.wildcard = false;
         }
@@ -859,6 +845,27 @@ fn with_has_trailing_select(with_node: &Node) -> bool {
     }
 
     false
+}
+
+// Let 'color' aesthetics fill defaults for the 'stroke' and 'fill' aesthetics
+fn split_color_aesthetic(layers: &mut Vec<Layer>) {
+    for layer in layers {
+        if !layer.mappings.aesthetics.contains_key("color") {
+            continue;
+        }
+        let supported = layer.geom.aesthetics().supported;
+        for &aes in &["stroke", "fill"] {
+            if !supported.contains(&aes) {
+                continue;
+            }
+            let color = layer.mappings.aesthetics.get("color").unwrap().clone();
+            layer
+                .mappings
+                .aesthetics
+                .entry(aes.to_string())
+                .or_insert(color);
+        }
+    }
 }
 
 /// Result of preparing data for visualization
@@ -1112,6 +1119,9 @@ where
         replace_literals_with_columns(spec);
         // Compute aesthetic labels (uses first non-constant column, respects user-specified labels)
         spec.compute_aesthetic_labels();
+        // Divide 'color' over 'stroke' and 'fill'. This needs to happens after
+        // literals have associated columns.
+        split_color_aesthetic(&mut spec.layers);
     }
 
     Ok(PreparedData {
@@ -2693,6 +2703,7 @@ mod tests {
     fn test_expansion_of_color_aesthetic() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
+        // Colors as standard columns
         let query = r#"
             VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
             DRAW point MAPPING species AS color, island AS fill
@@ -2710,5 +2721,37 @@ mod tests {
 
         let fill = aes.get("fill").unwrap().column_name().unwrap();
         assert_eq!(fill, "island");
+
+        // Colors as global constant
+        let query = r#"
+          VISUALISE bill_len AS x, bill_dep AS y, "blue" AS color FROM ggsql:penguins
+          DRAW point MAPPING island AS stroke
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+        let aes = &result.specs[0].layers[0].mappings.aesthetics;
+
+        let stroke = aes.get("stroke").unwrap();
+        assert_eq!(stroke.column_name().unwrap(), "island");
+
+        let fill = aes.get("fill").unwrap();
+        assert_eq!(fill.column_name().unwrap(), "__ggsql_const_color_0__");
+
+        // Colors as layer constant
+        let query = r#"
+          VISUALISE bill_len AS x, bill_dep AS y, island AS fill FROM ggsql:penguins
+          DRAW point MAPPING "blue" AS color
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+        let aes = &result.specs[0].layers[0].mappings.aesthetics;
+
+        eprintln!("{:?}", aes);
+
+        let stroke = aes.get("stroke").unwrap();
+        assert_eq!(stroke.column_name().unwrap(), "__ggsql_const_color_0__");
+
+        let fill = aes.get("fill").unwrap();
+        assert_eq!(fill.column_name().unwrap(), "island");
     }
 }
