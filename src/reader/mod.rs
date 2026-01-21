@@ -1,4 +1,4 @@
-//! Data source abstraction layer for ggSQL
+//! Data source abstraction layer for ggsql
 //!
 //! The reader module provides a pluggable interface for executing SQL queries
 //! against various data sources and returning Polars DataFrames for visualization.
@@ -25,6 +25,8 @@ use crate::{DataFrame, Result};
 pub mod duckdb;
 
 pub mod connection;
+
+pub mod data;
 
 #[cfg(feature = "duckdb")]
 pub use duckdb::DuckDBReader;

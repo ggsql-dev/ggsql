@@ -2,6 +2,7 @@
 //!
 //! Provides a reader for DuckDB databases with direct Polars DataFrame integration.
 
+use crate::reader::data::init_builtin_data;
 use crate::reader::{connection::ConnectionInfo, Reader};
 use crate::{DataFrame, GgsqlError, Result};
 use duckdb::{params, Connection};
@@ -306,6 +307,17 @@ impl Reader for DuckDBReader {
             || trimmed.starts_with("DELETE ")
             || trimmed.starts_with("ALTER ");
 
+        // Initialise built-in datasets
+        let inits = init_builtin_data(sql)?;
+        for init in inits {
+            if let Err(e) = self.conn.execute(&init, params![]) {
+                return Err(GgsqlError::ReaderError(format!(
+                    "Failed to initialise built-in dataset: {}",
+                    e
+                )));
+            }
+        }
+
         if is_ddl {
             // For DDL, just execute and return an empty DataFrame
             self.conn
@@ -359,7 +371,6 @@ impl Reader for DuckDBReader {
 
         // Collect all values using query_map (which borrows stmt mutably during iteration)
         let builders_cell = std::cell::RefCell::new(column_builders);
-        let row_count_cell = std::cell::RefCell::new(0usize);
         let error_cell = std::cell::RefCell::new(None);
 
         let _ = stmt
@@ -376,7 +387,6 @@ impl Reader for DuckDBReader {
                         return Ok(());
                     }
                 }
-                *row_count_cell.borrow_mut() += 1;
                 Ok(())
             })
             .map_err(|e| GgsqlError::ReaderError(format!("Failed to iterate rows: {}", e)))?
@@ -388,14 +398,7 @@ impl Reader for DuckDBReader {
             return Err(err);
         }
 
-        let row_count = *row_count_cell.borrow();
-        if row_count == 0 {
-            return Err(GgsqlError::ReaderError(
-                "Query returned no rows".to_string(),
-            ));
-        }
-
-        // Build Series from column builders
+        // Build Series from column builders (may be empty if query returned 0 rows)
         let column_builders = builders_cell.into_inner();
         let mut columns = Vec::new();
         for (col_idx, builder) in column_builders.into_iter().enumerate() {

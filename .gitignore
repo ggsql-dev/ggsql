@@ -7,7 +7,9 @@
 Cargo.lock
 
 # IDEs and Editors
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
 .idea/
 *.swp
 *.swo
@@ -95,6 +97,7 @@ docs/_build/
 *.db
 *.sqlite
 *.sqlite3
+!data/*.parquet
 
 # Configuration files
 .env

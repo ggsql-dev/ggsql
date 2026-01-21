@@ -1,9 +1,9 @@
 /*!
-# ggSQL - SQL Visualization Grammar
+# ggsql - SQL Visualization Grammar
 
 A SQL extension for declarative data visualization based on the Grammar of Graphics.
 
-ggSQL allows you to write queries that combine SQL data retrieval with visualization
+ggsql allows you to write queries that combine SQL data retrieval with visualization
 specifications in a single, composable syntax.
 
 ## Example
@@ -20,7 +20,7 @@ THEME minimal
 
 ## Architecture
 
-ggSQL splits queries at the `VISUALISE` boundary:
+ggsql splits queries at the `VISUALISE` boundary:
 - **SQL portion** → passed to pluggable readers (DuckDB, PostgreSQL, CSV, etc.)
 - **VISUALISE portion** → parsed and compiled into visualization specifications
 - **Output** → rendered via pluggable writers (ggplot2, PNG, Vega-Lite, etc.)
@@ -34,6 +34,7 @@ ggSQL splits queries at the `VISUALISE` boundary:
 */
 
 pub mod parser;
+pub mod plot;
 
 #[cfg(any(feature = "duckdb", feature = "postgres", feature = "sqlite"))]
 pub mod reader;
@@ -45,8 +46,8 @@ pub mod writer;
 pub mod execute;
 
 // Re-export key types for convenience
-pub use parser::{
-    AestheticValue, Geom, GlobalMapping, GlobalMappingItem, Layer, LayerSource, Scale, VizSpec,
+pub use plot::{
+    AestheticValue, DataSource, Facet, Geom, Layer, Mappings, Plot, Scale, SqlExpression,
 };
 
 // Future modules - not yet implemented
@@ -84,7 +85,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg(all(feature = "duckdb", feature = "vegalite"))]
 mod integration_tests {
     use super::*;
-    use crate::parser::ast::{AestheticValue, Geom, Layer};
+    use crate::plot::{AestheticValue, Geom, Layer};
     use crate::reader::{DuckDBReader, Reader};
     use crate::writer::{VegaLiteWriter, Writer};
     use std::collections::HashMap;
@@ -123,12 +124,15 @@ mod integration_tests {
         ));
 
         // Create visualization spec
-        let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
             .with_aesthetic(
                 "y".to_string(),
-                AestheticValue::Column("revenue".to_string()),
+                AestheticValue::standard_column("revenue".to_string()),
             );
         spec.layers.push(layer);
 
@@ -176,13 +180,16 @@ mod integration_tests {
         ));
 
         // Create visualization spec
-        let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Area)
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::area())
             .with_aesthetic(
                 "x".to_string(),
-                AestheticValue::Column("timestamp".to_string()),
+                AestheticValue::standard_column("timestamp".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         // Generate Vega-Lite JSON
@@ -227,15 +234,15 @@ mod integration_tests {
         ));
 
         // Create visualization spec
-        let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
-                AestheticValue::Column("int_col".to_string()),
+                AestheticValue::standard_column("int_col".to_string()),
             )
             .with_aesthetic(
                 "y".to_string(),
-                AestheticValue::Column("float_col".to_string()),
+                AestheticValue::standard_column("float_col".to_string()),
             );
         spec.layers.push(layer);
 
@@ -279,15 +286,15 @@ mod integration_tests {
         ));
 
         // Create viz spec
-        let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
-                AestheticValue::Column("int_col".to_string()),
+                AestheticValue::standard_column("int_col".to_string()),
             )
             .with_aesthetic(
                 "y".to_string(),
-                AestheticValue::Column("float_col".to_string()),
+                AestheticValue::standard_column("float_col".to_string()),
             );
         spec.layers.push(layer);
 
@@ -312,13 +319,16 @@ mod integration_tests {
         let sql = "SELECT * FROM (VALUES ('A', 10), ('B', 20), ('A', 15), ('C', 30)) AS t(category, value)";
         let df = reader.execute(sql).unwrap();
 
-        let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Bar)
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::bar())
             .with_aesthetic(
                 "x".to_string(),
-                AestheticValue::Column("category".to_string()),
+                AestheticValue::standard_column("category".to_string()),
             )
-            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
         spec.layers.push(layer);
 
         let writer = VegaLiteWriter::new();
@@ -363,12 +373,15 @@ mod integration_tests {
             polars::prelude::DataType::Date | polars::prelude::DataType::Datetime(_, _)
         ));
 
-        let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Line)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("day".to_string()))
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("day".to_string()),
+            )
             .with_aesthetic(
                 "y".to_string(),
-                AestheticValue::Column("total_sales".to_string()),
+                AestheticValue::standard_column("total_sales".to_string()),
             );
         spec.layers.push(layer);
 
@@ -404,12 +417,15 @@ mod integration_tests {
             polars::prelude::DataType::Float64
         ));
 
-        let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("small".to_string()))
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("small".to_string()),
+            )
             .with_aesthetic(
                 "y".to_string(),
-                AestheticValue::Column("medium".to_string()),
+                AestheticValue::standard_column("medium".to_string()),
             );
         spec.layers.push(layer);
 
@@ -455,10 +471,16 @@ mod integration_tests {
             polars::prelude::DataType::Int64
         ));
 
-        let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Bar)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("int".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::Column("big".to_string()));
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::bar())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("int".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("big".to_string()),
+            );
         spec.layers.push(layer);
 
         let writer = VegaLiteWriter::new();
