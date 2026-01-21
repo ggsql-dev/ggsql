@@ -5,6 +5,7 @@ use std::collections::HashSet;
 
 use super::types::get_column_name;
 use super::{DefaultParam, DefaultParamValue, GeomAesthetics, GeomTrait, GeomType, StatResult};
+use crate::naming;
 use crate::plot::types::ParameterValue;
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
@@ -132,6 +133,13 @@ fn stat_bar_count(
     // Determine aggregation expression based on weight aesthetic
     // Note: stat column is always "count" for predictability, even when using SUM
     // Note: With upfront validation, if weight is mapped to a column, that column must exist
+
+    // Define stat column names
+    let stat_count = naming::stat_column("count");
+    let stat_proportion = naming::stat_column("proportion");
+    let stat_x = naming::stat_column("x");
+    let stat_dummy_value = naming::stat_column("dummy"); // Value used for dummy x
+
     let agg_expr = if let Some(weight_value) = aesthetics.get("weight") {
         // weight is mapped - check if it's valid
         if weight_value.is_literal() {
@@ -143,19 +151,19 @@ fn stat_bar_count(
         if let Some(weight_col) = weight_value.column_name() {
             if schema_columns.contains(weight_col) {
                 // weight column exists - use SUM (but still call it "count")
-                format!("SUM({}) AS __ggsql_stat__count", weight_col)
+                format!("SUM({}) AS {}", weight_col, stat_count)
             } else {
                 // weight mapped but column doesn't exist - fall back to COUNT
                 // (this shouldn't happen with upfront validation, but handle gracefully)
-                "COUNT(*) AS __ggsql_stat__count".to_string()
+                format!("COUNT(*) AS {}", stat_count)
             }
         } else {
             // Shouldn't happen (not literal, not column), fall back to COUNT
-            "COUNT(*) AS __ggsql_stat__count".to_string()
+            format!("COUNT(*) AS {}", stat_count)
         }
     } else {
         // weight not mapped - use COUNT
-        "COUNT(*) AS __ggsql_stat__count".to_string()
+        format!("COUNT(*) AS {}", stat_count)
     };
 
     // Build the query based on whether x is mapped or not
@@ -165,23 +173,33 @@ fn stat_bar_count(
         let (grouped_select, final_select) = if group_by.is_empty() {
             (
                 format!(
-                    "'__ggsql_stat__dummy__' AS __ggsql_stat__x, {agg}",
+                    "'{dummy}' AS {x}, {agg}",
+                    dummy = stat_dummy_value,
+                    x = stat_x,
                     agg = agg_expr
                 ),
-                "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER () AS __ggsql_stat__proportion".to_string()
+                format!(
+                    "*, {count} * 1.0 / SUM({count}) OVER () AS {prop}",
+                    count = stat_count,
+                    prop = stat_proportion
+                ),
             )
         } else {
             let grp_cols = group_by.join(", ");
             (
                 format!(
-                    "{g}, '__ggsql_stat__dummy__' AS __ggsql_stat__x, {agg}",
+                    "{g}, '{dummy}' AS {x}, {agg}",
                     g = grp_cols,
+                    dummy = stat_dummy_value,
+                    x = stat_x,
                     agg = agg_expr
                 ),
                 format!(
-                    "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER (PARTITION BY {}) AS __ggsql_stat__proportion",
-                    grp_cols
-                )
+                    "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {prop}",
+                    count = stat_count,
+                    grp = grp_cols,
+                    prop = stat_proportion
+                ),
             )
         };
 
@@ -234,16 +252,22 @@ fn stat_bar_count(
         let (grouped_select, final_select) = if group_by.is_empty() {
             (
                 format!("{x}, {agg}", x = x_col, agg = agg_expr),
-                "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER () AS __ggsql_stat__proportion".to_string()
+                format!(
+                    "*, {count} * 1.0 / SUM({count}) OVER () AS {prop}",
+                    count = stat_count,
+                    prop = stat_proportion
+                ),
             )
         } else {
             let grp_cols = group_by.join(", ");
             (
                 format!("{g}, {x}, {agg}", g = grp_cols, x = x_col, agg = agg_expr),
                 format!(
-                    "*, __ggsql_stat__count * 1.0 / SUM(__ggsql_stat__count) OVER (PARTITION BY {}) AS __ggsql_stat__proportion",
-                    grp_cols
-                )
+                    "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {prop}",
+                    count = stat_count,
+                    grp = grp_cols,
+                    prop = stat_proportion
+                ),
             )
         };
 

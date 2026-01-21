@@ -19,6 +19,7 @@
 //! └─ theme: Option<Theme>           (optional, from THEME clause)
 //! ```
 
+use crate::naming;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -164,7 +165,7 @@ impl Plot {
             for (aesthetic, value) in &layer.mappings.aesthetics {
                 if let AestheticValue::Column { name, .. } = value {
                     // Skip synthetic constant columns
-                    if name.starts_with("__ggsql_const_") {
+                    if naming::is_const_column(name) {
                         continue;
                     }
 
@@ -177,7 +178,7 @@ impl Plot {
                     }
 
                     // Compute the label from the column name
-                    let column_name = if let Some(stat_name) = name.strip_prefix("__ggsql_stat__") {
+                    let column_name = if let Some(stat_name) = naming::extract_stat_name(name) {
                         stat_name.to_string()
                     } else {
                         name.clone()

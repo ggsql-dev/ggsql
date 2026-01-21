@@ -664,6 +664,25 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
         ));
     }
 
+    // Replace colour palettes by their hex codes
+    if matches!(
+        aesthetic.as_str(),
+        "stroke" | "colour" | "fill" | "color" | "col"
+    ) {
+        if let Some(ParameterValue::Array(elements)) = properties.get("palette") {
+            let mut hex_codes = Vec::new();
+            for elem in elements {
+                if let ArrayElement::String(color) = elem {
+                    let hex = ArrayElement::String(color_to_hex(color));
+                    hex_codes.push(hex);
+                } else {
+                    hex_codes.push(elem.clone());
+                }
+            }
+            properties.insert("palette".to_string(), ParameterValue::Array(hex_codes));
+        }
+    }
+
     Ok(Scale {
         aesthetic,
         scale_type,
@@ -685,6 +704,9 @@ fn parse_scale_type(text: &str) -> Result<ScaleType> {
         "viridis" => Ok(ScaleType::Viridis),
         "plasma" => Ok(ScaleType::Plasma),
         "diverging" => Ok(ScaleType::Diverging),
+        "sequential" => Ok(ScaleType::Sequential),
+        "identity" => Ok(ScaleType::Identity),
+        "manual" => Ok(ScaleType::Manual),
         _ => Err(GgsqlError::ParseError(format!(
             "Unknown scale type: {}",
             text
@@ -1795,9 +1817,9 @@ mod tests {
     }
 
     #[test]
-    fn test_visualise_from_file_path_parquet() {
+    fn test_visualise_from_file_path_quote_parquet() {
         let query = r#"
-            VISUALISE FROM "data/sales.parquet"
+            VISUALISE FROM 'data/sales.parquet'
             DRAW bar MAPPING region AS x, total AS y
         "#;
 
@@ -1809,6 +1831,25 @@ mod tests {
         assert_eq!(
             specs[0].source,
             Some(DataSource::FilePath("data/sales.parquet".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_visualise_from_file_path_double_quote_parquet() {
+        let query = r#"
+            VISUALISE FROM "data/sales.parquet"
+            DRAW bar MAPPING region AS x, total AS y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+
+        let specs = result.unwrap();
+        // Source should be stored as identifier,
+        // duckdb accepts this to indicate reading from file
+        assert_eq!(
+            specs[0].source,
+            Some(DataSource::Identifier("\"data/sales.parquet\"".to_string()))
         );
     }
 
@@ -3066,5 +3107,31 @@ mod tests {
             specs[0].layers[1].source.as_ref(),
             Some(DataSource::Identifier(name)) if name == "targets"
         ));
+    }
+
+    #[test]
+    fn test_colour_scale_hex_code_conversion() {
+        let query = r#"
+          VISUALISE foo AS x
+          SCALE color SETTING palette => ['rgb(0, 0, 255)', 'green', '#FF0000']
+        "#;
+        let specs = parse_test_query(query).unwrap();
+
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+
+        let scale_params = &scales[0].properties;
+        let palette = scale_params.get("palette");
+        assert!(palette.is_some());
+        let palette = palette.unwrap();
+
+        let mut ok = false;
+        if let ParameterValue::Array(elems) = palette {
+            ok = matches!(&elems[0], ArrayElement::String(color) if color == "#0000ff");
+            ok = ok && matches!(&elems[1], ArrayElement::String(color) if color == "#008000");
+            ok = ok && matches!(&elems[2], ArrayElement::String(color) if color == "#ff0000");
+        }
+        assert!(ok);
+        eprintln!("{:?}", palette);
     }
 }

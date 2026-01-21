@@ -20,6 +20,7 @@
 //! // Can be rendered in browser with vega-embed
 //! ```
 
+use crate::naming;
 use crate::plot::layer::geom::{GeomAesthetics, GeomType};
 use crate::plot::{ArrayElement, Coord, CoordType, LiteralValue, ParameterValue};
 use crate::writer::Writer;
@@ -274,6 +275,9 @@ impl VegaLiteWriter {
                 ..
             } => {
                 // Check if there's a scale specification for this aesthetic
+                let inferred = self.infer_field_type(df, col);
+                let mut identity_scale = false;
+
                 let field_type = if let Some(scale) = spec.find_scale(aesthetic) {
                     // Use scale type if explicitly specified
                     if let Some(scale_type) = &scale.scale_type {
@@ -285,7 +289,9 @@ impl VegaLiteWriter {
                             | ScaleType::Log2
                             | ScaleType::Sqrt
                             | ScaleType::Reverse => "quantitative",
-                            ScaleType::Ordinal | ScaleType::Categorical => "nominal",
+                            ScaleType::Ordinal | ScaleType::Categorical | ScaleType::Manual => {
+                                "nominal"
+                            }
                             ScaleType::Date | ScaleType::DateTime | ScaleType::Time => "temporal",
                             ScaleType::Viridis
                             | ScaleType::Plasma
@@ -294,6 +300,10 @@ impl VegaLiteWriter {
                             | ScaleType::Cividis
                             | ScaleType::Diverging
                             | ScaleType::Sequential => "quantitative", // Color scales
+                            ScaleType::Identity => {
+                                identity_scale = true;
+                                inferred.as_str()
+                            }
                         }
                         .to_string()
                     } else if scale.properties.contains_key("domain") {
@@ -307,11 +317,11 @@ impl VegaLiteWriter {
                         }
                     } else {
                         // Scale exists but no type specified, infer from data
-                        self.infer_field_type(df, col)
+                        inferred
                     }
                 } else {
                     // No scale specification, infer from data
-                    self.infer_field_type(df, col)
+                    inferred
                 };
 
                 let mut encoding = json!({
@@ -330,10 +340,11 @@ impl VegaLiteWriter {
                     }
                 }
 
-                // Apply scale properties from SCALE if specified
+                let mut scale_obj = serde_json::Map::new();
+
                 if let Some(scale) = spec.find_scale(aesthetic) {
+                    // Apply scale properties from SCALE if specified
                     use crate::plot::{ArrayElement, ParameterValue};
-                    let mut scale_obj = serde_json::Map::new();
 
                     // Apply domain
                     if let Some(ParameterValue::Array(domain_values)) =
@@ -377,10 +388,18 @@ impl VegaLiteWriter {
                             .collect();
                         scale_obj.insert("range".to_string(), json!(range_json));
                     }
+                }
+                // We don't automatically want to include 0 in our position scales
+                if aesthetic == "x" || aesthetic == "y" {
+                    scale_obj.insert("zero".to_string(), json!(Value::Bool(false)));
+                }
 
-                    if !scale_obj.is_empty() {
-                        encoding["scale"] = json!(scale_obj);
-                    }
+                if identity_scale {
+                    // When we have an identity scale, these scale properties don't matter.
+                    // We should return a `"scale": null`` in the encoding channel
+                    encoding["scale"] = json!(Value::Null)
+                } else if !scale_obj.is_empty() {
+                    encoding["scale"] = json!(scale_obj);
                 }
 
                 // Hide axis for dummy columns (e.g., x when bar chart has no x mapped)
@@ -994,11 +1013,11 @@ impl Writer for VegaLiteWriter {
             .iter()
             .enumerate()
             .map(|(idx, _layer)| {
-                let layer_key = format!("__layer_{}__", idx);
+                let layer_key = naming::layer_key(idx);
                 if data.contains_key(&layer_key) {
                     layer_key
                 } else {
-                    "__global__".to_string()
+                    naming::GLOBAL_DATA_KEY.to_string()
                 }
             })
             .collect();
@@ -1094,7 +1113,7 @@ impl Writer for VegaLiteWriter {
             // (Line geom uses Vega-Lite's default x-axis sorting)
             if layer.geom.geom_type() == GeomType::Path {
                 let mut window_transform = json!({
-                    "window": [{"op": "row_number", "as": "__ggsql_order__"}]
+                    "window": [{"op": "row_number", "as": naming::ORDER_COLUMN}]
                 });
 
                 // Add groupby if partition_by is present (restarts numbering per group)
@@ -1147,7 +1166,7 @@ impl Writer for VegaLiteWriter {
                 encoding.insert(
                     "order".to_string(),
                     json!({
-                        "field": "__ggsql_order__",
+                        "field": naming::ORDER_COLUMN,
                         "type": "quantitative"
                     }),
                 );
@@ -1182,9 +1201,9 @@ impl Writer for VegaLiteWriter {
 
         // Handle faceting if present
         if let Some(facet) = &spec.facet {
-            // Determine the data key for faceting (prefer __global__, fallback to first layer's data)
-            let facet_data_key = if data.contains_key("__global__") {
-                "__global__".to_string()
+            // Determine the data key for faceting (prefer global data, fallback to first layer's data)
+            let facet_data_key = if data.contains_key(naming::GLOBAL_DATA_KEY) {
+                naming::GLOBAL_DATA_KEY.to_string()
             } else {
                 layer_data_keys[0].clone()
             };
@@ -1285,7 +1304,7 @@ mod tests {
     /// Helper to wrap a DataFrame in a data map for testing
     fn wrap_data(df: DataFrame) -> HashMap<String, DataFrame> {
         let mut data_map = HashMap::new();
-        data_map.insert("__global__".to_string(), df);
+        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
         data_map
     }
 
@@ -1345,9 +1364,12 @@ mod tests {
         assert_eq!(vl_spec["$schema"], writer.schema);
         assert!(vl_spec["layer"].is_array());
         assert_eq!(vl_spec["layer"][0]["mark"], "point");
-        assert!(vl_spec["datasets"]["__global__"].is_array());
+        assert!(vl_spec["datasets"][naming::GLOBAL_DATA_KEY].is_array());
         assert_eq!(
-            vl_spec["datasets"]["__global__"].as_array().unwrap().len(),
+            vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+                .as_array()
+                .unwrap()
+                .len(),
             3
         );
         assert!(vl_spec["layer"][0]["encoding"]["x"].is_object());
@@ -2181,7 +2203,9 @@ mod tests {
         assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
 
         // Values should be converted to numbers in JSON
-        let data = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert_eq!(data[0]["x"], 1.0);
         assert_eq!(data[0]["y"], 4.5);
     }
@@ -2213,7 +2237,9 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        let data = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert_eq!(data.len(), 3);
 
         // Check first row
@@ -2248,7 +2274,9 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        let data = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert_eq!(data.len(), 0);
     }
 
@@ -2281,7 +2309,9 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        let data = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert_eq!(data.len(), 100);
         assert_eq!(data[0]["x"], 1);
         assert_eq!(data[0]["y"], 2);
@@ -3285,7 +3315,9 @@ mod tests {
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that dates are formatted as ISO strings in data
-        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert_eq!(data_values[0]["date"], "1970-01-01");
         assert_eq!(data_values[1]["date"], "1970-01-02");
         assert_eq!(data_values[2]["date"], "1970-01-03");
@@ -3320,7 +3352,9 @@ mod tests {
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that datetimes are formatted as ISO strings in data
-        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert_eq!(data_values[0]["datetime"], "1970-01-01T00:00:00.000Z");
         assert_eq!(data_values[1]["datetime"], "1970-01-01T00:00:01.000Z");
         assert_eq!(data_values[2]["datetime"], "1970-01-01T00:00:02.000Z");
@@ -3355,7 +3389,9 @@ mod tests {
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that times are formatted as ISO time strings in data
-        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert_eq!(data_values[0]["time"], "00:00:00.000");
         assert_eq!(data_values[1]["time"], "01:00:00.000");
         assert_eq!(data_values[2]["time"], "02:00:00.000");
@@ -3394,7 +3430,9 @@ mod tests {
         assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
 
         // Dates should be formatted as ISO strings
-        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert_eq!(data_values[0]["date"], "1970-01-01");
         assert_eq!(data_values[1]["date"], "1970-01-02");
     }
@@ -3431,7 +3469,9 @@ mod tests {
         assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "temporal");
 
         // Timestamps should be formatted as ISO datetime strings
-        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert_eq!(data_values[0]["timestamp"], "1970-01-01T00:00:00.000Z");
         assert_eq!(data_values[1]["timestamp"], "1970-01-02T00:00:00.000Z");
         assert_eq!(data_values[2]["timestamp"], "1970-01-03T00:00:00.000Z");
@@ -3465,7 +3505,7 @@ mod tests {
         let categories = Series::new("category".into(), &["A", "A", "B"]);
         let df = DataFrame::new(vec![dates, values, categories]).unwrap();
         let mut data = std::collections::HashMap::new();
-        data.insert("__global__".to_string(), df);
+        data.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
         let json_str = writer.write(&spec, &data).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
@@ -3504,7 +3544,7 @@ mod tests {
         let regions = Series::new("region".into(), &["North", "South"]);
         let df = DataFrame::new(vec![dates, values, categories, regions]).unwrap();
         let mut data = std::collections::HashMap::new();
-        data.insert("__global__".to_string(), df);
+        data.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
         let json_str = writer.write(&spec, &data).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
@@ -3543,7 +3583,7 @@ mod tests {
         let values = Series::new("value".into(), &[100, 120]);
         let df = DataFrame::new(vec![dates, values]).unwrap();
         let mut data = std::collections::HashMap::new();
-        data.insert("__global__".to_string(), df);
+        data.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
         let json_str = writer.write(&spec, &data).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
@@ -3575,7 +3615,7 @@ mod tests {
         let values = Series::new("value".into(), &[100, 120]);
         let df = DataFrame::new(vec![dates, values]).unwrap();
         let mut data = std::collections::HashMap::new();
-        data.insert("__global__".to_string(), df);
+        data.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
         let result = writer.write(&spec, &data);
         assert!(result.is_err());
@@ -3623,9 +3663,9 @@ mod tests {
             vl_spec["data"].is_object(),
             "Should have top-level data reference"
         );
-        assert_eq!(vl_spec["data"]["name"], "__global__");
+        assert_eq!(vl_spec["data"]["name"], naming::GLOBAL_DATA_KEY);
         assert!(
-            vl_spec["datasets"]["__global__"].is_array(),
+            vl_spec["datasets"][naming::GLOBAL_DATA_KEY].is_array(),
             "Should have datasets"
         );
         assert!(
@@ -3682,9 +3722,9 @@ mod tests {
             vl_spec["data"].is_object(),
             "Should have top-level data reference"
         );
-        assert_eq!(vl_spec["data"]["name"], "__global__");
+        assert_eq!(vl_spec["data"]["name"], naming::GLOBAL_DATA_KEY);
         assert!(
-            vl_spec["datasets"]["__global__"].is_array(),
+            vl_spec["datasets"][naming::GLOBAL_DATA_KEY].is_array(),
             "Should have datasets"
         );
         assert!(

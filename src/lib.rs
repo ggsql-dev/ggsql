@@ -33,6 +33,7 @@ ggsql splits queries at the `VISUALISE` boundary:
 - [`writers`] - Output format abstraction layer
 */
 
+pub mod naming;
 pub mod parser;
 pub mod plot;
 
@@ -93,7 +94,7 @@ mod integration_tests {
     /// Helper to wrap a DataFrame in a data map for testing
     fn wrap_data(df: DataFrame) -> HashMap<String, DataFrame> {
         let mut data_map = HashMap::new();
-        data_map.insert("__global__".to_string(), df);
+        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
         data_map
     }
 
@@ -147,7 +148,9 @@ mod integration_tests {
 
         // Data values should be ISO temporal strings
         // (DuckDB returns Datetime for DATE + INTERVAL, so we get ISO datetime format)
-        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         let date_str = data_values[0]["date"].as_str().unwrap();
         assert!(
             date_str.starts_with("2024-01-01"),
@@ -201,7 +204,9 @@ mod integration_tests {
         assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "temporal");
 
         // Data values should be ISO datetime strings
-        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert!(data_values[0]["timestamp"]
             .as_str()
             .unwrap()
@@ -256,7 +261,9 @@ mod integration_tests {
         assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
 
         // Data values should be numbers (not strings!)
-        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert_eq!(data_values[0]["int_col"], 1);
         assert_eq!(data_values[0]["float_col"], 2.5);
         assert_eq!(data_values[0]["bool_col"], true);
@@ -303,7 +310,9 @@ mod integration_tests {
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Check null handling in JSON
-        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert_eq!(data_values[0]["int_col"], 1);
         assert_eq!(data_values[0]["float_col"], 2.5);
         assert_eq!(data_values[1]["float_col"], serde_json::Value::Null);
@@ -434,7 +443,9 @@ mod integration_tests {
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Check values are preserved
-        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         let small_val = data_values[0]["small"].as_f64().unwrap();
         let medium_val = data_values[0]["medium"].as_f64().unwrap();
         let large_val = data_values[0]["large"].as_f64().unwrap();
@@ -492,7 +503,9 @@ mod integration_tests {
         assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
 
         // Check values
-        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
+        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
         assert_eq!(data_values[0]["tiny"], 1);
         assert_eq!(data_values[0]["small"], 1000);
         assert_eq!(data_values[0]["int"], 1000000);
@@ -522,22 +535,22 @@ mod integration_tests {
         // Verify constants were injected into global data (not layer-specific data)
         // Both layers share __global__ data for faceting compatibility
         assert!(
-            prepared.data.contains_key("__global__"),
+            prepared.data.contains_key(naming::GLOBAL_DATA_KEY),
             "Should have global data with constants injected"
         );
         // Layers without filters should NOT have their own data entries
         assert!(
-            !prepared.data.contains_key("__layer_0__"),
+            !prepared.data.contains_key(&naming::layer_key(0)),
             "Layer 0 should use global data, not layer-specific data"
         );
         assert!(
-            !prepared.data.contains_key("__layer_1__"),
+            !prepared.data.contains_key(&naming::layer_key(1)),
             "Layer 1 should use global data, not layer-specific data"
         );
         assert_eq!(prepared.specs.len(), 1);
 
         // Verify global data contains layer-indexed constant columns
-        let global_df = prepared.data.get("__global__").unwrap();
+        let global_df = prepared.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         let col_names = global_df.get_column_names();
         assert!(
             col_names.iter().any(|c| *c == "__ggsql_const_linetype_0__"),
@@ -575,7 +588,7 @@ mod integration_tests {
         );
 
         // All layers should use the same global data
-        let global_data = &vl_spec["datasets"]["__global__"];
+        let global_data = &vl_spec["datasets"][naming::GLOBAL_DATA_KEY];
         assert!(global_data.is_array(), "Should have global data array");
 
         // Verify constant values appear in the global data with layer-indexed names
@@ -629,29 +642,29 @@ mod integration_tests {
 
         // All layers should use global data for faceting to work
         assert!(
-            prepared.data.contains_key("__global__"),
+            prepared.data.contains_key(naming::GLOBAL_DATA_KEY),
             "Should have global data"
         );
         // No layer-specific data should be created
         assert!(
-            !prepared.data.contains_key("__layer_0__"),
+            !prepared.data.contains_key(&naming::layer_key(0)),
             "Layer 0 should use global data"
         );
         assert!(
-            !prepared.data.contains_key("__layer_1__"),
+            !prepared.data.contains_key(&naming::layer_key(1)),
             "Layer 1 should use global data"
         );
         assert!(
-            !prepared.data.contains_key("__layer_2__"),
+            !prepared.data.contains_key(&naming::layer_key(2)),
             "Layer 2 should use global data"
         );
         assert!(
-            !prepared.data.contains_key("__layer_3__"),
+            !prepared.data.contains_key(&naming::layer_key(3)),
             "Layer 3 should use global data"
         );
 
         // Verify global data has all layer-indexed constant columns
-        let global_df = prepared.data.get("__global__").unwrap();
+        let global_df = prepared.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         let col_names = global_df.get_column_names();
         assert!(
             col_names.iter().any(|c| *c == "__ggsql_const_stroke_0__"),
@@ -717,12 +730,12 @@ mod integration_tests {
 
         // Should have global data with the constant injected
         assert!(
-            prepared.data.contains_key("__global__"),
+            prepared.data.contains_key(naming::GLOBAL_DATA_KEY),
             "Should have global data"
         );
 
         // Verify global data has the constant columns for both layers
-        let global_df = prepared.data.get("__global__").unwrap();
+        let global_df = prepared.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         let col_names = global_df.get_column_names();
         assert!(
             col_names.iter().any(|c| *c == "__ggsql_const_stroke_0__"),
@@ -756,7 +769,9 @@ mod integration_tests {
         );
 
         // Both constants should have the same value "value"
-        let data = &vl_spec["datasets"]["__global__"].as_array().unwrap()[0];
+        let data = &vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap()[0];
         assert_eq!(data["__ggsql_const_stroke_0__"], "value");
         assert_eq!(data["__ggsql_const_stroke_1__"], "value");
     }

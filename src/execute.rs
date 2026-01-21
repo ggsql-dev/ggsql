@@ -3,6 +3,7 @@
 //! Provides shared execution logic for building data maps from queries,
 //! handling both global SQL and layer-specific data sources.
 
+use crate::naming;
 use crate::plot::{AestheticValue, ColumnInfo, Layer, LiteralValue, Schema, StatResult};
 use crate::{parser, DataFrame, DataSource, Facet, GgsqlError, Plot, Result};
 use std::collections::{HashMap, HashSet};
@@ -118,7 +119,7 @@ fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> String {
     let mut result = sql.to_string();
 
     for cte_name in cte_names {
-        let temp_table_name = format!("__ggsql_cte_{}__", cte_name);
+        let temp_table_name = naming::cte_table(cte_name);
 
         // Replace table references: FROM cte_name, JOIN cte_name
         // Use word boundary matching to avoid replacing substrings
@@ -144,22 +145,6 @@ fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> String {
     }
 
     result
-}
-
-/// Get the temp table name for a CTE
-fn get_cte_temp_table_name(cte_name: &str) -> String {
-    format!("__ggsql_cte_{}__", cte_name)
-}
-
-/// Generate synthetic column name for a constant aesthetic
-fn const_column_name(aesthetic: &str) -> String {
-    format!("__ggsql_const_{}__", aesthetic)
-}
-
-/// Generate synthetic column name for a constant aesthetic with layer index
-/// Used when injecting constants into global data so different layers can have different values
-fn const_column_name_indexed(aesthetic: &str, layer_idx: usize) -> String {
-    format!("__ggsql_const_{}_{}__", aesthetic, layer_idx)
 }
 
 /// Format a literal value as SQL
@@ -188,7 +173,11 @@ fn fetch_layer_schema<F>(query: &str, execute_query: &F) -> Result<Schema>
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
-    let schema_query = format!("SELECT * FROM ({}) AS __schema__ LIMIT 0", query);
+    let schema_query = format!(
+        "SELECT * FROM ({}) AS {} LIMIT 0",
+        query,
+        naming::SCHEMA_ALIAS
+    );
     let df = execute_query(&schema_query)?;
 
     Ok(df
@@ -220,7 +209,7 @@ fn determine_layer_source(layer: &Layer, materialized_ctes: &HashSet<String>) ->
         Some(DataSource::Identifier(name)) => {
             // Check if it's a materialized CTE
             if materialized_ctes.contains(name) {
-                Some(get_cte_temp_table_name(name))
+                Some(naming::cte_table(name))
             } else {
                 Some(name.clone())
             }
@@ -269,8 +258,7 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 
             if let Some(col_name) = value.column_name() {
                 // Skip synthetic columns (stat-generated or constants)
-                if col_name.starts_with("__ggsql_stat__") || col_name.starts_with("__ggsql_const_")
-                {
+                if naming::is_synthetic_column(col_name) {
                     continue;
                 }
                 if !schema_columns.contains(col_name) {
@@ -431,9 +419,9 @@ fn replace_literals_with_columns(spec: &mut Plot) {
                 // Use layer-indexed column name for layers using global data (no source, no filter)
                 // Use non-indexed name for layers with their own data (filter or explicit source)
                 let col_name = if layer.source.is_none() && layer.filter.is_none() {
-                    const_column_name_indexed(aesthetic, layer_idx)
+                    naming::const_column_indexed(aesthetic, layer_idx)
                 } else {
-                    const_column_name(aesthetic)
+                    naming::const_column(aesthetic)
                 };
                 *value = AestheticValue::standard_column(col_name);
             }
@@ -458,7 +446,7 @@ where
         // Transform the CTE body to replace references to earlier CTEs
         let transformed_body = transform_cte_references(&cte.body, &materialized);
 
-        let temp_table_name = get_cte_temp_table_name(&cte.name);
+        let temp_table_name = naming::cte_table(&cte.name);
         let create_sql = format!(
             "CREATE OR REPLACE TEMP TABLE {} AS {}",
             temp_table_name, transformed_body
@@ -586,7 +574,7 @@ where
         Some(DataSource::Identifier(name)) => {
             // Check if it's a materialized CTE
             if materialized_ctes.contains(name) {
-                get_cte_temp_table_name(name)
+                naming::cte_table(name)
             } else {
                 name.clone()
             }
@@ -604,7 +592,7 @@ where
                         layer_idx + 1
                     )));
                 }
-                "__ggsql_global__".to_string()
+                naming::global_table()
             } else if layer.geom.needs_stat_transform(&layer.mappings) {
                 if !has_global {
                     return Err(GgsqlError::ValidationError(format!(
@@ -612,7 +600,7 @@ where
                         layer_idx + 1
                     )));
                 }
-                "__ggsql_global__".to_string()
+                naming::global_table()
             } else {
                 // No source, no filter, no constants, no stat transform - use __global__ data directly
                 return Ok(None);
@@ -626,7 +614,7 @@ where
     } else {
         let const_cols: Vec<String> = constants
             .iter()
-            .map(|(aes, lit)| format!("{} AS {}", literal_to_sql(lit), const_column_name(aes)))
+            .map(|(aes, lit)| format!("{} AS {}", literal_to_sql(lit), naming::const_column(aes)))
             .collect();
         format!("SELECT *, {} FROM {}", const_cols.join(", "), table_name)
     };
@@ -690,7 +678,7 @@ where
             // THEN: Apply stat_columns to layer aesthetics using the remappings
             for stat in &stat_columns {
                 if let Some(aesthetic) = final_remappings.get(stat) {
-                    let col = format!("__ggsql_stat__{}", stat);
+                    let col = naming::stat_column(stat);
                     let is_dummy = dummy_columns.contains(stat);
                     layer.mappings.insert(
                         aesthetic.clone(),
@@ -986,7 +974,7 @@ where
                         format!(
                             "{} AS {}",
                             literal_to_sql(lit),
-                            const_column_name_indexed(aes, *layer_idx)
+                            naming::const_column_indexed(aes, *layer_idx)
                         )
                     })
                     .collect();
@@ -999,23 +987,27 @@ where
 
             // Create temp table for global result
             let create_global = format!(
-                "CREATE OR REPLACE TEMP TABLE __ggsql_global__ AS {}",
+                "CREATE OR REPLACE TEMP TABLE {} AS {}",
+                naming::global_table(),
                 global_query
             );
             execute_query(&create_global)?;
 
             // Read back into DataFrame for data_map
-            let df = execute_query("SELECT * FROM __ggsql_global__")?;
-            data_map.insert("__global__".to_string(), df);
+            let df = execute_query(&format!("SELECT * FROM {}", naming::global_table()))?;
+            data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
         }
     }
 
     // Fetch schemas upfront for smart wildcard expansion and validation
-    let has_global = data_map.contains_key("__global__");
+    let has_global = data_map.contains_key(naming::GLOBAL_DATA_KEY);
 
     // Fetch global schema (used by layers without explicit source)
     let global_schema = if has_global {
-        fetch_layer_schema("SELECT * FROM __ggsql_global__", &execute_query)?
+        fetch_layer_schema(
+            &format!("SELECT * FROM {}", naming::global_table()),
+            &execute_query,
+        )?
     } else {
         Vec::new()
     };
@@ -1089,7 +1081,7 @@ where
                     e
                 ))
             })?;
-            data_map.insert(format!("__layer_{}__", idx), df);
+            data_map.insert(naming::layer_key(idx), df);
         }
         // If None returned, layer uses __global__ data directly (no entry needed)
     }
@@ -1107,7 +1099,7 @@ where
         .layers
         .iter()
         .any(|l| l.source.is_none() && l.filter.is_none());
-    if has_layer_without_source && !data_map.contains_key("__global__") {
+    if has_layer_without_source && !data_map.contains_key(naming::GLOBAL_DATA_KEY) {
         return Err(GgsqlError::ValidationError(
             "Some layers use global data but no SQL query was provided.".to_string(),
         ));
@@ -1141,6 +1133,7 @@ pub fn prepare_data(query: &str, reader: &DuckDBReader) -> Result<PreparedData> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::naming;
     use crate::plot::SqlExpression;
     use crate::Geom;
 
@@ -1152,7 +1145,7 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        assert!(result.data.contains_key("__global__"));
+        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
         assert_eq!(result.specs.len(), 1);
     }
 
@@ -1184,8 +1177,8 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        assert!(result.data.contains_key("__layer_0__"));
-        assert!(!result.data.contains_key("__global__"));
+        assert!(result.data.contains_key(&naming::layer_key(0)));
+        assert!(!result.data.contains_key(naming::GLOBAL_DATA_KEY));
     }
 
     #[cfg(feature = "duckdb")]
@@ -1213,15 +1206,15 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should have global data (unfiltered) and layer 0 data (filtered)
-        assert!(result.data.contains_key("__global__"));
-        assert!(result.data.contains_key("__layer_0__"));
+        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        assert!(result.data.contains_key(&naming::layer_key(0)));
 
         // Global should have all 4 rows
-        let global_df = result.data.get("__global__").unwrap();
+        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         assert_eq!(global_df.height(), 4);
 
         // Layer 0 should have only 2 rows (filtered to category = 'A')
-        let layer_df = result.data.get("__layer_0__").unwrap();
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
         assert_eq!(layer_df.height(), 2);
     }
 
@@ -1251,11 +1244,11 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should only have layer 0 data (no global)
-        assert!(!result.data.contains_key("__global__"));
-        assert!(result.data.contains_key("__layer_0__"));
+        assert!(!result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        assert!(result.data.contains_key(&naming::layer_key(0)));
 
         // Layer 0 should have only 2 rows (y > 200)
-        let layer_df = result.data.get("__layer_0__").unwrap();
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
         assert_eq!(layer_df.height(), 2);
     }
 
@@ -1307,10 +1300,10 @@ mod tests {
 
         let result = transform_cte_references(sql, &cte_names);
 
-        assert_eq!(
-            result,
-            "SELECT * FROM __ggsql_cte_sales__ WHERE year = 2024"
-        );
+        // CTE table names now include session UUID
+        assert!(result.starts_with("SELECT * FROM __ggsql_cte_sales_"));
+        assert!(result.ends_with("__ WHERE year = 2024"));
+        assert!(result.contains(naming::session_id()));
     }
 
     #[test]
@@ -1322,8 +1315,10 @@ mod tests {
 
         let result = transform_cte_references(sql, &cte_names);
 
-        assert!(result.contains("FROM __ggsql_cte_sales__"));
-        assert!(result.contains("JOIN __ggsql_cte_targets__"));
+        // CTE table names now include session UUID
+        assert!(result.contains("FROM __ggsql_cte_sales_"));
+        assert!(result.contains("JOIN __ggsql_cte_targets_"));
+        assert!(result.contains(naming::session_id()));
     }
 
     #[test]
@@ -1377,11 +1372,11 @@ mod tests {
             &mock_execute,
         );
 
-        // Should use temp table name
-        assert_eq!(
-            result.unwrap(),
-            Some("SELECT * FROM __ggsql_cte_sales__".to_string())
-        );
+        // Should use temp table name with session UUID
+        let query = result.unwrap().unwrap();
+        assert!(query.starts_with("SELECT * FROM __ggsql_cte_sales_"));
+        assert!(query.ends_with("__"));
+        assert!(query.contains(naming::session_id()));
     }
 
     #[test]
@@ -1405,10 +1400,11 @@ mod tests {
             &mock_execute,
         );
 
-        assert_eq!(
-            result.unwrap(),
-            Some("SELECT * FROM __ggsql_cte_sales__ WHERE year = 2024".to_string())
-        );
+        // Should use temp table name with session UUID and filter
+        let query = result.unwrap().unwrap();
+        assert!(query.contains("__ggsql_cte_sales_"));
+        assert!(query.ends_with(" WHERE year = 2024"));
+        assert!(query.contains(naming::session_id()));
     }
 
     #[test]
@@ -1534,11 +1530,11 @@ mod tests {
             &mock_execute,
         );
 
-        // Should query __ggsql_global__ with filter
-        assert_eq!(
-            result.unwrap(),
-            Some("SELECT * FROM __ggsql_global__ WHERE category = 'A'".to_string())
-        );
+        // Should query global table with session UUID and filter
+        let query = result.unwrap().unwrap();
+        assert!(query.starts_with("SELECT * FROM __ggsql_global_"));
+        assert!(query.ends_with("__ WHERE category = 'A'"));
+        assert!(query.contains(naming::session_id()));
     }
 
     #[test]
@@ -1664,11 +1660,11 @@ mod tests {
             &mock_execute,
         );
 
-        // Should query __ggsql_global__ with order_by
-        assert_eq!(
-            result.unwrap(),
-            Some("SELECT * FROM __ggsql_global__ ORDER BY x ASC".to_string())
-        );
+        // Should query global table with session UUID and order_by
+        let query = result.unwrap().unwrap();
+        assert!(query.starts_with("SELECT * FROM __ggsql_global_"));
+        assert!(query.ends_with("__ ORDER BY x ASC"));
+        assert!(query.contains(naming::session_id()));
     }
 
     #[test]
@@ -1717,7 +1713,7 @@ mod tests {
             LiteralValue::String("value".to_string()),
         )];
 
-        // No source but has constants - should use __ggsql_global__
+        // No source but has constants - should use global table with session UUID
         let mut layer = Layer::new(Geom::point());
 
         let result = build_layer_query(
@@ -1732,7 +1728,8 @@ mod tests {
         );
 
         let query = result.unwrap().unwrap();
-        assert!(query.contains("FROM __ggsql_global__"));
+        assert!(query.contains("FROM __ggsql_global_"));
+        assert!(query.contains(naming::session_id()));
         assert!(query.contains("'value' AS __ggsql_const_fill__"));
     }
 
@@ -1766,15 +1763,15 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should have global data (from sales) and layer 1 data (from targets CTE)
-        assert!(result.data.contains_key("__global__"));
-        assert!(result.data.contains_key("__layer_1__"));
+        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        assert!(result.data.contains_key(&naming::layer_key(1)));
 
         // Global should have 2 rows (from sales)
-        let global_df = result.data.get("__global__").unwrap();
+        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         assert_eq!(global_df.height(), 2);
 
         // Layer 1 should have 2 rows (from targets CTE)
-        let layer_df = result.data.get("__layer_1__").unwrap();
+        let layer_df = result.data.get(&naming::layer_key(1)).unwrap();
         assert_eq!(layer_df.height(), 2);
     }
 
@@ -1800,11 +1797,11 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Global should have all 4 rows
-        let global_df = result.data.get("__global__").unwrap();
+        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         assert_eq!(global_df.height(), 4);
 
         // Layer 1 should have 2 rows (filtered to category = 'A')
-        let layer_df = result.data.get("__layer_1__").unwrap();
+        let layer_df = result.data.get(&naming::layer_key(1)).unwrap();
         assert_eq!(layer_df.height(), 2);
     }
 
@@ -1828,15 +1825,15 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should have 3 layer datasets, no global (since no trailing SELECT)
-        assert!(!result.data.contains_key("__global__"));
-        assert!(result.data.contains_key("__layer_0__"));
-        assert!(result.data.contains_key("__layer_1__"));
-        assert!(result.data.contains_key("__layer_2__"));
+        assert!(!result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        assert!(result.data.contains_key(&naming::layer_key(0)));
+        assert!(result.data.contains_key(&naming::layer_key(1)));
+        assert!(result.data.contains_key(&naming::layer_key(2)));
 
         // Each layer should have 2 rows
-        assert_eq!(result.data.get("__layer_0__").unwrap().height(), 2);
-        assert_eq!(result.data.get("__layer_1__").unwrap().height(), 2);
-        assert_eq!(result.data.get("__layer_2__").unwrap().height(), 2);
+        assert_eq!(result.data.get(&naming::layer_key(0)).unwrap().height(), 2);
+        assert_eq!(result.data.get(&naming::layer_key(1)).unwrap().height(), 2);
+        assert_eq!(result.data.get(&naming::layer_key(2)).unwrap().height(), 2);
     }
 
     #[cfg(feature = "duckdb")]
@@ -1865,8 +1862,8 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should have layer 0 data from aggregated CTE
-        assert!(result.data.contains_key("__layer_0__"));
-        let layer_df = result.data.get("__layer_0__").unwrap();
+        assert!(result.data.contains_key(&naming::layer_key(0)));
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
         assert_eq!(layer_df.height(), 1); // Single aggregated row
     }
 
@@ -1890,13 +1887,16 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // VISUALISE FROM causes SELECT injection, so we have global data
-        assert!(result.data.contains_key("__global__"));
+        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
         // Layers without their own FROM use global directly (no separate entry)
-        assert!(!result.data.contains_key("__layer_0__"));
-        assert!(!result.data.contains_key("__layer_1__"));
+        assert!(!result.data.contains_key(&naming::layer_key(0)));
+        assert!(!result.data.contains_key(&naming::layer_key(1)));
 
         // Global should have 3 rows
-        assert_eq!(result.data.get("__global__").unwrap().height(), 3);
+        assert_eq!(
+            result.data.get(naming::GLOBAL_DATA_KEY).unwrap().height(),
+            3
+        );
     }
 
     #[cfg(feature = "duckdb")]
@@ -1917,13 +1917,13 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // No global data since no trailing SELECT
-        assert!(!result.data.contains_key("__global__"));
+        assert!(!result.data.contains_key(naming::GLOBAL_DATA_KEY));
         // Each layer has its own data
-        assert!(result.data.contains_key("__layer_0__"));
-        assert!(result.data.contains_key("__layer_1__"));
+        assert!(result.data.contains_key(&naming::layer_key(0)));
+        assert!(result.data.contains_key(&naming::layer_key(1)));
 
-        assert_eq!(result.data.get("__layer_0__").unwrap().height(), 2);
-        assert_eq!(result.data.get("__layer_1__").unwrap().height(), 2);
+        assert_eq!(result.data.get(&naming::layer_key(0)).unwrap().height(), 2);
+        assert_eq!(result.data.get(&naming::layer_key(1)).unwrap().height(), 2);
     }
 
     #[cfg(feature = "duckdb")]
@@ -1947,13 +1947,16 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Global from SELECT, layer 1 from CTE
-        assert!(result.data.contains_key("__global__"));
-        assert!(result.data.contains_key("__layer_1__"));
+        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        assert!(result.data.contains_key(&naming::layer_key(1)));
         // Layer 0 has no entry (uses global directly)
-        assert!(!result.data.contains_key("__layer_0__"));
+        assert!(!result.data.contains_key(&naming::layer_key(0)));
 
-        assert_eq!(result.data.get("__global__").unwrap().height(), 2);
-        assert_eq!(result.data.get("__layer_1__").unwrap().height(), 2);
+        assert_eq!(
+            result.data.get(naming::GLOBAL_DATA_KEY).unwrap().height(),
+            2
+        );
+        assert_eq!(result.data.get(&naming::layer_key(1)).unwrap().height(), 2);
     }
 
     #[cfg(feature = "duckdb")]
@@ -1979,10 +1982,13 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Global should have all 5 rows
-        assert_eq!(result.data.get("__global__").unwrap().height(), 5);
+        assert_eq!(
+            result.data.get(naming::GLOBAL_DATA_KEY).unwrap().height(),
+            5
+        );
 
         // Layer 1 should have 2 rows (cat='A' AND active=true)
-        assert_eq!(result.data.get("__layer_1__").unwrap().height(), 2);
+        assert_eq!(result.data.get(&naming::layer_key(1)).unwrap().height(), 2);
     }
 
     // ========================================
@@ -2012,17 +2018,17 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should have layer 0 data with binned results
-        assert!(result.data.contains_key("__layer_0__"));
-        let layer_df = result.data.get("__layer_0__").unwrap();
+        assert!(result.data.contains_key(&naming::layer_key(0)));
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
-        // Should have __ggsql_stat__bin and __ggsql_stat__count columns
+        // Should have stat bin and count columns
         let col_names: Vec<&str> = layer_df
             .get_column_names()
             .iter()
             .map(|s| s.as_str())
             .collect();
-        assert!(col_names.contains(&"__ggsql_stat__bin"));
-        assert!(col_names.contains(&"__ggsql_stat__count"));
+        assert!(col_names.contains(&naming::stat_column("bin").as_str()));
+        assert!(col_names.contains(&naming::stat_column("count").as_str()));
 
         // Should have fewer rows than original (binned)
         assert!(layer_df.height() < 100);
@@ -2052,20 +2058,20 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should have layer 0 data with counted results
-        assert!(result.data.contains_key("__layer_0__"));
-        let layer_df = result.data.get("__layer_0__").unwrap();
+        assert!(result.data.contains_key(&naming::layer_key(0)));
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
         // Should have 3 rows (3 unique categories: A, B, C)
         assert_eq!(layer_df.height(), 3);
 
-        // Should have category (original x) and __ggsql_stat__count columns
+        // Should have category (original x) and stat count columns
         let col_names: Vec<&str> = layer_df
             .get_column_names()
             .iter()
             .map(|s| s.as_str())
             .collect();
         assert!(col_names.contains(&"category"));
-        assert!(col_names.contains(&"__ggsql_stat__count"));
+        assert!(col_names.contains(&naming::stat_column("count").as_str()));
     }
 
     #[cfg(feature = "duckdb")]
@@ -2092,11 +2098,11 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should NOT have layer 0 data (no transformation needed, uses global)
-        assert!(!result.data.contains_key("__layer_0__"));
-        assert!(result.data.contains_key("__global__"));
+        assert!(!result.data.contains_key(&naming::layer_key(0)));
+        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
 
         // Global should have original 3 rows
-        let global_df = result.data.get("__global__").unwrap();
+        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         assert_eq!(global_df.height(), 3);
     }
 
@@ -2127,8 +2133,8 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should have layer 0 data with binned results
-        assert!(result.data.contains_key("__layer_0__"));
-        let layer_df = result.data.get("__layer_0__").unwrap();
+        assert!(result.data.contains_key(&naming::layer_key(0)));
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
         // Should have region column preserved for faceting
         let col_names: Vec<&str> = layer_df
@@ -2137,8 +2143,8 @@ mod tests {
             .map(|s| s.as_str())
             .collect();
         assert!(col_names.contains(&"region"));
-        assert!(col_names.contains(&"__ggsql_stat__bin"));
-        assert!(col_names.contains(&"__ggsql_stat__count"));
+        assert!(col_names.contains(&naming::stat_column("bin").as_str()));
+        assert!(col_names.contains(&naming::stat_column("count").as_str()));
     }
 
     #[cfg(feature = "duckdb")]
@@ -2168,8 +2174,8 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should have layer 0 data with counted results
-        assert!(result.data.contains_key("__layer_0__"));
-        let layer_df = result.data.get("__layer_0__").unwrap();
+        assert!(result.data.contains_key(&naming::layer_key(0)));
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
         // Should have grp column preserved for grouping
         let col_names: Vec<&str> = layer_df
@@ -2179,7 +2185,7 @@ mod tests {
             .collect();
         assert!(col_names.contains(&"grp"));
         assert!(col_names.contains(&"category"));
-        assert!(col_names.contains(&"__ggsql_stat__count"));
+        assert!(col_names.contains(&naming::stat_column("count").as_str()));
 
         // G1 has A(2), B(1) = 2 rows; G2 has A(1), B(1), C(1) = 3 rows; total = 5 rows
         assert_eq!(layer_df.height(), 5);
@@ -2209,11 +2215,11 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should NOT have layer 0 data (no transformation, uses global)
-        assert!(!result.data.contains_key("__layer_0__"));
-        assert!(result.data.contains_key("__global__"));
+        assert!(!result.data.contains_key(&naming::layer_key(0)));
+        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
 
         // Global should have original 3 rows
-        let global_df = result.data.get("__global__").unwrap();
+        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         assert_eq!(global_df.height(), 3);
     }
 
@@ -2243,13 +2249,13 @@ mod tests {
 
         // Should NOT have layer 0 data (no transformation needed, y is mapped and exists)
         assert!(
-            !result.data.contains_key("__layer_0__"),
+            !result.data.contains_key(&naming::layer_key(0)),
             "Bar with y mapped should use global data directly"
         );
-        assert!(result.data.contains_key("__global__"));
+        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
 
         // Global should have original 3 rows
-        let global_df = result.data.get("__global__").unwrap();
+        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         assert_eq!(global_df.height(), 3);
 
         // Verify spec has x and y aesthetics merged into layer
@@ -2293,13 +2299,13 @@ mod tests {
 
         // With wildcard and y column present, bar uses identity (no layer 0 data)
         assert!(
-            !result.data.contains_key("__layer_0__"),
+            !result.data.contains_key(&naming::layer_key(0)),
             "Bar with wildcard + y column should use identity (no COUNT)"
         );
-        assert!(result.data.contains_key("__global__"));
+        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
 
         // Global should have original 3 rows
-        let global_df = result.data.get("__global__").unwrap();
+        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         assert_eq!(global_df.height(), 3);
     }
 
@@ -2330,13 +2336,13 @@ mod tests {
 
         // Should NOT have layer 0 data (no transformation, y is explicitly mapped and exists)
         assert!(
-            !result.data.contains_key("__layer_0__"),
+            !result.data.contains_key(&naming::layer_key(0)),
             "Bar with explicit y should use global data directly"
         );
-        assert!(result.data.contains_key("__global__"));
+        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
 
         // Global should have original 3 rows (no COUNT applied)
-        let global_df = result.data.get("__global__").unwrap();
+        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         assert_eq!(global_df.height(), 3);
     }
 
@@ -2366,10 +2372,10 @@ mod tests {
 
         // Should have layer 0 data (COUNT transformation applied)
         assert!(
-            result.data.contains_key("__layer_0__"),
+            result.data.contains_key(&naming::layer_key(0)),
             "Bar without y should apply COUNT stat"
         );
-        let layer_df = result.data.get("__layer_0__").unwrap();
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
         // Should have 3 rows (3 unique x values: A, B, C)
         assert_eq!(layer_df.height(), 3);
@@ -2406,12 +2412,12 @@ mod tests {
 
         // Bar geom with y mapped - no stat transform (y column exists)
         assert!(
-            !result.data.contains_key("__layer_0__"),
+            !result.data.contains_key(&naming::layer_key(0)),
             "Bar with explicit y should use global data directly"
         );
-        assert!(result.data.contains_key("__global__"));
+        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
 
-        let global_df = result.data.get("__global__").unwrap();
+        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         assert_eq!(global_df.height(), 3);
     }
 
@@ -2441,22 +2447,23 @@ mod tests {
 
         // Should have layer 0 data (SUM transformation applied)
         assert!(
-            result.data.contains_key("__layer_0__"),
+            result.data.contains_key(&naming::layer_key(0)),
             "Bar with weight should apply SUM stat"
         );
-        let layer_df = result.data.get("__layer_0__").unwrap();
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
         // Should have 2 rows (2 unique categories: A, B)
         assert_eq!(layer_df.height(), 2);
 
         // Verify y values are sums: A=30 (10+20), B=30
         // SUM returns f64, but stat column is always named "count" for consistency
+        let stat_count_col = naming::stat_column("count");
         let y_col = layer_df
-            .column("__ggsql_stat__count")
-            .expect("__ggsql_stat__count column should exist");
+            .column(&stat_count_col)
+            .expect("stat count column should exist");
         let y_values: Vec<f64> = y_col
             .f64()
-            .expect("__ggsql_stat__count should be f64 (SUM result)")
+            .expect("stat count should be f64 (SUM result)")
             .into_iter()
             .flatten()
             .collect();
@@ -2498,21 +2505,22 @@ mod tests {
 
         // Should have layer 0 data (COUNT transformation applied)
         assert!(
-            result.data.contains_key("__layer_0__"),
+            result.data.contains_key(&naming::layer_key(0)),
             "Bar without weight should apply COUNT stat"
         );
-        let layer_df = result.data.get("__layer_0__").unwrap();
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
         // Should have 2 rows (2 unique categories: A, B)
         assert_eq!(layer_df.height(), 2);
 
         // Verify y values are counts: A=2, B=1
+        let stat_count_col = naming::stat_column("count");
         let y_col = layer_df
-            .column("__ggsql_stat__count")
-            .expect("__ggsql_stat__count column should exist");
+            .column(&stat_count_col)
+            .expect("stat count column should exist");
         let y_values: Vec<i64> = y_col
             .i64()
-            .expect("__ggsql_stat__count should be i64")
+            .expect("stat count should be i64")
             .into_iter()
             .flatten()
             .collect();
@@ -2553,21 +2561,22 @@ mod tests {
 
         // Should have layer 0 data (COUNT transformation applied)
         assert!(
-            result.data.contains_key("__layer_0__"),
+            result.data.contains_key(&naming::layer_key(0)),
             "Bar with wildcard (no weight column) should apply COUNT stat"
         );
-        let layer_df = result.data.get("__layer_0__").unwrap();
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
         // Should have 2 rows (2 unique x values: A, B)
         assert_eq!(layer_df.height(), 2);
 
         // Verify y values are counts: A=2, B=1
+        let stat_count_col = naming::stat_column("count");
         let y_col = layer_df
-            .column("__ggsql_stat__count")
-            .expect("__ggsql_stat__count column should exist");
+            .column(&stat_count_col)
+            .expect("stat count column should exist");
         let y_values: Vec<i64> = y_col
             .i64()
-            .expect("__ggsql_stat__count should be i64")
+            .expect("stat count should be i64")
             .into_iter()
             .flatten()
             .collect();
@@ -2675,22 +2684,23 @@ mod tests {
 
         // Should have layer 0 data (SUM transformation applied)
         assert!(
-            result.data.contains_key("__layer_0__"),
+            result.data.contains_key(&naming::layer_key(0)),
             "Bar with wildcard + weight column should apply SUM stat"
         );
-        let layer_df = result.data.get("__layer_0__").unwrap();
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
         // Should have 2 rows (2 unique x values: A, B)
         assert_eq!(layer_df.height(), 2);
 
         // Verify y values are sums: A=30, B=30
         // SUM returns f64, but stat column is always named "count" for consistency
+        let stat_count_col = naming::stat_column("count");
         let y_col = layer_df
-            .column("__ggsql_stat__count")
-            .expect("__ggsql_stat__count column should exist");
+            .column(&stat_count_col)
+            .expect("stat count column should exist");
         let y_values: Vec<f64> = y_col
             .f64()
-            .expect("__ggsql_stat__count should be f64 (SUM result)")
+            .expect("stat count should be f64 (SUM result)")
             .into_iter()
             .flatten()
             .collect();
