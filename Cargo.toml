@@ -50,6 +50,8 @@ proptest = "1.4"
 # Utilities
 regex = "1.10"
 chrono = "0.4"
+const_format = "0.2"
+uuid = { version = "1.0", features = ["v4"] }
 
 # Web server
 axum = "0.7"
