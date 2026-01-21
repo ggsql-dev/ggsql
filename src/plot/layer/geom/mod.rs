@@ -51,7 +51,7 @@ mod violin;
 mod vline;
 
 // Re-export types
-pub use types::{DefaultParam, DefaultParamValue, GeomAesthetics, StatResult};
+pub use types::{DefaultParam, DefaultParamValue, GeomAesthetics, StatResult, AESTHETIC_FAMILIES};
 
 // Re-export geom structs for direct access if needed
 pub use abline::AbLine;

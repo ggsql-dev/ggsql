@@ -20,7 +20,7 @@
 //! // Can be rendered in browser with vega-embed
 //! ```
 
-use crate::plot::layer::geom::GeomType;
+use crate::plot::layer::geom::{GeomAesthetics, GeomType};
 use crate::plot::{ArrayElement, Coord, CoordType, LiteralValue, ParameterValue};
 use crate::writer::Writer;
 use crate::{AestheticValue, DataFrame, Geom, GgsqlError, Plot, Result};
@@ -256,12 +256,16 @@ impl VegaLiteWriter {
     }
 
     /// Build encoding channel from aesthetic mapping
+    ///
+    /// The `titled_families` set tracks which aesthetic families have already received
+    /// a title, ensuring only one title per family (e.g., one title for x/xmin/xmax).
     fn build_encoding_channel(
         &self,
         aesthetic: &str,
         value: &AestheticValue,
         df: &DataFrame,
         spec: &Plot,
+        titled_families: &mut std::collections::HashSet<String>,
     ) -> Result<Value> {
         match value {
             AestheticValue::Column {
@@ -315,11 +319,14 @@ impl VegaLiteWriter {
                     "type": field_type,
                 });
 
-                // Add titles using computed labels (includes user-specified and computed)
-                // This handles both axis titles (x, y) and legend titles (color, size, etc.)
-                if let Some(ref labels) = spec.labels {
-                    if let Some(label) = labels.labels.get(aesthetic) {
-                        encoding["title"] = json!(label);
+                // Apply title only once per aesthetic family
+                let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+                if !titled_families.contains(primary) {
+                    if let Some(ref labels) = spec.labels {
+                        if let Some(label) = labels.labels.get(primary) {
+                            encoding["title"] = json!(label);
+                            titled_families.insert(primary.to_string());
+                        }
                     }
                 }
 
@@ -1098,10 +1105,14 @@ impl Writer for VegaLiteWriter {
             }
 
             // Build encoding for this layer
+            // Track which aesthetic families have been titled to ensure only one title per family
             let mut encoding = Map::new();
+            let mut titled_families: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
             for (aesthetic, value) in &layer.mappings.aesthetics {
                 let channel_name = self.map_aesthetic_name(aesthetic);
-                let channel_encoding = self.build_encoding_channel(aesthetic, value, df, spec)?;
+                let channel_encoding =
+                    self.build_encoding_channel(aesthetic, value, df, spec, &mut titled_families)?;
                 encoding.insert(channel_name, channel_encoding);
             }
 
@@ -1139,20 +1150,6 @@ impl Writer for VegaLiteWriter {
                         "type": "quantitative"
                     }),
                 );
-            }
-
-            // Override axis titles from labels if present
-            if let Some(labels) = &spec.labels {
-                if let Some(x_label) = labels.labels.get("x") {
-                    if let Some(x_enc) = encoding.get_mut("x") {
-                        x_enc["title"] = json!(x_label);
-                    }
-                }
-                if let Some(y_label) = labels.labels.get("y") {
-                    if let Some(y_enc) = encoding.get_mut("y") {
-                        y_enc["title"] = json!(y_label);
-                    }
-                }
             }
 
             // Apply guides to first layer's encoding only (they apply globally)
@@ -3941,6 +3938,71 @@ mod tests {
         assert!(
             encoding.get("order").is_none(),
             "Line geom should not have order encoding"
+        );
+    }
+
+    #[test]
+    fn test_variant_aesthetics_use_primary_label() {
+        // Test that variant aesthetics (xmin, xmax, etc.) use the primary aesthetic's label
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::ribbon())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
+            .with_aesthetic(
+                "ymin".to_string(),
+                AestheticValue::standard_column("lower".to_string()),
+            )
+            .with_aesthetic(
+                "ymax".to_string(),
+                AestheticValue::standard_column("upper".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Set label only for the primary aesthetic
+        let mut labels = Labels {
+            labels: HashMap::new(),
+        };
+        labels.labels.insert("y".to_string(), "Value Range".to_string());
+        labels.labels.insert("x".to_string(), "Date".to_string());
+        spec.labels = Some(labels);
+
+        let df = df! {
+            "date" => &["2024-01", "2024-02", "2024-03"],
+            "lower" => &[10.0, 15.0, 20.0],
+            "upper" => &[20.0, 25.0, 30.0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The x encoding should get the "Date" title
+        assert_eq!(
+            vl_spec["layer"][0]["encoding"]["x"]["title"],
+            "Date",
+            "x should have the 'Date' title from labels"
+        );
+
+        // Only one of ymin/ymax should get the "Value Range" title (first one wins per family)
+        // The other should not have a title set (prevents duplicate axis labels)
+        let ymin_title = &vl_spec["layer"][0]["encoding"]["ymin"]["title"];
+        let ymax_title = &vl_spec["layer"][0]["encoding"]["ymax"]["title"];
+
+        // Exactly one should have the title, the other should be null
+        let ymin_has_title = ymin_title == "Value Range";
+        let ymax_has_title = ymax_title == "Value Range";
+
+        assert!(
+            ymin_has_title || ymax_has_title,
+            "At least one of ymin/ymax should get the 'Value Range' title"
+        );
+        assert!(
+            !(ymin_has_title && ymax_has_title),
+            "Only one of ymin/ymax should get the title (first wins per family)"
         );
     }
 }

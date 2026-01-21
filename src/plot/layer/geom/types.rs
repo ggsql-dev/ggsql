@@ -4,6 +4,22 @@
 
 use crate::Mappings;
 
+/// Maps variant aesthetics to their primary aesthetic family.
+///
+/// For example, `xmin`, `xmax`, `x2`, and `xend` all belong to the "x" family.
+/// When computing labels, all family members can contribute to the primary aesthetic's label,
+/// with the first aesthetic encountered in a family setting the label.
+pub const AESTHETIC_FAMILIES: &[(&str, &str)] = &[
+    ("x2", "x"),
+    ("xmin", "x"),
+    ("xmax", "x"),
+    ("xend", "x"),
+    ("y2", "y"),
+    ("ymin", "y"),
+    ("ymax", "y"),
+    ("yend", "y"),
+];
+
 /// Aesthetic information for a geom type
 ///
 /// This struct describes which aesthetics a geom supports, requires, and hides.
@@ -16,6 +32,20 @@ pub struct GeomAesthetics {
     /// Hidden aesthetics (valid REMAPPING targets, not valid MAPPING targets)
     /// These are produced by stat transforms but shouldn't be manually mapped
     pub hidden: &'static [&'static str],
+}
+
+impl GeomAesthetics {
+    /// Get the primary aesthetic for a given aesthetic name.
+    ///
+    /// Returns the primary family aesthetic if the input is a variant (e.g., "xmin" -> "x"),
+    /// or returns the aesthetic itself if it's already primary (e.g., "x" -> "x", "color" -> "color").
+    pub fn primary_aesthetic(aesthetic: &str) -> &str {
+        AESTHETIC_FAMILIES
+            .iter()
+            .find(|(variant, _)| *variant == aesthetic)
+            .map(|(_, primary)| *primary)
+            .unwrap_or(aesthetic)
+    }
 }
 
 /// Default value for a layer parameter
