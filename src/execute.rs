@@ -2746,8 +2746,6 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
         let aes = &result.specs[0].layers[0].mappings.aesthetics;
 
-        eprintln!("{:?}", aes);
-
         let stroke = aes.get("stroke").unwrap();
         assert_eq!(stroke.column_name().unwrap(), "__ggsql_const_color_0__");
 
