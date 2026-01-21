@@ -51,6 +51,8 @@ thiserror.workspace = true
 # Utilities
 regex.workspace = true
 chrono.workspace = true
+const_format.workspace = true
+uuid.workspace = true
 
 # Web server (optional)
 axum = { workspace = true, optional = true }

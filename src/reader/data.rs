@@ -140,12 +140,14 @@ fn tokens_from_tree(
 #[cfg(feature = "duckdb")]
 #[test]
 fn test_builtin_data_is_available() {
+    use crate::naming;
+
     let reader = crate::reader::DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
     // We need the VISUALISE here so `prepare_data` doesn't get tripped up
     let query = "SELECT * FROM ggsql:penguins VISUALISE";
     let result = crate::execute::prepare_data(query, &reader).unwrap();
-    let dataframe = result.data.get("__global__").unwrap();
+    let dataframe = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
     let colnames = dataframe.get_column_names();
 
     assert_eq!(
@@ -164,7 +166,7 @@ fn test_builtin_data_is_available() {
 
     let query = "VISUALISE * FROM ggsql:airquality";
     let result = crate::execute::prepare_data(query, &reader).unwrap();
-    let dataframe = result.data.get("__global__").unwrap();
+    let dataframe = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
     let colnames = dataframe.get_column_names();
 
     assert_eq!(
