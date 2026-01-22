@@ -7,8 +7,8 @@ use pyo3_polars::PyDataFrame;
 use std::collections::{HashMap, HashSet};
 
 use ggsql::parser::parse_query;
-use ggsql::AestheticValue;
 use ggsql::writer::{VegaLiteWriter, Writer};
+use ggsql::AestheticValue;
 
 // Re-export polars from pyo3_polars to ensure type compatibility
 use polars::prelude::DataFrame;
