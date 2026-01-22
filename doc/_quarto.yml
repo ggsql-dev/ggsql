@@ -3,6 +3,16 @@ project:
 
 website:
   title: "ggsql"
+  site-url: ggsql.org
+  repo-url: github.com/georgestagg/ggsql
+  announcement:
+    icon: info-circle
+    dismissable: true
+    content: "ggsql is still in early development and all functionality is subject to change"
+    type: primary
+    position: below-navbar
+  twitter-card: true
+  open-graph: true
   navbar:
     left:
       - href: index.qmd
@@ -12,7 +22,7 @@ website:
         menu:
           - text: Overview
             href: syntax/index.qmd
-          - text: ---
+          - text: "---"
           - text: "`VISUALISE`"
             href: syntax/clause/visualise.qmd
           - text: "`DRAW`"
