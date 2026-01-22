@@ -26,7 +26,7 @@ jobs:
       - name: Caching
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ${{ runner.os }}
+          shared-key: ${{ runner.os }}-R-CMD-Check
           cache-on-failure: true
 
       - name: Check disk space
