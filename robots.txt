@@ -1,1 +1,1 @@
-Sitemap: https://ggsql.org/sitemap.xml
+Sitemap: ggsql.org/sitemap.xml
