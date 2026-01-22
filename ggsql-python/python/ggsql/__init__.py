@@ -10,6 +10,8 @@ from ggsql._ggsql import split_query, render as _render
 __all__ = ["split_query", "render"]
 __version__ = "0.1.0"
 
+_SUPPORTED_WRITERS = {"vegalite"}
+
 
 @overload
 def render(
@@ -43,6 +45,10 @@ def render(
     altair.Chart
         An Altair chart object.
     """
+    if writer not in _SUPPORTED_WRITERS:
+        raise ValueError(
+            f"Unknown writer: {writer!r}. Supported writers: {', '.join(sorted(_SUPPORTED_WRITERS))}"
+        )
 
     df = nw.from_native(df, pass_through=True)
 
