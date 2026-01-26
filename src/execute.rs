@@ -1125,6 +1125,11 @@ where
         resolve_scales(spec, &data_map)?;
     }
 
+    // Apply out-of-bounds handling to data based on scale oob properties
+    for spec in &specs {
+        apply_scale_oob(spec, &mut data_map)?;
+    }
+
     Ok(PreparedData {
         data: data_map,
         specs,
@@ -1289,6 +1294,223 @@ fn get_aesthetic_family(aesthetic: &str) -> Vec<&str> {
     }
 
     family
+}
+
+// =============================================================================
+// Out-of-Bounds (OOB) Handling
+// =============================================================================
+
+use crate::plot::scale::{OOB_CENSOR, OOB_KEEP, OOB_SQUISH};
+use crate::plot::{ArrayElement, ParameterValue};
+
+/// Apply out-of-bounds handling to data based on scale oob properties.
+///
+/// For each scale with `oob != "keep"`, this function transforms the data:
+/// - `censor`: Filter out rows where the aesthetic's column values fall outside the input range
+/// - `squish`: Clamp column values to the input range limits (continuous only)
+///
+/// For discrete scales, only `censor` is supported - values not in the allowed set are filtered.
+fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Result<()> {
+    for scale in &spec.scales {
+        // Get oob mode, skip if "keep"
+        let oob_mode = match scale.properties.get("oob") {
+            Some(ParameterValue::String(s)) if s != OOB_KEEP => s.as_str(),
+            _ => continue,
+        };
+
+        // Get input range, skip if none
+        let input_range = match &scale.input_range {
+            Some(r) if !r.is_empty() => r,
+            _ => continue,
+        };
+
+        // Find all (data_key, column_name) pairs for this aesthetic
+        let column_sources = find_columns_for_aesthetic_with_sources(
+            &spec.global_mappings,
+            &spec.layers,
+            &scale.aesthetic,
+        );
+
+        // Determine if this is a numeric or discrete range
+        let is_numeric_range = matches!(
+            (&input_range[0], input_range.get(1)),
+            (ArrayElement::Number(_), Some(ArrayElement::Number(_)))
+        );
+
+        // Apply transformation to each (data_key, column_name) pair
+        for (data_key, col_name) in column_sources {
+            if let Some(df) = data_map.get(&data_key) {
+                // Skip if column doesn't exist in this data source
+                if df.column(&col_name).is_err() {
+                    continue;
+                }
+
+                let transformed = if is_numeric_range {
+                    // Numeric range - extract min/max
+                    let (range_min, range_max) = match (&input_range[0], &input_range[1]) {
+                        (ArrayElement::Number(lo), ArrayElement::Number(hi)) => (*lo, *hi),
+                        _ => continue,
+                    };
+                    apply_oob_to_column_numeric(df, &col_name, range_min, range_max, oob_mode)?
+                } else {
+                    // Discrete range - collect allowed values as strings
+                    let allowed_values: std::collections::HashSet<String> = input_range
+                        .iter()
+                        .filter_map(|elem| match elem {
+                            ArrayElement::String(s) => Some(s.clone()),
+                            ArrayElement::Number(n) => Some(n.to_string()),
+                            ArrayElement::Boolean(b) => Some(b.to_string()),
+                            ArrayElement::Null => None,
+                        })
+                        .collect();
+                    apply_oob_to_column_discrete(df, &col_name, &allowed_values, oob_mode)?
+                };
+                data_map.insert(data_key, transformed);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Find all (data_key, column_name) pairs for an aesthetic (including family members).
+/// Returns tuples of (data source key, column name) for use in transformations.
+fn find_columns_for_aesthetic_with_sources(
+    global_mappings: &crate::plot::Mappings,
+    layers: &[Layer],
+    aesthetic: &str,
+) -> Vec<(String, String)> {
+    let mut results = Vec::new();
+    let aesthetics_to_check = get_aesthetic_family(aesthetic);
+
+    // Check global mapping → uses global data
+    for aes_name in &aesthetics_to_check {
+        if let Some(AestheticValue::Column { name, .. }) = global_mappings.get(aes_name) {
+            results.push((naming::GLOBAL_DATA_KEY.to_string(), name.clone()));
+        }
+    }
+
+    // Check each layer's mapping → uses layer data or global data
+    for (i, layer) in layers.iter().enumerate() {
+        // Determine which data source this layer uses
+        let data_key = if layer.source.is_some() || layer.filter.is_some() {
+            naming::layer_key(i)
+        } else {
+            naming::GLOBAL_DATA_KEY.to_string()
+        };
+
+        for aes_name in &aesthetics_to_check {
+            if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(aes_name) {
+                results.push((data_key.clone(), name.clone()));
+            }
+        }
+    }
+
+    results
+}
+
+/// Apply oob transformation to a single numeric column in a DataFrame.
+fn apply_oob_to_column_numeric(
+    df: &DataFrame,
+    col_name: &str,
+    range_min: f64,
+    range_max: f64,
+    oob_mode: &str,
+) -> Result<DataFrame> {
+    use polars::prelude::*;
+
+    let col = df.column(col_name).map_err(|e| {
+        GgsqlError::ValidationError(format!("Column '{}' not found: {}", col_name, e))
+    })?;
+
+    // Try to cast column to f64 for comparison
+    let series = col.as_materialized_series();
+    let f64_col = series.cast(&DataType::Float64).map_err(|_| {
+        GgsqlError::ValidationError(format!(
+            "Cannot apply oob to non-numeric column '{}'",
+            col_name
+        ))
+    })?;
+
+    let f64_ca = f64_col.f64().map_err(|_| {
+        GgsqlError::ValidationError(format!(
+            "Cannot apply oob to non-numeric column '{}'",
+            col_name
+        ))
+    })?;
+
+    match oob_mode {
+        OOB_CENSOR => {
+            // Filter out rows where values are outside [range_min, range_max]
+            let mask: BooleanChunked = f64_ca
+                .into_iter()
+                .map(|opt| opt.is_none_or(|v| v >= range_min && v <= range_max))
+                .collect();
+
+            df.filter(&mask).map_err(|e| {
+                GgsqlError::InternalError(format!("Failed to filter DataFrame: {}", e))
+            })
+        }
+        OOB_SQUISH => {
+            // Clamp values to [range_min, range_max]
+            let clamped: Float64Chunked = f64_ca
+                .into_iter()
+                .map(|opt| opt.map(|v| v.clamp(range_min, range_max)))
+                .collect();
+
+            // Replace column with clamped values, maintaining original name
+            let clamped_series = clamped.into_series().with_name(col_name.into());
+
+            df.clone()
+                .with_column(clamped_series)
+                .map(|df| df.clone())
+                .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))
+        }
+        _ => Ok(df.clone()),
+    }
+}
+
+/// Apply oob transformation to a single discrete/categorical column in a DataFrame.
+fn apply_oob_to_column_discrete(
+    df: &DataFrame,
+    col_name: &str,
+    allowed_values: &std::collections::HashSet<String>,
+    oob_mode: &str,
+) -> Result<DataFrame> {
+    use polars::prelude::*;
+
+    // For discrete columns, only censor makes sense (squish is validated out earlier)
+    if oob_mode != OOB_CENSOR {
+        return Ok(df.clone());
+    }
+
+    let col = df.column(col_name).map_err(|e| {
+        GgsqlError::ValidationError(format!("Column '{}' not found: {}", col_name, e))
+    })?;
+
+    let series = col.as_materialized_series();
+
+    // Build mask: keep rows where value is null OR value is in allowed set
+    let mask: BooleanChunked = (0..series.len())
+        .map(|i| {
+            match series.get(i) {
+                Ok(val) => {
+                    // Null values are kept (similar to numeric behavior)
+                    if val.is_null() {
+                        return true;
+                    }
+                    // Convert value to string and check membership
+                    let s = val.to_string();
+                    // Remove quotes if present (polars adds quotes around strings)
+                    let clean = s.trim_matches('"');
+                    allowed_values.contains(clean)
+                }
+                Err(_) => true, // Keep on error
+            }
+        })
+        .collect();
+
+    df.filter(&mask)
+        .map_err(|e| GgsqlError::InternalError(format!("Failed to filter DataFrame: {}", e)))
 }
 
 /// Build data map from a query using DuckDB reader
@@ -3585,5 +3807,271 @@ mod tests {
 
         let fill = aes.get("fill").unwrap();
         assert_eq!(fill.column_name().unwrap(), "island");
+    }
+
+    // =========================================================================
+    // OOB Tests
+    // =========================================================================
+
+    #[test]
+    fn test_apply_oob_censor_filters_data() {
+        use polars::prelude::*;
+
+        // Create DataFrame with values 1..10
+        let df = DataFrame::new(vec![
+            Series::new("x".into(), vec![1.0f64, 5.0, 10.0, 15.0, 20.0]).into(),
+            Series::new("y".into(), vec![10.0f64, 20.0, 30.0, 40.0, 50.0]).into(),
+        ])
+        .unwrap();
+
+        // Apply censor to keep only values in [5, 15]
+        let result = apply_oob_to_column_numeric(&df, "x", 5.0, 15.0, "censor").unwrap();
+
+        // Should have 3 rows: 5, 10, 15
+        assert_eq!(result.height(), 3);
+
+        // Check values
+        let x_col = result.column("x").unwrap();
+        let x_series = x_col.as_materialized_series().f64().unwrap();
+        let values: Vec<f64> = x_series.into_iter().flatten().collect();
+        assert_eq!(values, vec![5.0, 10.0, 15.0]);
+    }
+
+    #[test]
+    fn test_apply_oob_squish_clamps_data() {
+        use polars::prelude::*;
+
+        // Create DataFrame with values 1..10
+        let df = DataFrame::new(vec![
+            Series::new("x".into(), vec![1.0f64, 5.0, 10.0, 15.0, 20.0]).into(),
+            Series::new("y".into(), vec![10.0f64, 20.0, 30.0, 40.0, 50.0]).into(),
+        ])
+        .unwrap();
+
+        // Apply squish to clamp values to [5, 15]
+        let result = apply_oob_to_column_numeric(&df, "x", 5.0, 15.0, "squish").unwrap();
+
+        // Should still have 5 rows
+        assert_eq!(result.height(), 5);
+
+        // Check clamped values: [1→5, 5, 10, 15, 20→15]
+        let x_col = result.column("x").unwrap();
+        let x_series = x_col.as_materialized_series().f64().unwrap();
+        let values: Vec<f64> = x_series.into_iter().flatten().collect();
+        assert_eq!(values, vec![5.0, 5.0, 10.0, 15.0, 15.0]);
+    }
+
+    #[test]
+    fn test_apply_oob_keep_preserves_data() {
+        use polars::prelude::*;
+
+        // Create DataFrame with values 1..10
+        let df = DataFrame::new(vec![Series::new(
+            "x".into(),
+            vec![1.0f64, 5.0, 10.0, 15.0, 20.0],
+        )
+        .into()])
+        .unwrap();
+
+        // Apply keep - should not modify data
+        let result = apply_oob_to_column_numeric(&df, "x", 5.0, 15.0, "keep").unwrap();
+
+        // Should still have 5 rows with original values
+        assert_eq!(result.height(), 5);
+        let x_col = result.column("x").unwrap();
+        let x_series = x_col.as_materialized_series().f64().unwrap();
+        let values: Vec<f64> = x_series.into_iter().flatten().collect();
+        assert_eq!(values, vec![1.0, 5.0, 10.0, 15.0, 20.0]);
+    }
+
+    #[test]
+    fn test_apply_oob_censor_preserves_null_values() {
+        use polars::prelude::*;
+
+        // Create DataFrame with some null values
+        let df = DataFrame::new(vec![Series::new(
+            "x".into(),
+            vec![Some(1.0f64), None, Some(10.0), Some(20.0)],
+        )
+        .into()])
+        .unwrap();
+
+        // Apply censor to keep only values in [5, 15]
+        let result = apply_oob_to_column_numeric(&df, "x", 5.0, 15.0, "censor").unwrap();
+
+        // Should have 2 rows: null (preserved) and 10
+        assert_eq!(result.height(), 2);
+    }
+
+    #[test]
+    fn test_apply_oob_discrete_censor_filters_data() {
+        use polars::prelude::*;
+
+        // Create DataFrame with categorical values
+        let df = DataFrame::new(vec![
+            Series::new("category".into(), vec!["A", "B", "C", "D", "E"]).into(),
+            Series::new("value".into(), vec![1, 2, 3, 4, 5]).into(),
+        ])
+        .unwrap();
+
+        // Only allow A, B, C
+        let allowed: std::collections::HashSet<String> =
+            ["A", "B", "C"].iter().map(|s| s.to_string()).collect();
+
+        let result = apply_oob_to_column_discrete(&df, "category", &allowed, "censor").unwrap();
+
+        // Should have 3 rows: A, B, C
+        assert_eq!(result.height(), 3);
+
+        // Check values
+        let cat_col = result.column("category").unwrap();
+        let values: Vec<String> = (0..cat_col.len())
+            .map(|i| {
+                cat_col
+                    .as_materialized_series()
+                    .get(i)
+                    .unwrap()
+                    .to_string()
+                    .trim_matches('"')
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(values, vec!["A", "B", "C"]);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_oob_censor_integration() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create data with values spanning outside the range
+        // Note: expand => 0 disables range expansion for predictable filtering
+        let query = r#"
+            SELECT * FROM (VALUES
+                (1, 5),
+                (2, 15),
+                (3, 25)
+            ) AS t(x, y)
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            SCALE y FROM [0, 20] SETTING oob => 'censor', expand => 0
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Check that the data was filtered (only 2 rows should remain)
+        let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
+        assert_eq!(df.height(), 2);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_oob_squish_integration() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create data with values spanning outside the range
+        // Note: expand => 0 disables range expansion for predictable clamping
+        let query = r#"
+            SELECT * FROM (VALUES
+                (1, 5),
+                (2, 15),
+                (3, 25)
+            ) AS t(x, y)
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            SCALE y FROM [0, 20] SETTING oob => 'squish', expand => 0
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Check that the data was clamped (all 3 rows should remain, y clamped to [0, 20])
+        let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
+        assert_eq!(df.height(), 3);
+
+        // Check clamped values
+        let y_col = df.column("y").unwrap();
+        let y_series = y_col
+            .as_materialized_series()
+            .cast(&polars::prelude::DataType::Float64)
+            .unwrap();
+        let y_f64 = y_series.f64().unwrap();
+        let values: Vec<f64> = y_f64.into_iter().flatten().collect();
+        // Values should be: 5 (within range), 15 (within range), 20 (clamped from 25)
+        assert_eq!(values, vec![5.0, 15.0, 20.0]);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_oob_default_keep_for_positional() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create data with values spanning outside the range
+        // Default for positional (y) is 'keep', so data should not be modified
+        let query = r#"
+            SELECT * FROM (VALUES
+                (1, 5),
+                (2, 15),
+                (3, 25)
+            ) AS t(x, y)
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            SCALE y FROM [0, 20]
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // All rows should be present (default oob='keep' for positional)
+        let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
+        assert_eq!(df.height(), 3);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_oob_discrete_censor_integration() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create data with categories, some outside allowed range
+        let query = r#"
+            SELECT * FROM (VALUES
+                (1, 10, 'A'),
+                (2, 20, 'B'),
+                (3, 30, 'C'),
+                (4, 40, 'D')
+            ) AS t(x, y, category)
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y, category AS color
+            SCALE DISCRETE color FROM ['A', 'B'] SETTING oob => 'censor'
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Only rows with 'A' and 'B' should remain (C and D are out of range)
+        let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
+        assert_eq!(df.height(), 2);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_oob_discrete_default_censor_for_non_positional() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Non-positional aesthetics (like color) should default to censor
+        let query = r#"
+            SELECT * FROM (VALUES
+                (1, 10, 'A'),
+                (2, 20, 'B'),
+                (3, 30, 'C'),
+                (4, 40, 'D')
+            ) AS t(x, y, category)
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y, category AS color
+            SCALE DISCRETE color FROM ['A', 'B']
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Default oob='censor' for non-positional, so C and D should be filtered
+        let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
+        assert_eq!(df.height(), 2);
     }
 }

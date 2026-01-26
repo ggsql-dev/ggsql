@@ -22,18 +22,20 @@ impl ScaleTypeTrait for Date {
 
     fn allowed_properties(&self, aesthetic: &str) -> &'static [&'static str] {
         if super::is_positional_aesthetic(aesthetic) {
-            &["expand"]
+            &["expand", "oob"]
         } else {
-            &[]
+            &["oob"]
         }
     }
 
     fn get_property_default(&self, aesthetic: &str, name: &str) -> Option<ParameterValue> {
-        if !super::is_positional_aesthetic(aesthetic) {
-            return None;
-        }
         match name {
-            "expand" => Some(ParameterValue::Number(super::DEFAULT_EXPAND_MULT)),
+            "expand" if super::is_positional_aesthetic(aesthetic) => {
+                Some(ParameterValue::Number(super::DEFAULT_EXPAND_MULT))
+            }
+            "oob" => Some(ParameterValue::String(
+                super::default_oob(aesthetic).to_string(),
+            )),
             _ => None,
         }
     }

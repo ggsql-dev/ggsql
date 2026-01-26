@@ -205,6 +205,20 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             }
         }
 
+        // Validate oob value if present
+        if let Some(ParameterValue::String(oob)) = resolved.get("oob") {
+            validate_oob(oob)?;
+
+            // Discrete scales only support "censor" - no way to map unmapped values to output
+            if self.scale_type_kind() == ScaleTypeKind::Discrete && oob != OOB_CENSOR {
+                return Err(format!(
+                    "Discrete scale only supports oob='censor'. Cannot use '{}' because \
+                     values outside the input range have no corresponding output value.",
+                    oob
+                ));
+            }
+        }
+
         Ok(resolved)
     }
 }
@@ -439,6 +453,38 @@ pub(super) const DEFAULT_EXPAND_MULT: f64 = 0.05;
 /// Default additive expansion factor for continuous/temporal scales.
 pub(super) const DEFAULT_EXPAND_ADD: f64 = 0.0;
 
+// =============================================================================
+// Out-of-bounds (oob) handling constants and helpers
+// =============================================================================
+
+/// Out-of-bounds mode: set values outside range to NULL (removes from visualization)
+pub const OOB_CENSOR: &str = "censor";
+/// Out-of-bounds mode: clamp values to the closest limit
+pub const OOB_SQUISH: &str = "squish";
+/// Out-of-bounds mode: don't modify values (default for positional aesthetics)
+pub const OOB_KEEP: &str = "keep";
+
+/// Default oob mode for an aesthetic.
+/// Positional aesthetics default to "keep", others default to "censor".
+pub(super) fn default_oob(aesthetic: &str) -> &'static str {
+    if is_positional_aesthetic(aesthetic) {
+        OOB_KEEP
+    } else {
+        OOB_CENSOR
+    }
+}
+
+/// Validate oob value is one of the allowed modes.
+pub(super) fn validate_oob(value: &str) -> Result<(), String> {
+    match value {
+        OOB_CENSOR | OOB_SQUISH | OOB_KEEP => Ok(()),
+        _ => Err(format!(
+            "Invalid oob value '{}'. Must be 'censor', 'squish', or 'keep'",
+            value
+        )),
+    }
+}
+
 /// Parse expand parameter value into (mult, add) factors.
 /// Returns None if value is invalid.
 ///
@@ -496,9 +542,7 @@ pub(super) fn expand_numeric_range(
 }
 
 /// Get expand factors from properties, using defaults for continuous/temporal scales.
-pub(super) fn get_expand_factors(
-    properties: &HashMap<String, ParameterValue>,
-) -> (f64, f64) {
+pub(super) fn get_expand_factors(properties: &HashMap<String, ParameterValue>) -> (f64, f64) {
     properties
         .get("expand")
         .and_then(parse_expand_value)
@@ -842,10 +886,8 @@ mod tests {
 
     #[test]
     fn test_parse_expand_value_array() {
-        let val = ParameterValue::Array(vec![
-            ArrayElement::Number(0.05),
-            ArrayElement::Number(10.0),
-        ]);
+        let val =
+            ParameterValue::Array(vec![ArrayElement::Number(0.05), ArrayElement::Number(10.0)]);
         let (mult, add) = parse_expand_value(&val).unwrap();
         assert!((mult - 0.05).abs() < 1e-10);
         assert!((add - 10.0).abs() < 1e-10);
@@ -934,10 +976,7 @@ mod tests {
         let mut props = HashMap::new();
         props.insert(
             "expand".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::Number(0.05),
-                ArrayElement::Number(10.0),
-            ]),
+            ParameterValue::Array(vec![ArrayElement::Number(0.05), ArrayElement::Number(10.0)]),
         );
 
         let result = ScaleType::continuous()
@@ -1010,7 +1049,9 @@ mod tests {
     #[test]
     fn test_resolve_properties_default_expand() {
         let props = HashMap::new();
-        let resolved = ScaleType::continuous().resolve_properties("x", &props).unwrap();
+        let resolved = ScaleType::continuous()
+            .resolve_properties("x", &props)
+            .unwrap();
 
         assert!(resolved.contains_key("expand"));
         match resolved.get("expand") {
@@ -1026,7 +1067,9 @@ mod tests {
         let mut props = HashMap::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
 
-        let resolved = ScaleType::continuous().resolve_properties("x", &props).unwrap();
+        let resolved = ScaleType::continuous()
+            .resolve_properties("x", &props)
+            .unwrap();
 
         match resolved.get("expand") {
             Some(ParameterValue::Number(n)) => assert!((n - 0.1).abs() < 1e-10),
@@ -1035,7 +1078,8 @@ mod tests {
     }
 
     #[test]
-    fn test_discrete_rejects_properties() {
+    fn test_discrete_rejects_expand_property() {
+        // Discrete scales support oob but not expand
         let mut props = HashMap::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
 
@@ -1043,7 +1087,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("discrete"));
-        assert!(err.contains("does not support any SETTING"));
+        assert!(err.contains("does not support SETTING 'expand'"));
     }
 
     #[test]
@@ -1077,12 +1121,15 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_properties_empty_allowed_for_discrete() {
-        // Empty properties should be allowed for discrete
+    fn test_resolve_properties_defaults_for_discrete() {
+        // Empty properties should be allowed for discrete, defaults to oob
         let props = HashMap::new();
         let result = ScaleType::discrete().resolve_properties("color", &props);
         assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let resolved = result.unwrap();
+        // Discrete now supports oob with default value
+        assert!(resolved.contains_key("oob"));
+        assert_eq!(resolved.len(), 1); // Only oob
     }
 
     #[test]
@@ -1091,15 +1138,25 @@ mod tests {
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
 
         // Positional aesthetics should allow expand
-        assert!(ScaleType::continuous().resolve_properties("x", &props).is_ok());
-        assert!(ScaleType::continuous().resolve_properties("y", &props).is_ok());
-        assert!(ScaleType::continuous().resolve_properties("xmin", &props).is_ok());
-        assert!(ScaleType::continuous().resolve_properties("ymax", &props).is_ok());
+        assert!(ScaleType::continuous()
+            .resolve_properties("x", &props)
+            .is_ok());
+        assert!(ScaleType::continuous()
+            .resolve_properties("y", &props)
+            .is_ok());
+        assert!(ScaleType::continuous()
+            .resolve_properties("xmin", &props)
+            .is_ok());
+        assert!(ScaleType::continuous()
+            .resolve_properties("ymax", &props)
+            .is_ok());
 
-        // Non-positional aesthetics should reject expand
+        // Non-positional aesthetics should reject expand (but allow oob)
         let result = ScaleType::continuous().resolve_properties("color", &props);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("does not support any SETTING"));
+        assert!(result
+            .unwrap_err()
+            .contains("does not support SETTING 'expand'"));
 
         let result = ScaleType::continuous().resolve_properties("size", &props);
         assert!(result.is_err());
@@ -1112,12 +1169,205 @@ mod tests {
     fn test_no_default_expand_for_non_positional() {
         // Non-positional aesthetics should not get default expand
         let props = HashMap::new();
-        let resolved = ScaleType::continuous().resolve_properties("color", &props).unwrap();
+        let resolved = ScaleType::continuous()
+            .resolve_properties("color", &props)
+            .unwrap();
         assert!(!resolved.contains_key("expand"));
-        assert!(resolved.is_empty());
+        // But they do get default oob
+        assert!(resolved.contains_key("oob"));
 
         // Positional aesthetics should get default expand
-        let resolved = ScaleType::continuous().resolve_properties("x", &props).unwrap();
+        let resolved = ScaleType::continuous()
+            .resolve_properties("x", &props)
+            .unwrap();
         assert!(resolved.contains_key("expand"));
+    }
+
+    // =========================================================================
+    // OOB Tests
+    // =========================================================================
+
+    #[test]
+    fn test_oob_default_positional() {
+        let props = HashMap::new();
+        let resolved = ScaleType::continuous()
+            .resolve_properties("x", &props)
+            .unwrap();
+        assert_eq!(
+            resolved.get("oob"),
+            Some(&ParameterValue::String("keep".into()))
+        );
+    }
+
+    #[test]
+    fn test_oob_default_positional_variants() {
+        let props = HashMap::new();
+        for aesthetic in &["y", "xmin", "xmax", "ymin", "ymax", "xend", "yend"] {
+            let resolved = ScaleType::continuous()
+                .resolve_properties(aesthetic, &props)
+                .unwrap();
+            assert_eq!(
+                resolved.get("oob"),
+                Some(&ParameterValue::String("keep".into())),
+                "Expected 'keep' default for positional aesthetic '{}'",
+                aesthetic
+            );
+        }
+    }
+
+    #[test]
+    fn test_oob_default_non_positional() {
+        let props = HashMap::new();
+        let resolved = ScaleType::continuous()
+            .resolve_properties("color", &props)
+            .unwrap();
+        assert_eq!(
+            resolved.get("oob"),
+            Some(&ParameterValue::String("censor".into()))
+        );
+    }
+
+    #[test]
+    fn test_oob_default_non_positional_variants() {
+        let props = HashMap::new();
+        for aesthetic in &["size", "opacity", "fill", "stroke"] {
+            let resolved = ScaleType::continuous()
+                .resolve_properties(aesthetic, &props)
+                .unwrap();
+            assert_eq!(
+                resolved.get("oob"),
+                Some(&ParameterValue::String("censor".into())),
+                "Expected 'censor' default for non-positional aesthetic '{}'",
+                aesthetic
+            );
+        }
+    }
+
+    #[test]
+    fn test_oob_valid_values() {
+        // All valid oob values should be accepted
+        for oob_value in &["censor", "squish", "keep"] {
+            let mut props = HashMap::new();
+            props.insert(
+                "oob".to_string(),
+                ParameterValue::String(oob_value.to_string()),
+            );
+
+            let result = ScaleType::continuous().resolve_properties("x", &props);
+            assert!(
+                result.is_ok(),
+                "Expected oob='{}' to be valid, got error",
+                oob_value
+            );
+        }
+    }
+
+    #[test]
+    fn test_oob_invalid_value_rejected() {
+        let mut props = HashMap::new();
+        props.insert("oob".to_string(), ParameterValue::String("invalid".into()));
+
+        let result = ScaleType::continuous().resolve_properties("x", &props);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Invalid oob value"));
+        assert!(err.contains("invalid"));
+        assert!(err.contains("censor"));
+        assert!(err.contains("squish"));
+        assert!(err.contains("keep"));
+    }
+
+    #[test]
+    fn test_oob_user_value_preserved() {
+        let mut props = HashMap::new();
+        props.insert("oob".to_string(), ParameterValue::String("squish".into()));
+
+        let resolved = ScaleType::continuous()
+            .resolve_properties("x", &props)
+            .unwrap();
+        assert_eq!(
+            resolved.get("oob"),
+            Some(&ParameterValue::String("squish".into()))
+        );
+    }
+
+    #[test]
+    fn test_oob_supported_by_all_continuous_scales() {
+        // All continuous-like scales should support oob
+        let props = HashMap::new();
+
+        for scale_type in &[
+            ScaleType::continuous(),
+            ScaleType::binned(),
+            ScaleType::date(),
+            ScaleType::datetime(),
+            ScaleType::time(),
+        ] {
+            let resolved = scale_type.resolve_properties("color", &props).unwrap();
+            assert!(
+                resolved.contains_key("oob"),
+                "Scale {:?} should support oob",
+                scale_type.scale_type_kind()
+            );
+        }
+    }
+
+    #[test]
+    fn test_oob_not_supported_by_identity() {
+        // Identity scale should not support oob
+        let mut props = HashMap::new();
+        props.insert("oob".to_string(), ParameterValue::String("censor".into()));
+
+        let result = ScaleType::identity().resolve_properties("color", &props);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_discrete_supports_oob_censor_only() {
+        // Discrete scale only supports oob='censor'
+        let mut props = HashMap::new();
+
+        // censor should work
+        props.insert("oob".to_string(), ParameterValue::String("censor".into()));
+        let result = ScaleType::discrete().resolve_properties("color", &props);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_discrete_rejects_oob_keep() {
+        // Discrete scale should reject keep (no output value for unmapped inputs)
+        let mut props = HashMap::new();
+        props.insert("oob".to_string(), ParameterValue::String("keep".into()));
+
+        let result = ScaleType::discrete().resolve_properties("color", &props);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Discrete scale only supports oob='censor'"));
+    }
+
+    #[test]
+    fn test_discrete_rejects_oob_squish() {
+        // Discrete scale should reject squish (no natural "closest" value)
+        let mut props = HashMap::new();
+        props.insert("oob".to_string(), ParameterValue::String("squish".into()));
+
+        let result = ScaleType::discrete().resolve_properties("color", &props);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Discrete scale only supports oob='censor'"));
+    }
+
+    #[test]
+    fn test_discrete_default_oob() {
+        // Discrete scale should always default to 'censor'
+        let props = HashMap::new();
+
+        let resolved = ScaleType::discrete()
+            .resolve_properties("color", &props)
+            .unwrap();
+        assert_eq!(
+            resolved.get("oob"),
+            Some(&ParameterValue::String("censor".into()))
+        );
     }
 }

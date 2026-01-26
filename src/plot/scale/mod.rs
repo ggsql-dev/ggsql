@@ -13,7 +13,7 @@ pub use colour::{color_to_hex, gradient, interpolate_colors, is_color_aesthetic,
 pub use linetype::linetype_to_stroke_dash;
 pub use scale_type::{
     Binned, Continuous, Date, DateTime, Discrete, Identity, ScaleType, ScaleTypeKind,
-    ScaleTypeTrait, Time,
+    ScaleTypeTrait, Time, OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
 };
 pub use shape::shape_to_svg_path;
 pub use types::{Guide, GuideType, OutputRange, Scale};
