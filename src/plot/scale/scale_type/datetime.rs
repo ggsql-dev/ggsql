@@ -1,9 +1,11 @@
 //! DateTime scale type implementation
 
+use std::collections::HashMap;
+
 use polars::prelude::{ChunkAgg, Column, DataType};
 
 use super::{ScaleTypeKind, ScaleTypeTrait};
-use crate::plot::ArrayElement;
+use crate::plot::{ArrayElement, ParameterValue};
 
 /// DateTime scale type - for datetime data (maps to temporal type)
 #[derive(Debug, Clone, Copy)]
@@ -18,6 +20,24 @@ impl ScaleTypeTrait for DateTime {
         "datetime"
     }
 
+    fn allowed_properties(&self, aesthetic: &str) -> &'static [&'static str] {
+        if super::is_positional_aesthetic(aesthetic) {
+            &["expand"]
+        } else {
+            &[]
+        }
+    }
+
+    fn get_property_default(&self, aesthetic: &str, name: &str) -> Option<ParameterValue> {
+        if !super::is_positional_aesthetic(aesthetic) {
+            return None;
+        }
+        match name {
+            "expand" => Some(ParameterValue::Number(super::DEFAULT_EXPAND_MULT)),
+            _ => None,
+        }
+    }
+
     fn allows_data_type(&self, dtype: &DataType) -> bool {
         matches!(dtype, DataType::Datetime(_, _))
     }
@@ -26,16 +46,26 @@ impl ScaleTypeTrait for DateTime {
         &self,
         user_range: Option<&[ArrayElement]>,
         columns: &[&Column],
+        properties: &HashMap<String, ParameterValue>,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
-        let computed = compute_datetime_range(columns);
+        let (mult, add) = super::get_expand_factors(properties);
+
+        // Compute datetime range with expansion applied (returns ISO strings)
+        let expanded = compute_datetime_range_with_expansion(columns, mult, add);
 
         match user_range {
-            None => Ok(computed),
-            Some(range) if super::input_range_has_nulls(range) => match computed {
-                Some(inferred) => Ok(Some(super::merge_with_inferred(range, &inferred))),
-                None => Ok(Some(range.to_vec())),
-            },
-            Some(range) => Ok(Some(range.to_vec())),
+            None => Ok(expanded),
+            Some(range) if super::input_range_has_nulls(range) => {
+                // User provided partial range with nulls - merge with expanded computed
+                match expanded {
+                    Some(inferred) => Ok(Some(super::merge_with_inferred(range, &inferred))),
+                    None => Ok(Some(range.to_vec())),
+                }
+            }
+            Some(range) => {
+                // User provided explicit datetime range - don't expand
+                Ok(Some(range.to_vec()))
+            }
         }
     }
 
@@ -70,8 +100,13 @@ impl ScaleTypeTrait for DateTime {
     }
 }
 
-/// Compute datetime input range as [min, max] ISO datetime strings from Columns.
-fn compute_datetime_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
+/// Compute datetime input range as [min, max] ISO datetime strings from Columns,
+/// with expansion applied.
+fn compute_datetime_range_with_expansion(
+    column_refs: &[&Column],
+    mult: f64,
+    add: f64,
+) -> Option<Vec<ArrayElement>> {
     let mut global_min: Option<i64> = None;
     let mut global_max: Option<i64> = None;
 
@@ -91,16 +126,23 @@ fn compute_datetime_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> 
 
     match (global_min, global_max) {
         (Some(min_ts), Some(max_ts)) => {
+            // Apply expansion on the numeric microseconds
+            let span = (max_ts - min_ts) as f64;
+            // Note: add is in "units" - for datetime we interpret as microseconds
+            let add_us = add * 1_000_000.0; // Convert seconds to microseconds
+            let expanded_min = (min_ts as f64 - span * mult - add_us).floor() as i64;
+            let expanded_max = (max_ts as f64 + span * mult + add_us).ceil() as i64;
+
             let to_iso = |ts: i64| -> Option<String> {
                 // Polars Datetime is microseconds since epoch
                 let secs = ts / 1_000_000;
-                let nsecs = ((ts % 1_000_000) * 1000) as u32;
+                let nsecs = ((ts % 1_000_000).abs() * 1000) as u32;
                 let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, nsecs)?;
                 Some(dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
             };
             Some(vec![
-                ArrayElement::String(to_iso(min_ts)?),
-                ArrayElement::String(to_iso(max_ts)?),
+                ArrayElement::String(to_iso(expanded_min)?),
+                ArrayElement::String(to_iso(expanded_max)?),
             ])
         }
         _ => None,

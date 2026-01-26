@@ -1,9 +1,11 @@
 //! Time scale type implementation
 
+use std::collections::HashMap;
+
 use polars::prelude::{ChunkAgg, Column, DataType};
 
 use super::{ScaleTypeKind, ScaleTypeTrait};
-use crate::plot::ArrayElement;
+use crate::plot::{ArrayElement, ParameterValue};
 
 /// Time scale type - for time data (maps to temporal type)
 #[derive(Debug, Clone, Copy)]
@@ -18,6 +20,24 @@ impl ScaleTypeTrait for Time {
         "time"
     }
 
+    fn allowed_properties(&self, aesthetic: &str) -> &'static [&'static str] {
+        if super::is_positional_aesthetic(aesthetic) {
+            &["expand"]
+        } else {
+            &[]
+        }
+    }
+
+    fn get_property_default(&self, aesthetic: &str, name: &str) -> Option<ParameterValue> {
+        if !super::is_positional_aesthetic(aesthetic) {
+            return None;
+        }
+        match name {
+            "expand" => Some(ParameterValue::Number(super::DEFAULT_EXPAND_MULT)),
+            _ => None,
+        }
+    }
+
     fn allows_data_type(&self, dtype: &DataType) -> bool {
         matches!(dtype, DataType::Time)
     }
@@ -26,16 +46,26 @@ impl ScaleTypeTrait for Time {
         &self,
         user_range: Option<&[ArrayElement]>,
         columns: &[&Column],
+        properties: &HashMap<String, ParameterValue>,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
-        let computed = compute_time_range(columns);
+        let (mult, add) = super::get_expand_factors(properties);
+
+        // Compute time range with expansion applied (returns ISO strings)
+        let expanded = compute_time_range_with_expansion(columns, mult, add);
 
         match user_range {
-            None => Ok(computed),
-            Some(range) if super::input_range_has_nulls(range) => match computed {
-                Some(inferred) => Ok(Some(super::merge_with_inferred(range, &inferred))),
-                None => Ok(Some(range.to_vec())),
-            },
-            Some(range) => Ok(Some(range.to_vec())),
+            None => Ok(expanded),
+            Some(range) if super::input_range_has_nulls(range) => {
+                // User provided partial range with nulls - merge with expanded computed
+                match expanded {
+                    Some(inferred) => Ok(Some(super::merge_with_inferred(range, &inferred))),
+                    None => Ok(Some(range.to_vec())),
+                }
+            }
+            Some(range) => {
+                // User provided explicit time range - don't expand
+                Ok(Some(range.to_vec()))
+            }
         }
     }
 
@@ -70,8 +100,13 @@ impl ScaleTypeTrait for Time {
     }
 }
 
-/// Compute time input range as [min, max] ISO time strings from Columns.
-fn compute_time_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
+/// Compute time input range as [min, max] ISO time strings from Columns,
+/// with expansion applied.
+fn compute_time_range_with_expansion(
+    column_refs: &[&Column],
+    mult: f64,
+    add: f64,
+) -> Option<Vec<ArrayElement>> {
     let mut global_min: Option<i64> = None;
     let mut global_max: Option<i64> = None;
 
@@ -91,10 +126,17 @@ fn compute_time_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
 
     match (global_min, global_max) {
         (Some(min_ns), Some(max_ns)) => {
+            // Apply expansion on the numeric nanoseconds
+            let span = (max_ns - min_ns) as f64;
+            // Note: add is in "units" - for time we interpret as nanoseconds
+            let add_ns = add * 1_000_000_000.0; // Convert seconds to nanoseconds
+            let expanded_min = (min_ns as f64 - span * mult - add_ns).max(0.0).floor() as i64;
+            let expanded_max = (max_ns as f64 + span * mult + add_ns).ceil() as i64;
+
             let to_iso = |ns: i64| -> Option<String> {
                 // Polars Time is nanoseconds since midnight
                 let total_secs = ns / 1_000_000_000;
-                let nanos = (ns % 1_000_000_000) as u32;
+                let nanos = (ns % 1_000_000_000).unsigned_abs() as u32;
                 let hours = total_secs / 3600;
                 let mins = (total_secs % 3600) / 60;
                 let secs = total_secs % 60;
@@ -107,8 +149,8 @@ fn compute_time_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
                 Some(time.format("%H:%M:%S%.3f").to_string())
             };
             Some(vec![
-                ArrayElement::String(to_iso(min_ns)?),
-                ArrayElement::String(to_iso(max_ns)?),
+                ArrayElement::String(to_iso(expanded_min)?),
+                ArrayElement::String(to_iso(expanded_max)?),
             ])
         }
         _ => None,

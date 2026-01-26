@@ -1164,9 +1164,20 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
         // Clone scale_type (cheap Arc clone) to avoid borrow conflict with mutations
         let scale_type = spec.scales[idx].scale_type.clone();
         if let Some(st) = scale_type {
+            // Resolve and validate properties (fills in defaults, rejects unknown)
+            spec.scales[idx].properties = st
+                .resolve_properties(&aesthetic, &spec.scales[idx].properties)
+                .map_err(|e| {
+                    GgsqlError::ValidationError(format!("Scale '{}': {}", aesthetic, e))
+                })?;
+
             // Resolve input range using the scale type's method
             let resolved_range = st
-                .resolve_input_range(spec.scales[idx].input_range.as_deref(), &column_refs)
+                .resolve_input_range(
+                    spec.scales[idx].input_range.as_deref(),
+                    &column_refs,
+                    &spec.scales[idx].properties,
+                )
                 .map_err(|e| {
                     GgsqlError::ValidationError(format!("Scale '{}': {}", aesthetic, e))
                 })?;
@@ -3062,12 +3073,20 @@ mod tests {
     #[test]
     fn test_infer_input_range_numeric() {
         use polars::prelude::*;
+        use std::collections::HashMap as StdHashMap;
 
         // Create numeric column
         let column: Column = Series::new("x".into(), &[1.0f64, 5.0, 10.0, 3.0]).into();
 
+        // Disable expansion for predictable test values
+        let mut props = StdHashMap::new();
+        props.insert(
+            "expand".to_string(),
+            crate::plot::ParameterValue::Number(0.0),
+        );
+
         let range = ScaleType::continuous()
-            .resolve_input_range(None, &[&column])
+            .resolve_input_range(None, &[&column], &props)
             .unwrap();
         assert!(range.is_some());
         let range = range.unwrap();
@@ -3081,12 +3100,20 @@ mod tests {
     #[test]
     fn test_infer_input_range_numeric_integer() {
         use polars::prelude::*;
+        use std::collections::HashMap as StdHashMap;
 
         // Create integer column (should cast to f64)
         let column: Column = Series::new("y".into(), &[10i32, 20, 30, 5]).into();
 
+        // Disable expansion for predictable test values
+        let mut props = StdHashMap::new();
+        props.insert(
+            "expand".to_string(),
+            crate::plot::ParameterValue::Number(0.0),
+        );
+
         let range = ScaleType::continuous()
-            .resolve_input_range(None, &[&column])
+            .resolve_input_range(None, &[&column], &props)
             .unwrap();
         assert!(range.is_some());
         let range = range.unwrap();
@@ -3098,13 +3125,21 @@ mod tests {
     #[test]
     fn test_infer_input_range_numeric_multiple_columns() {
         use polars::prelude::*;
+        use std::collections::HashMap as StdHashMap;
 
         // Two columns with different ranges - should combine
         let column1: Column = Series::new("x".into(), &[1.0f64, 5.0]).into();
         let column2: Column = Series::new("xmax".into(), &[10.0f64, 20.0]).into();
 
+        // Disable expansion for predictable test values
+        let mut props = StdHashMap::new();
+        props.insert(
+            "expand".to_string(),
+            crate::plot::ParameterValue::Number(0.0),
+        );
+
         let range = ScaleType::continuous()
-            .resolve_input_range(None, &[&column1, &column2])
+            .resolve_input_range(None, &[&column1, &column2], &props)
             .unwrap();
         assert!(range.is_some());
         let range = range.unwrap();
@@ -3117,6 +3152,7 @@ mod tests {
     #[test]
     fn test_infer_input_range_date() {
         use polars::prelude::*;
+        use std::collections::HashMap as StdHashMap;
 
         // Create date column: 2024-01-15, 2024-03-20, 2024-02-01
         // Days since epoch (1970-01-01):
@@ -3128,8 +3164,15 @@ mod tests {
             .unwrap()
             .into();
 
+        // Disable expansion for predictable test values
+        let mut props = StdHashMap::new();
+        props.insert(
+            "expand".to_string(),
+            crate::plot::ParameterValue::Number(0.0),
+        );
+
         let range = ScaleType::date()
-            .resolve_input_range(None, &[&column])
+            .resolve_input_range(None, &[&column], &props)
             .unwrap();
         assert!(range.is_some());
         let range = range.unwrap();
@@ -3142,12 +3185,14 @@ mod tests {
     #[test]
     fn test_infer_input_range_discrete() {
         use polars::prelude::*;
+        use std::collections::HashMap as StdHashMap;
 
         // Create string column with duplicates
         let column: Column = Series::new("category".into(), &["B", "A", "C", "A", "B"]).into();
+        let props = StdHashMap::new();
 
         let range = ScaleType::discrete()
-            .resolve_input_range(None, &[&column])
+            .resolve_input_range(None, &[&column], &props)
             .unwrap();
         assert!(range.is_some());
         let range = range.unwrap();
@@ -3162,13 +3207,15 @@ mod tests {
     #[test]
     fn test_infer_input_range_discrete_with_nulls() {
         use polars::prelude::*;
+        use std::collections::HashMap as StdHashMap;
 
         // Create string column with null values
         let column: Column =
             Series::new("category".into(), &[Some("B"), None, Some("A"), Some("B")]).into();
+        let props = StdHashMap::new();
 
         let range = ScaleType::discrete()
-            .resolve_input_range(None, &[&column])
+            .resolve_input_range(None, &[&column], &props)
             .unwrap();
         assert!(range.is_some());
         let range = range.unwrap();
@@ -3187,7 +3234,14 @@ mod tests {
         let mut spec = Plot::new();
         spec.global_mappings
             .insert("x", AestheticValue::standard_column("value"));
-        spec.scales.push(crate::plot::Scale::new("x"));
+
+        // Disable expansion for predictable test values
+        let mut scale = crate::plot::Scale::new("x");
+        scale.properties.insert(
+            "expand".to_string(),
+            crate::plot::ParameterValue::Number(0.0),
+        );
+        spec.scales.push(scale);
         spec.layers.push(Layer::new(Geom::point()));
 
         // Create data with numeric values
@@ -3229,6 +3283,11 @@ mod tests {
 
         let mut scale = crate::plot::Scale::new("x");
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
+        // Disable expansion for predictable test values
+        scale.properties.insert(
+            "expand".to_string(),
+            crate::plot::ParameterValue::Number(0.0),
+        );
         spec.scales.push(scale);
         spec.layers.push(Layer::new(Geom::point()));
 
@@ -3266,7 +3325,14 @@ mod tests {
             .insert("ymin", AestheticValue::standard_column("low"));
         spec.global_mappings
             .insert("ymax", AestheticValue::standard_column("high"));
-        spec.scales.push(crate::plot::Scale::new("y"));
+
+        // Disable expansion for predictable test values
+        let mut scale = crate::plot::Scale::new("y");
+        scale.properties.insert(
+            "expand".to_string(),
+            crate::plot::ParameterValue::Number(0.0),
+        );
+        spec.scales.push(scale);
         spec.layers.push(Layer::new(Geom::errorbar()));
 
         // Create data where ymin/ymax columns have different ranges
@@ -3305,13 +3371,21 @@ mod tests {
     #[test]
     fn test_resolve_input_range_merge_min_null() {
         use polars::prelude::*;
+        use std::collections::HashMap as StdHashMap;
 
-        // FROM [null, 100] with data [1, 10] → [1, 100]
+        // FROM [null, 100] with data [1, 10] → [1, 100] (with expansion disabled)
         let column: Column = Series::new("x".into(), &[1.0f64, 5.0, 10.0]).into();
         let user_range = vec![ArrayElement::Null, ArrayElement::Number(100.0)];
 
+        // Disable expansion for predictable test values
+        let mut props = StdHashMap::new();
+        props.insert(
+            "expand".to_string(),
+            crate::plot::ParameterValue::Number(0.0),
+        );
+
         let result = ScaleType::continuous()
-            .resolve_input_range(Some(&user_range), &[&column])
+            .resolve_input_range(Some(&user_range), &[&column], &props)
             .unwrap();
         assert!(result.is_some());
         let range = result.unwrap();
@@ -3323,13 +3397,21 @@ mod tests {
     #[test]
     fn test_resolve_input_range_merge_max_null() {
         use polars::prelude::*;
+        use std::collections::HashMap as StdHashMap;
 
-        // FROM [0, null] with data [1, 10] → [0, 10]
+        // FROM [0, null] with data [1, 10] → [0, 10] (with expansion disabled)
         let column: Column = Series::new("x".into(), &[1.0f64, 5.0, 10.0]).into();
         let user_range = vec![ArrayElement::Number(0.0), ArrayElement::Null];
 
+        // Disable expansion for predictable test values
+        let mut props = StdHashMap::new();
+        props.insert(
+            "expand".to_string(),
+            crate::plot::ParameterValue::Number(0.0),
+        );
+
         let result = ScaleType::continuous()
-            .resolve_input_range(Some(&user_range), &[&column])
+            .resolve_input_range(Some(&user_range), &[&column], &props)
             .unwrap();
         assert!(result.is_some());
         let range = result.unwrap();
@@ -3341,13 +3423,21 @@ mod tests {
     #[test]
     fn test_resolve_input_range_merge_both_null() {
         use polars::prelude::*;
+        use std::collections::HashMap as StdHashMap;
 
-        // FROM [null, null] with data [1, 10] → [1, 10]
+        // FROM [null, null] with data [1, 10] → [1, 10] (with expansion disabled)
         let column: Column = Series::new("x".into(), &[1.0f64, 5.0, 10.0]).into();
         let user_range = vec![ArrayElement::Null, ArrayElement::Null];
 
+        // Disable expansion for predictable test values
+        let mut props = StdHashMap::new();
+        props.insert(
+            "expand".to_string(),
+            crate::plot::ParameterValue::Number(0.0),
+        );
+
         let result = ScaleType::continuous()
-            .resolve_input_range(Some(&user_range), &[&column])
+            .resolve_input_range(Some(&user_range), &[&column], &props)
             .unwrap();
         assert!(result.is_some());
         let range = result.unwrap();
@@ -3367,6 +3457,11 @@ mod tests {
 
         let mut scale = crate::plot::Scale::new("x");
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Null]);
+        // Disable expansion for predictable test values
+        scale.properties.insert(
+            "expand".to_string(),
+            crate::plot::ParameterValue::Number(0.0),
+        );
         spec.scales.push(scale);
         spec.layers.push(Layer::new(Geom::point()));
 
@@ -3405,6 +3500,11 @@ mod tests {
 
         let mut scale = crate::plot::Scale::new("x");
         scale.input_range = Some(vec![ArrayElement::Null, ArrayElement::Number(100.0)]);
+        // Disable expansion for predictable test values
+        scale.properties.insert(
+            "expand".to_string(),
+            crate::plot::ParameterValue::Number(0.0),
+        );
         spec.scales.push(scale);
         spec.layers.push(Layer::new(Geom::point()));
 

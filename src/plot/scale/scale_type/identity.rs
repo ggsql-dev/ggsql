@@ -1,9 +1,11 @@
 //! Identity scale type implementation
 
+use std::collections::HashMap;
+
 use polars::prelude::{Column, DataType};
 
 use super::{ScaleTypeKind, ScaleTypeTrait};
-use crate::plot::ArrayElement;
+use crate::plot::{ArrayElement, ParameterValue};
 
 /// Identity scale type - delegates to inferred type
 #[derive(Debug, Clone, Copy)]
@@ -30,7 +32,9 @@ impl ScaleTypeTrait for Identity {
         &self,
         user_range: Option<&[ArrayElement]>,
         _columns: &[&Column],
+        _properties: &HashMap<String, ParameterValue>,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
+        // Identity scales don't support input range or expansion
         match user_range {
             Some(_) => Err("Identity scale does not support input range specification".to_string()),
             None => Ok(None),

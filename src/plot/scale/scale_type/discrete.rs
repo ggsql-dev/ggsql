@@ -1,9 +1,11 @@
 //! Discrete scale type implementation
 
+use std::collections::HashMap;
+
 use polars::prelude::{Column, DataType};
 
 use super::{ScaleTypeKind, ScaleTypeTrait};
-use crate::plot::ArrayElement;
+use crate::plot::{ArrayElement, ParameterValue};
 
 /// Discrete scale type - for categorical/discrete data
 #[derive(Debug, Clone, Copy)]
@@ -33,7 +35,9 @@ impl ScaleTypeTrait for Discrete {
         &self,
         user_range: Option<&[ArrayElement]>,
         columns: &[&Column],
+        _properties: &HashMap<String, ParameterValue>,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
+        // Discrete scales don't support expansion
         match user_range {
             Some(range) if super::input_range_has_nulls(range) => {
                 Err("Discrete scale input range cannot contain null placeholders".to_string())

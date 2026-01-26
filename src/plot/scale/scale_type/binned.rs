@@ -1,9 +1,11 @@
 //! Binned scale type implementation
 
+use std::collections::HashMap;
+
 use polars::prelude::{ChunkAgg, Column, DataType};
 
 use super::{ScaleTypeKind, ScaleTypeTrait};
-use crate::plot::ArrayElement;
+use crate::plot::{ArrayElement, ParameterValue};
 
 /// Binned scale type - for binned/bucketed data
 #[derive(Debug, Clone, Copy)]
@@ -16,6 +18,24 @@ impl ScaleTypeTrait for Binned {
 
     fn name(&self) -> &'static str {
         "binned"
+    }
+
+    fn allowed_properties(&self, aesthetic: &str) -> &'static [&'static str] {
+        if super::is_positional_aesthetic(aesthetic) {
+            &["expand"]
+        } else {
+            &[]
+        }
+    }
+
+    fn get_property_default(&self, aesthetic: &str, name: &str) -> Option<ParameterValue> {
+        if !super::is_positional_aesthetic(aesthetic) {
+            return None;
+        }
+        match name {
+            "expand" => Some(ParameterValue::Number(super::DEFAULT_EXPAND_MULT)),
+            _ => None,
+        }
     }
 
     fn allows_data_type(&self, dtype: &DataType) -> bool {
@@ -38,16 +58,27 @@ impl ScaleTypeTrait for Binned {
         &self,
         user_range: Option<&[ArrayElement]>,
         columns: &[&Column],
+        properties: &HashMap<String, ParameterValue>,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
         let computed = compute_numeric_range(columns);
+        let (mult, add) = super::get_expand_factors(properties);
+
+        // Apply expansion to computed range
+        let expanded = computed.map(|range| super::expand_numeric_range(&range, mult, add));
 
         match user_range {
-            None => Ok(computed),
-            Some(range) if super::input_range_has_nulls(range) => match computed {
-                Some(inferred) => Ok(Some(super::merge_with_inferred(range, &inferred))),
-                None => Ok(Some(range.to_vec())),
-            },
-            Some(range) => Ok(Some(range.to_vec())),
+            None => Ok(expanded),
+            Some(range) if super::input_range_has_nulls(range) => {
+                // User provided partial range with nulls - merge with expanded computed
+                match expanded {
+                    Some(inferred) => Ok(Some(super::merge_with_inferred(range, &inferred))),
+                    None => Ok(Some(range.to_vec())),
+                }
+            }
+            Some(range) => {
+                // User provided explicit full range - still apply expansion
+                Ok(Some(super::expand_numeric_range(range, mult, add)))
+            }
         }
     }
 

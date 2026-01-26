@@ -1,9 +1,11 @@
 //! Date scale type implementation
 
+use std::collections::HashMap;
+
 use polars::prelude::{ChunkAgg, Column, DataType};
 
 use super::{ScaleTypeKind, ScaleTypeTrait};
-use crate::plot::ArrayElement;
+use crate::plot::{ArrayElement, ParameterValue};
 
 /// Date scale type - for date data (maps to temporal type)
 #[derive(Debug, Clone, Copy)]
@@ -18,6 +20,24 @@ impl ScaleTypeTrait for Date {
         "date"
     }
 
+    fn allowed_properties(&self, aesthetic: &str) -> &'static [&'static str] {
+        if super::is_positional_aesthetic(aesthetic) {
+            &["expand"]
+        } else {
+            &[]
+        }
+    }
+
+    fn get_property_default(&self, aesthetic: &str, name: &str) -> Option<ParameterValue> {
+        if !super::is_positional_aesthetic(aesthetic) {
+            return None;
+        }
+        match name {
+            "expand" => Some(ParameterValue::Number(super::DEFAULT_EXPAND_MULT)),
+            _ => None,
+        }
+    }
+
     fn allows_data_type(&self, dtype: &DataType) -> bool {
         matches!(dtype, DataType::Date)
     }
@@ -26,16 +46,28 @@ impl ScaleTypeTrait for Date {
         &self,
         user_range: Option<&[ArrayElement]>,
         columns: &[&Column],
+        properties: &HashMap<String, ParameterValue>,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
-        let computed = compute_date_range(columns);
+        let (mult, add) = super::get_expand_factors(properties);
+
+        // Compute date range with expansion applied (returns ISO strings)
+        let expanded = compute_date_range_with_expansion(columns, mult, add);
 
         match user_range {
-            None => Ok(computed),
-            Some(range) if super::input_range_has_nulls(range) => match computed {
-                Some(inferred) => Ok(Some(super::merge_with_inferred(range, &inferred))),
-                None => Ok(Some(range.to_vec())),
-            },
-            Some(range) => Ok(Some(range.to_vec())),
+            None => Ok(expanded),
+            Some(range) if super::input_range_has_nulls(range) => {
+                // User provided partial range with nulls - merge with expanded computed
+                match expanded {
+                    Some(inferred) => Ok(Some(super::merge_with_inferred(range, &inferred))),
+                    None => Ok(Some(range.to_vec())),
+                }
+            }
+            Some(range) => {
+                // User provided explicit date range - apply expansion
+                // Note: For date strings, we don't expand user-provided ranges
+                // since we can't easily parse arbitrary date formats
+                Ok(Some(range.to_vec()))
+            }
         }
     }
 
@@ -70,8 +102,13 @@ impl ScaleTypeTrait for Date {
     }
 }
 
-/// Compute date input range as [min_date, max_date] ISO strings from Columns.
-fn compute_date_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
+/// Compute date input range as [min_date, max_date] ISO strings from Columns,
+/// with expansion applied.
+fn compute_date_range_with_expansion(
+    column_refs: &[&Column],
+    mult: f64,
+    add: f64,
+) -> Option<Vec<ArrayElement>> {
     let mut global_min: Option<i32> = None;
     let mut global_max: Option<i32> = None;
 
@@ -91,9 +128,14 @@ fn compute_date_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
 
     match (global_min, global_max) {
         (Some(min_days), Some(max_days)) => {
+            // Apply expansion on the numeric days
+            let span = (max_days - min_days) as f64;
+            let expanded_min_days = (min_days as f64 - span * mult - add).floor() as i64;
+            let expanded_max_days = (max_days as f64 + span * mult + add).ceil() as i64;
+
             let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1)?;
-            let min_date = epoch + chrono::Duration::days(min_days as i64);
-            let max_date = epoch + chrono::Duration::days(max_days as i64);
+            let min_date = epoch + chrono::Duration::days(expanded_min_days);
+            let max_date = epoch + chrono::Duration::days(expanded_max_days);
             Some(vec![
                 ArrayElement::String(min_date.format("%Y-%m-%d").to_string()),
                 ArrayElement::String(max_date.format("%Y-%m-%d").to_string()),

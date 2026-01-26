@@ -22,9 +22,10 @@
 
 use polars::prelude::{Column, DataType};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::plot::ArrayElement;
+use crate::plot::{ArrayElement, ParameterValue};
 
 // Scale type implementations
 mod binned;
@@ -123,10 +124,13 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// - Date/DateTime/Time: Compute min/max as ISO strings, merge with user range
     /// - Discrete: Collect unique values if no user range; error if user range contains nulls
     /// - Identity: Return Ok(None); error if user provided any input range
+    ///
+    /// The `properties` parameter provides access to SETTING values, including `expand`.
     fn resolve_input_range(
         &self,
         user_range: Option<&[ArrayElement]>,
         columns: &[&Column],
+        properties: &HashMap<String, ParameterValue>,
     ) -> Result<Option<Vec<ArrayElement>>, String>;
 
     /// Get default output range for an aesthetic.
@@ -147,6 +151,61 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _input_range: Option<&[ArrayElement]>,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
         Ok(None) // Default implementation: no default range
+    }
+
+    /// Returns list of allowed property names for SETTING clause.
+    /// The aesthetic parameter allows different properties for different aesthetics.
+    /// Default: empty (no properties allowed).
+    fn allowed_properties(&self, _aesthetic: &str) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Returns default value for a property, if any.
+    /// Called by resolve_properties for allowed properties not in user input.
+    /// The aesthetic parameter allows different defaults for different aesthetics.
+    fn get_property_default(&self, _aesthetic: &str, _name: &str) -> Option<ParameterValue> {
+        None
+    }
+
+    /// Resolve and validate properties. NOT meant to be overridden by implementations.
+    /// - Validates all properties are in allowed_properties()
+    /// - Applies defaults via get_property_default()
+    fn resolve_properties(
+        &self,
+        aesthetic: &str,
+        properties: &HashMap<String, ParameterValue>,
+    ) -> Result<HashMap<String, ParameterValue>, String> {
+        let allowed = self.allowed_properties(aesthetic);
+
+        // Check for unknown properties
+        for key in properties.keys() {
+            if !allowed.contains(&key.as_str()) {
+                if allowed.is_empty() {
+                    return Err(format!(
+                        "{} scale does not support any SETTING properties",
+                        self.name()
+                    ));
+                }
+                return Err(format!(
+                    "{} scale does not support SETTING '{}'. Allowed: {}",
+                    self.name(),
+                    key,
+                    allowed.join(", ")
+                ));
+            }
+        }
+
+        // Start with user properties, add defaults for missing ones
+        let mut resolved = properties.clone();
+        for &prop_name in allowed {
+            if !resolved.contains_key(prop_name) {
+                if let Some(default) = self.get_property_default(aesthetic, prop_name) {
+                    resolved.insert(prop_name.to_string(), default);
+                }
+            }
+        }
+
+        Ok(resolved)
     }
 }
 
@@ -266,8 +325,9 @@ impl ScaleType {
         &self,
         user_range: Option<&[ArrayElement]>,
         columns: &[&Column],
+        properties: &HashMap<String, ParameterValue>,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
-        self.0.resolve_input_range(user_range, columns)
+        self.0.resolve_input_range(user_range, columns, properties)
     }
 
     /// Get default output range for an aesthetic.
@@ -279,6 +339,18 @@ impl ScaleType {
         input_range: Option<&[ArrayElement]>,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
         self.0.default_output_range(aesthetic, input_range)
+    }
+
+    /// Resolve and validate properties.
+    ///
+    /// Validates all user-provided properties are allowed for this scale type,
+    /// and fills in default values for missing properties.
+    pub fn resolve_properties(
+        &self,
+        aesthetic: &str,
+        properties: &HashMap<String, ParameterValue>,
+    ) -> Result<HashMap<String, ParameterValue>, String> {
+        self.0.resolve_properties(aesthetic, properties)
     }
 }
 
@@ -325,6 +397,15 @@ impl<'de> Deserialize<'de> for ScaleType {
 // Shared helpers for input range resolution
 // =============================================================================
 
+/// Check if an aesthetic is a positional aesthetic (x, y, and variants).
+/// Positional aesthetics support properties like `expand`.
+pub(super) fn is_positional_aesthetic(aesthetic: &str) -> bool {
+    matches!(
+        aesthetic,
+        "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
+    )
+}
+
 /// Check if input range contains any Null placeholders
 pub(super) fn input_range_has_nulls(range: &[ArrayElement]) -> bool {
     range.iter().any(|e| matches!(e, ArrayElement::Null))
@@ -346,6 +427,82 @@ pub(super) fn merge_with_inferred(
             }
         })
         .collect()
+}
+
+// =============================================================================
+// Expansion helpers for continuous/temporal scales
+// =============================================================================
+
+/// Default multiplicative expansion factor for continuous/temporal scales.
+pub(super) const DEFAULT_EXPAND_MULT: f64 = 0.05;
+
+/// Default additive expansion factor for continuous/temporal scales.
+pub(super) const DEFAULT_EXPAND_ADD: f64 = 0.0;
+
+/// Parse expand parameter value into (mult, add) factors.
+/// Returns None if value is invalid.
+///
+/// Syntax:
+/// - Single number: `expand => 0.05` → (0.05, 0.0)
+/// - Two numbers: `expand => [0.05, 10]` → (0.05, 10.0)
+pub(super) fn parse_expand_value(expand: &ParameterValue) -> Option<(f64, f64)> {
+    match expand {
+        ParameterValue::Number(m) => Some((*m, 0.0)),
+        ParameterValue::Array(arr) if arr.len() >= 2 => {
+            let mult = match &arr[0] {
+                ArrayElement::Number(n) => *n,
+                _ => return None,
+            };
+            let add = match &arr[1] {
+                ArrayElement::Number(n) => *n,
+                _ => return None,
+            };
+            Some((mult, add))
+        }
+        _ => None,
+    }
+}
+
+/// Apply expansion to a numeric [min, max] range.
+/// Returns expanded [min, max] as ArrayElements.
+///
+/// Formula: [min - range*mult - add, max + range*mult + add]
+pub(super) fn expand_numeric_range(
+    range: &[ArrayElement],
+    mult: f64,
+    add: f64,
+) -> Vec<ArrayElement> {
+    if range.len() < 2 {
+        return range.to_vec();
+    }
+
+    let min = match &range[0] {
+        ArrayElement::Number(n) => *n,
+        _ => return range.to_vec(),
+    };
+    let max = match &range[1] {
+        ArrayElement::Number(n) => *n,
+        _ => return range.to_vec(),
+    };
+
+    let span = max - min;
+    let expanded_min = min - span * mult - add;
+    let expanded_max = max + span * mult + add;
+
+    vec![
+        ArrayElement::Number(expanded_min),
+        ArrayElement::Number(expanded_max),
+    ]
+}
+
+/// Get expand factors from properties, using defaults for continuous/temporal scales.
+pub(super) fn get_expand_factors(
+    properties: &HashMap<String, ParameterValue>,
+) -> (f64, f64) {
+    properties
+        .get("expand")
+        .and_then(parse_expand_value)
+        .unwrap_or((DEFAULT_EXPAND_MULT, DEFAULT_EXPAND_ADD))
 }
 
 #[cfg(test)]
@@ -516,13 +673,17 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_input_range_continuous() {
+    fn test_resolve_input_range_continuous_no_expand() {
         use polars::prelude::*;
         let col: Column = Series::new("x".into(), &[1.0f64, 5.0, 10.0]).into();
 
+        // Disable expansion for predictable test values
+        let mut props = HashMap::new();
+        props.insert("expand".to_string(), ParameterValue::Number(0.0));
+
         // No user range -> compute from data
         let result = ScaleType::continuous()
-            .resolve_input_range(None, &[&col])
+            .resolve_input_range(None, &[&col], &props)
             .unwrap();
         assert_eq!(
             result,
@@ -532,7 +693,7 @@ mod tests {
         // User range with nulls -> merge
         let user = vec![ArrayElement::Null, ArrayElement::Number(100.0)];
         let result = ScaleType::continuous()
-            .resolve_input_range(Some(&user), &[&col])
+            .resolve_input_range(Some(&user), &[&col], &props)
             .unwrap();
         assert_eq!(
             result,
@@ -542,7 +703,7 @@ mod tests {
         // User range without nulls -> keep as-is
         let user = vec![ArrayElement::Number(0.0), ArrayElement::Number(50.0)];
         let result = ScaleType::continuous()
-            .resolve_input_range(Some(&user), &[&col])
+            .resolve_input_range(Some(&user), &[&col], &props)
             .unwrap();
         assert_eq!(
             result,
@@ -554,10 +715,11 @@ mod tests {
     fn test_resolve_input_range_discrete() {
         use polars::prelude::*;
         let col: Column = Series::new("x".into(), &["b", "a", "c"]).into();
+        let props = HashMap::new();
 
         // No user range -> compute unique sorted values
         let result = ScaleType::discrete()
-            .resolve_input_range(None, &[&col])
+            .resolve_input_range(None, &[&col], &props)
             .unwrap();
         assert_eq!(
             result,
@@ -574,7 +736,7 @@ mod tests {
             ArrayElement::String("y".into()),
         ];
         let result = ScaleType::discrete()
-            .resolve_input_range(Some(&user), &[&col])
+            .resolve_input_range(Some(&user), &[&col], &props)
             .unwrap();
         assert_eq!(
             result,
@@ -590,8 +752,9 @@ mod tests {
         use polars::prelude::*;
         let col: Column = Series::new("x".into(), &["a", "b"]).into();
         let user = vec![ArrayElement::Null, ArrayElement::String("c".into())];
+        let props = HashMap::new();
 
-        let result = ScaleType::discrete().resolve_input_range(Some(&user), &[&col]);
+        let result = ScaleType::discrete().resolve_input_range(Some(&user), &[&col], &props);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("null placeholder"));
     }
@@ -601,8 +764,9 @@ mod tests {
         use polars::prelude::*;
         let col: Column = Series::new("x".into(), &[1.0f64]).into();
         let user = vec![ArrayElement::Number(0.0), ArrayElement::Number(10.0)];
+        let props = HashMap::new();
 
-        let result = ScaleType::identity().resolve_input_range(Some(&user), &[&col]);
+        let result = ScaleType::identity().resolve_input_range(Some(&user), &[&col], &props);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("does not support input range"));
     }
@@ -611,21 +775,26 @@ mod tests {
     fn test_resolve_input_range_identity_no_range() {
         use polars::prelude::*;
         let col: Column = Series::new("x".into(), &[1.0f64]).into();
+        let props = HashMap::new();
 
         let result = ScaleType::identity()
-            .resolve_input_range(None, &[&col])
+            .resolve_input_range(None, &[&col], &props)
             .unwrap();
         assert_eq!(result, None);
     }
 
     #[test]
-    fn test_resolve_input_range_binned() {
+    fn test_resolve_input_range_binned_no_expand() {
         use polars::prelude::*;
         let col: Column = Series::new("x".into(), &[1i32, 5, 10]).into();
 
+        // Disable expansion for predictable test values
+        let mut props = HashMap::new();
+        props.insert("expand".to_string(), ParameterValue::Number(0.0));
+
         // No user range -> compute from data
         let result = ScaleType::binned()
-            .resolve_input_range(None, &[&col])
+            .resolve_input_range(None, &[&col], &props)
             .unwrap();
         assert_eq!(
             result,
@@ -657,5 +826,298 @@ mod tests {
         // Discrete
         assert_eq!(ScaleType::infer(&DataType::String), ScaleType::discrete());
         assert_eq!(ScaleType::infer(&DataType::Boolean), ScaleType::discrete());
+    }
+
+    // =========================================================================
+    // Expansion Tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_expand_value_number() {
+        let val = ParameterValue::Number(0.1);
+        let (mult, add) = parse_expand_value(&val).unwrap();
+        assert!((mult - 0.1).abs() < 1e-10);
+        assert!((add - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_parse_expand_value_array() {
+        let val = ParameterValue::Array(vec![
+            ArrayElement::Number(0.05),
+            ArrayElement::Number(10.0),
+        ]);
+        let (mult, add) = parse_expand_value(&val).unwrap();
+        assert!((mult - 0.05).abs() < 1e-10);
+        assert!((add - 10.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_parse_expand_value_invalid() {
+        let val = ParameterValue::String("invalid".to_string());
+        assert!(parse_expand_value(&val).is_none());
+
+        let val = ParameterValue::Array(vec![ArrayElement::Number(0.05)]);
+        assert!(parse_expand_value(&val).is_none()); // Too few elements
+    }
+
+    #[test]
+    fn test_expand_numeric_range_mult_only() {
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+        let expanded = expand_numeric_range(&range, 0.05, 0.0);
+        // span = 100, expanded = [-5, 105]
+        assert_eq!(expanded[0], ArrayElement::Number(-5.0));
+        assert_eq!(expanded[1], ArrayElement::Number(105.0));
+    }
+
+    #[test]
+    fn test_expand_numeric_range_with_add() {
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+        let expanded = expand_numeric_range(&range, 0.05, 10.0);
+        // span = 100, mult_expansion = 5, add_expansion = 10
+        // expanded = [0 - 5 - 10, 100 + 5 + 10] = [-15, 115]
+        assert_eq!(expanded[0], ArrayElement::Number(-15.0));
+        assert_eq!(expanded[1], ArrayElement::Number(115.0));
+    }
+
+    #[test]
+    fn test_expand_numeric_range_zero_disables() {
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+        let expanded = expand_numeric_range(&range, 0.0, 0.0);
+        // No expansion
+        assert_eq!(expanded[0], ArrayElement::Number(0.0));
+        assert_eq!(expanded[1], ArrayElement::Number(100.0));
+    }
+
+    #[test]
+    fn test_expand_default_applied() {
+        use polars::prelude::*;
+        let col: Column = Series::new("x".into(), &[0.0f64, 100.0]).into();
+
+        // Default properties (no expand key) should use DEFAULT_EXPAND_MULT = 0.05
+        let props = HashMap::new();
+
+        let result = ScaleType::continuous()
+            .resolve_input_range(None, &[&col], &props)
+            .unwrap()
+            .unwrap();
+
+        // span = 100, 5% expansion = 5 on each side
+        // expected: [-5, 105]
+        assert_eq!(result[0], ArrayElement::Number(-5.0));
+        assert_eq!(result[1], ArrayElement::Number(105.0));
+    }
+
+    #[test]
+    fn test_expand_custom_value() {
+        use polars::prelude::*;
+        let col: Column = Series::new("x".into(), &[0.0f64, 100.0]).into();
+
+        let mut props = HashMap::new();
+        props.insert("expand".to_string(), ParameterValue::Number(0.1));
+
+        let result = ScaleType::continuous()
+            .resolve_input_range(None, &[&col], &props)
+            .unwrap()
+            .unwrap();
+
+        // span = 100, 10% expansion = 10 on each side
+        // expected: [-10, 110]
+        assert_eq!(result[0], ArrayElement::Number(-10.0));
+        assert_eq!(result[1], ArrayElement::Number(110.0));
+    }
+
+    #[test]
+    fn test_expand_with_additive() {
+        use polars::prelude::*;
+        let col: Column = Series::new("x".into(), &[0.0f64, 100.0]).into();
+
+        let mut props = HashMap::new();
+        props.insert(
+            "expand".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.05),
+                ArrayElement::Number(10.0),
+            ]),
+        );
+
+        let result = ScaleType::continuous()
+            .resolve_input_range(None, &[&col], &props)
+            .unwrap()
+            .unwrap();
+
+        // span = 100, 5% expansion = 5, additive = 10
+        // expected: [-15, 115]
+        assert_eq!(result[0], ArrayElement::Number(-15.0));
+        assert_eq!(result[1], ArrayElement::Number(115.0));
+    }
+
+    #[test]
+    fn test_expand_applied_to_user_range() {
+        use polars::prelude::*;
+        let col: Column = Series::new("x".into(), &[50.0f64]).into();
+
+        let mut props = HashMap::new();
+        props.insert("expand".to_string(), ParameterValue::Number(0.05));
+
+        // User provides explicit range
+        let user_range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+
+        let result = ScaleType::continuous()
+            .resolve_input_range(Some(&user_range), &[&col], &props)
+            .unwrap()
+            .unwrap();
+
+        // span = 100, 5% expansion = 5 on each side
+        // expected: [-5, 105]
+        assert_eq!(result[0], ArrayElement::Number(-5.0));
+        assert_eq!(result[1], ArrayElement::Number(105.0));
+    }
+
+    #[test]
+    fn test_expand_zero_disables() {
+        use polars::prelude::*;
+        let col: Column = Series::new("x".into(), &[0.0f64, 100.0]).into();
+
+        let mut props = HashMap::new();
+        props.insert("expand".to_string(), ParameterValue::Number(0.0));
+
+        let result = ScaleType::continuous()
+            .resolve_input_range(None, &[&col], &props)
+            .unwrap()
+            .unwrap();
+
+        // No expansion
+        assert_eq!(result[0], ArrayElement::Number(0.0));
+        assert_eq!(result[1], ArrayElement::Number(100.0));
+    }
+
+    // =========================================================================
+    // resolve_properties Tests
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_properties_unknown_rejected() {
+        let mut props = HashMap::new();
+        props.insert("unknown".to_string(), ParameterValue::Number(1.0));
+
+        let result = ScaleType::continuous().resolve_properties("x", &props);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("unknown"));
+        assert!(err.contains("expand")); // Should suggest allowed properties
+    }
+
+    #[test]
+    fn test_resolve_properties_default_expand() {
+        let props = HashMap::new();
+        let resolved = ScaleType::continuous().resolve_properties("x", &props).unwrap();
+
+        assert!(resolved.contains_key("expand"));
+        match resolved.get("expand") {
+            Some(ParameterValue::Number(n)) => {
+                assert!((n - DEFAULT_EXPAND_MULT).abs() < 1e-10);
+            }
+            _ => panic!("Expected Number"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_properties_preserves_user_value() {
+        let mut props = HashMap::new();
+        props.insert("expand".to_string(), ParameterValue::Number(0.1));
+
+        let resolved = ScaleType::continuous().resolve_properties("x", &props).unwrap();
+
+        match resolved.get("expand") {
+            Some(ParameterValue::Number(n)) => assert!((n - 0.1).abs() < 1e-10),
+            _ => panic!("Expected Number"),
+        }
+    }
+
+    #[test]
+    fn test_discrete_rejects_properties() {
+        let mut props = HashMap::new();
+        props.insert("expand".to_string(), ParameterValue::Number(0.1));
+
+        let result = ScaleType::discrete().resolve_properties("color", &props);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("discrete"));
+        assert!(err.contains("does not support any SETTING"));
+    }
+
+    #[test]
+    fn test_identity_rejects_properties() {
+        let mut props = HashMap::new();
+        props.insert("expand".to_string(), ParameterValue::Number(0.1));
+
+        let result = ScaleType::identity().resolve_properties("x", &props);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_properties_binned_supports_expand() {
+        let mut props = HashMap::new();
+        props.insert("expand".to_string(), ParameterValue::Number(0.2));
+
+        let resolved = ScaleType::binned().resolve_properties("x", &props).unwrap();
+        match resolved.get("expand") {
+            Some(ParameterValue::Number(n)) => assert!((n - 0.2).abs() < 1e-10),
+            _ => panic!("Expected Number"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_properties_date_supports_expand() {
+        let props = HashMap::new();
+        let resolved = ScaleType::date().resolve_properties("x", &props).unwrap();
+
+        // Should have default expand
+        assert!(resolved.contains_key("expand"));
+    }
+
+    #[test]
+    fn test_resolve_properties_empty_allowed_for_discrete() {
+        // Empty properties should be allowed for discrete
+        let props = HashMap::new();
+        let result = ScaleType::discrete().resolve_properties("color", &props);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_expand_only_for_positional_aesthetics() {
+        let mut props = HashMap::new();
+        props.insert("expand".to_string(), ParameterValue::Number(0.1));
+
+        // Positional aesthetics should allow expand
+        assert!(ScaleType::continuous().resolve_properties("x", &props).is_ok());
+        assert!(ScaleType::continuous().resolve_properties("y", &props).is_ok());
+        assert!(ScaleType::continuous().resolve_properties("xmin", &props).is_ok());
+        assert!(ScaleType::continuous().resolve_properties("ymax", &props).is_ok());
+
+        // Non-positional aesthetics should reject expand
+        let result = ScaleType::continuous().resolve_properties("color", &props);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not support any SETTING"));
+
+        let result = ScaleType::continuous().resolve_properties("size", &props);
+        assert!(result.is_err());
+
+        let result = ScaleType::continuous().resolve_properties("opacity", &props);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_no_default_expand_for_non_positional() {
+        // Non-positional aesthetics should not get default expand
+        let props = HashMap::new();
+        let resolved = ScaleType::continuous().resolve_properties("color", &props).unwrap();
+        assert!(!resolved.contains_key("expand"));
+        assert!(resolved.is_empty());
+
+        // Positional aesthetics should get default expand
+        let resolved = ScaleType::continuous().resolve_properties("x", &props).unwrap();
+        assert!(resolved.contains_key("expand"));
     }
 }
