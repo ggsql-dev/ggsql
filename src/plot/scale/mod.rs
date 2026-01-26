@@ -6,6 +6,7 @@ pub mod palettes;
 mod scale_type;
 mod types;
 
+pub use palettes::{color_to_hex, gradient, interpolate_colors, is_color_aesthetic, ColorSpace};
 pub use scale_type::{
     Binned, Continuous, Date, DateTime, Discrete, Identity, ScaleType, ScaleTypeKind,
     ScaleTypeTrait, Time,

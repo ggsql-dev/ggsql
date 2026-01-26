@@ -4,6 +4,7 @@
 //! handling all the node types defined in the grammar.
 
 use crate::plot::layer::geom::Geom;
+use crate::plot::scale::{color_to_hex, is_color_aesthetic};
 use crate::plot::*;
 use crate::{GgsqlError, Result};
 use std::collections::HashMap;
@@ -404,13 +405,12 @@ fn parse_setting_clause(node: &Node, source: &str) -> Result<HashMap<String, Par
     for child in node.children(&mut cursor) {
         if child.kind() == "parameter_assignment" {
             let (param, mut value) = parse_parameter_assignment(&child, source)?;
-            match param.as_str() {
-                "color" | "col" | "colour" | "fill" | "stroke" => {
-                    if let ParameterValue::String(color) = value {
-                        value = ParameterValue::String(color_to_hex(&color));
-                    }
+            if is_color_aesthetic(&param) {
+                if let ParameterValue::String(color) = value {
+                    value = ParameterValue::String(
+                        color_to_hex(&color).map_err(GgsqlError::ParseError)?,
+                    );
                 }
-                _ => {}
             }
             parameters.insert(param, value);
         }
@@ -659,21 +659,19 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     }
 
     // Replace colour palettes by their hex codes in output_range
-    if matches!(
-        aesthetic.as_str(),
-        "stroke" | "colour" | "fill" | "color" | "col"
-    ) {
+    if is_color_aesthetic(&aesthetic) {
         if let Some(OutputRange::Array(ref elements)) = output_range {
             let hex_codes: Vec<ArrayElement> = elements
                 .iter()
                 .map(|elem| {
                     if let ArrayElement::String(color) = elem {
-                        ArrayElement::String(color_to_hex(color))
+                        color_to_hex(color).map(ArrayElement::String)
                     } else {
-                        elem.clone()
+                        Ok(elem.clone())
                     }
                 })
-                .collect();
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(GgsqlError::ParseError)?;
             output_range = Some(OutputRange::Array(hex_codes));
         }
     }
@@ -1362,16 +1360,6 @@ fn with_statement_has_trailing_select(with_node: &Node) -> bool {
     }
 
     false
-}
-
-fn color_to_hex(value: &str) -> String {
-    match csscolorparser::parse(value) {
-        Ok(value) => value.to_css_hex(),
-        Err(e) => {
-            eprintln!("{}", e);
-            std::process::exit(1)
-        }
-    }
 }
 
 #[cfg(test)]
