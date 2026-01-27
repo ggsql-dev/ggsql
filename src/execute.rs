@@ -1230,6 +1230,10 @@ where
     // - Invalid stat columns in REMAPPING
     validate(&specs[0].layers, &layer_schemas)?;
 
+    // Create scales for all mapped aesthetics that don't have explicit SCALE clauses
+    // This ensures temporal transform inference works even without explicit SCALE x
+    create_missing_scales(&mut specs[0]);
+
     // Add discrete mapped columns to partition_by for all layers
     // This ensures proper grouping for color, fill, shape, etc. aesthetics
     add_discrete_columns_to_partition_by(&mut specs[0].layers, &layer_schemas);
@@ -1317,6 +1321,75 @@ where
         data: data_map,
         specs,
     })
+}
+
+// =============================================================================
+// Automatic Scale Creation
+// =============================================================================
+
+/// Check if an aesthetic gets a default scale (type inferred from data).
+///
+/// Returns true for aesthetics that benefit from scale resolution
+/// (input range, output range, transforms, breaks).
+/// Returns false for aesthetics that should use Identity scale.
+fn gets_default_scale(aesthetic: &str) -> bool {
+    matches!(
+        aesthetic,
+        // Position aesthetics
+        "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend" | "x2" | "y2"
+        // Color aesthetics
+        | "color" | "colour" | "col" | "fill" | "stroke"
+        // Size aesthetics
+        | "size" | "linewidth"
+        // Other visual aesthetics
+        | "opacity" | "shape" | "linetype"
+    )
+}
+
+/// Create Scale objects for aesthetics that don't have explicit SCALE clauses.
+///
+/// For aesthetics with meaningful scale behavior, creates a minimal scale
+/// (type will be inferred later by resolve_scales from column dtype).
+/// For identity aesthetics (text, label, group, etc.), creates an Identity scale.
+fn create_missing_scales(spec: &mut Plot) {
+    let mut used_aesthetics: HashSet<String> = HashSet::new();
+
+    // Collect from global mappings (both columns and literals)
+    for aesthetic in spec.global_mappings.aesthetics.keys() {
+        let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+        used_aesthetics.insert(primary.to_string());
+    }
+
+    // Collect from layer mappings and remappings
+    for layer in &spec.layers {
+        for aesthetic in layer.mappings.aesthetics.keys() {
+            let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+            used_aesthetics.insert(primary.to_string());
+        }
+        for aesthetic in layer.remappings.aesthetics.keys() {
+            let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+            used_aesthetics.insert(primary.to_string());
+        }
+    }
+
+    // Find aesthetics that already have explicit scales
+    let existing_scales: HashSet<String> = spec
+        .scales
+        .iter()
+        .map(|s| s.aesthetic.clone())
+        .collect();
+
+    // Create scales for missing aesthetics
+    for aesthetic in used_aesthetics {
+        if !existing_scales.contains(&aesthetic) {
+            let mut scale = crate::plot::Scale::new(&aesthetic);
+            // Set Identity scale type for aesthetics that don't get default scales
+            if !gets_default_scale(&aesthetic) {
+                scale.scale_type = Some(ScaleType::identity());
+            }
+            spec.scales.push(scale);
+        }
+    }
 }
 
 // =============================================================================
@@ -4439,5 +4512,286 @@ mod tests {
         assert_eq!(col_str.name, "str_col");
         assert_eq!(col_str.min, Some(ArrayElement::String("A".to_string())));
         assert_eq!(col_str.max, Some(ArrayElement::String("C".to_string())));
+    }
+
+    // =========================================================================
+    // create_missing_scales Tests
+    // =========================================================================
+
+    #[test]
+    fn test_create_missing_scales_from_global_mapping() {
+        // Test that scales are created for aesthetics in global mappings
+        use crate::plot::{AestheticValue, Geom, Layer, Mappings, Plot};
+
+        let mut global_mappings = Mappings::new();
+        global_mappings.insert("x", AestheticValue::standard_column("date"));
+        global_mappings.insert("y", AestheticValue::standard_column("value"));
+
+        let mut spec = Plot::with_global_mappings(global_mappings);
+        spec.layers.push(Layer::new(Geom::line()));
+
+        // No explicit scales defined
+        assert!(spec.scales.is_empty());
+
+        create_missing_scales(&mut spec);
+
+        // Should have created scales for x and y
+        assert_eq!(spec.scales.len(), 2);
+        let scale_aesthetics: HashSet<&str> =
+            spec.scales.iter().map(|s| s.aesthetic.as_str()).collect();
+        assert!(scale_aesthetics.contains("x"));
+        assert!(scale_aesthetics.contains("y"));
+
+        // Both should have no explicit scale_type (will be inferred from data)
+        for scale in &spec.scales {
+            if scale.aesthetic == "x" || scale.aesthetic == "y" {
+                assert!(scale.scale_type.is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn test_create_missing_scales_from_layer_mapping() {
+        // Test that scales are created for aesthetics in layer mappings
+        use crate::plot::{AestheticValue, Geom, Layer, Plot};
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("col_x"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("col_y"));
+        spec.layers.push(layer);
+
+        assert!(spec.scales.is_empty());
+
+        create_missing_scales(&mut spec);
+
+        // Should have created scales for x and y
+        assert_eq!(spec.scales.len(), 2);
+        let scale_aesthetics: HashSet<&str> =
+            spec.scales.iter().map(|s| s.aesthetic.as_str()).collect();
+        assert!(scale_aesthetics.contains("x"));
+        assert!(scale_aesthetics.contains("y"));
+    }
+
+    #[test]
+    fn test_create_missing_scales_preserves_explicit_scales() {
+        // Test that explicit scales are not overwritten
+        use crate::plot::{AestheticValue, Geom, Layer, Mappings, Plot, Scale, ScaleType};
+
+        let mut global_mappings = Mappings::new();
+        global_mappings.insert("x", AestheticValue::standard_column("date"));
+        global_mappings.insert("y", AestheticValue::standard_column("value"));
+
+        let mut spec = Plot::with_global_mappings(global_mappings);
+        spec.layers.push(Layer::new(Geom::line()));
+
+        // Add explicit scale for x with specific type
+        let mut x_scale = Scale::new("x");
+        x_scale.scale_type = Some(ScaleType::continuous());
+        spec.scales.push(x_scale);
+
+        create_missing_scales(&mut spec);
+
+        // Should have 2 scales now (x preserved, y created)
+        assert_eq!(spec.scales.len(), 2);
+
+        // Find x scale - should preserve the explicit type
+        let x_scale = spec.scales.iter().find(|s| s.aesthetic == "x").unwrap();
+        assert_eq!(x_scale.scale_type, Some(ScaleType::continuous()));
+
+        // Find y scale - should have no type (will be inferred)
+        let y_scale = spec.scales.iter().find(|s| s.aesthetic == "y").unwrap();
+        assert!(y_scale.scale_type.is_none());
+    }
+
+    #[test]
+    fn test_create_missing_scales_includes_literals() {
+        // Test that scales are created for literal aesthetic values too
+        use crate::plot::{AestheticValue, Geom, Layer, LiteralValue, Plot};
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("col_x"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("col_y"))
+            .with_aesthetic(
+                "color".to_string(),
+                AestheticValue::Literal(LiteralValue::String("red".to_string())),
+            );
+        spec.layers.push(layer);
+
+        create_missing_scales(&mut spec);
+
+        // Should have scales for x, y, and color (even though color is a literal)
+        assert_eq!(spec.scales.len(), 3);
+        let scale_aesthetics: HashSet<&str> =
+            spec.scales.iter().map(|s| s.aesthetic.as_str()).collect();
+        assert!(scale_aesthetics.contains("x"));
+        assert!(scale_aesthetics.contains("y"));
+        assert!(scale_aesthetics.contains("color"));
+    }
+
+    #[test]
+    fn test_create_missing_scales_identity_for_text() {
+        // Test that text/label/group aesthetics get Identity scale type
+        use crate::plot::{AestheticValue, Geom, Layer, Plot, ScaleType};
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::text())
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("col_x"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("col_y"))
+            .with_aesthetic("label".to_string(), AestheticValue::standard_column("text_col"));
+        spec.layers.push(layer);
+
+        create_missing_scales(&mut spec);
+
+        // Find label scale - should have Identity type
+        let label_scale = spec.scales.iter().find(|s| s.aesthetic == "label").unwrap();
+        assert_eq!(label_scale.scale_type, Some(ScaleType::identity()));
+
+        // x and y should have no type (will be inferred from data)
+        let x_scale = spec.scales.iter().find(|s| s.aesthetic == "x").unwrap();
+        assert!(x_scale.scale_type.is_none());
+    }
+
+    #[test]
+    fn test_create_missing_scales_normalizes_aesthetic_families() {
+        // Test that variant aesthetics (xmin, xmax, ymin, ymax) are normalized to primary
+        use crate::plot::{AestheticValue, Geom, Layer, Plot};
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::ribbon())
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
+            .with_aesthetic("ymin".to_string(), AestheticValue::standard_column("lower"))
+            .with_aesthetic("ymax".to_string(), AestheticValue::standard_column("upper"));
+        spec.layers.push(layer);
+
+        create_missing_scales(&mut spec);
+
+        // Should have scales for x and y only (ymin/ymax normalized to y)
+        assert_eq!(spec.scales.len(), 2);
+        let scale_aesthetics: HashSet<&str> =
+            spec.scales.iter().map(|s| s.aesthetic.as_str()).collect();
+        assert!(scale_aesthetics.contains("x"));
+        assert!(scale_aesthetics.contains("y")); // ymin/ymax normalized to y
+        assert!(!scale_aesthetics.contains("ymin")); // Should not create separate scale
+        assert!(!scale_aesthetics.contains("ymax")); // Should not create separate scale
+    }
+
+    #[test]
+    fn test_create_missing_scales_from_remappings() {
+        // Test that scales are created for aesthetics in remappings
+        use crate::plot::{AestheticValue, Geom, Layer, Plot};
+
+        let mut spec = Plot::new();
+        let mut layer = Layer::new(Geom::bar());
+        layer.mappings.insert("x", AestheticValue::standard_column("category"));
+        // Remapping: stat column "count" maps to "y" aesthetic
+        layer.remappings.insert("y", AestheticValue::standard_column("count"));
+        spec.layers.push(layer);
+
+        create_missing_scales(&mut spec);
+
+        // Should have scales for x and y (from remapping)
+        let scale_aesthetics: HashSet<&str> =
+            spec.scales.iter().map(|s| s.aesthetic.as_str()).collect();
+        assert!(scale_aesthetics.contains("x"));
+        assert!(scale_aesthetics.contains("y"));
+    }
+
+    #[test]
+    fn test_gets_default_scale_positional() {
+        // Position aesthetics should get default scale (type inferred from data)
+        assert!(gets_default_scale("x"));
+        assert!(gets_default_scale("y"));
+        assert!(gets_default_scale("xmin"));
+        assert!(gets_default_scale("xmax"));
+        assert!(gets_default_scale("ymin"));
+        assert!(gets_default_scale("ymax"));
+        assert!(gets_default_scale("xend"));
+        assert!(gets_default_scale("yend"));
+        assert!(gets_default_scale("x2"));
+        assert!(gets_default_scale("y2"));
+    }
+
+    #[test]
+    fn test_gets_default_scale_color() {
+        // Color aesthetics should get default scale
+        assert!(gets_default_scale("color"));
+        assert!(gets_default_scale("colour"));
+        assert!(gets_default_scale("col"));
+        assert!(gets_default_scale("fill"));
+        assert!(gets_default_scale("stroke"));
+    }
+
+    #[test]
+    fn test_gets_default_scale_size_and_other() {
+        // Size, opacity, shape, linetype should get default scale
+        assert!(gets_default_scale("size"));
+        assert!(gets_default_scale("linewidth"));
+        assert!(gets_default_scale("opacity"));
+        assert!(gets_default_scale("shape"));
+        assert!(gets_default_scale("linetype"));
+    }
+
+    #[test]
+    fn test_gets_default_scale_identity_aesthetics() {
+        // Text, label, group, detail, tooltip should NOT get default scale (use Identity)
+        assert!(!gets_default_scale("text"));
+        assert!(!gets_default_scale("label"));
+        assert!(!gets_default_scale("group"));
+        assert!(!gets_default_scale("detail"));
+        assert!(!gets_default_scale("tooltip"));
+        assert!(!gets_default_scale("unknown_aesthetic"));
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_automatic_temporal_scale_without_explicit_scale() {
+        // Test end-to-end: date column without explicit SCALE should get temporal transform
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE temporal_test AS SELECT * FROM (VALUES
+                    ('2024-01-01'::DATE, 100),
+                    ('2024-02-01'::DATE, 200),
+                    ('2024-03-01'::DATE, 300)
+                ) AS t(date, value)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Query without explicit SCALE clause
+        let query = r#"
+            SELECT * FROM temporal_test
+            VISUALISE date AS x, value AS y
+            DRAW line
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should have x scale automatically created
+        let x_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "x")
+            .expect("x scale should be automatically created");
+
+        // Scale type should be inferred as continuous (for temporal)
+        assert!(x_scale.scale_type.is_some());
+        assert_eq!(
+            x_scale.scale_type.as_ref().unwrap().name(),
+            "continuous",
+            "Date column should infer continuous scale type"
+        );
+
+        // Transform should be Date (temporal)
+        assert!(x_scale.transform.is_some());
+        assert_eq!(
+            x_scale.transform.as_ref().unwrap().name(),
+            "date",
+            "Date column should infer Date transform"
+        );
     }
 }
