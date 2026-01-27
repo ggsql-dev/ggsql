@@ -6,7 +6,8 @@
 use crate::naming;
 use crate::plot::layer::geom::{GeomAesthetics, AESTHETIC_FAMILIES};
 use crate::plot::{
-    AestheticValue, ColumnInfo, Layer, LiteralValue, OutputRange, ScaleType, Schema, StatResult,
+    AestheticValue, ColumnInfo, Layer, LiteralValue, OutputRange, Scale, ScaleType,
+    ScaleTypeKind, Schema, StatResult,
 };
 use crate::{parser, DataFrame, DataSource, Facet, GgsqlError, Plot, Result};
 use polars::prelude::Column;
@@ -518,17 +519,34 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 /// Add discrete mapped columns to partition_by for all layers
 ///
 /// For each layer, examines all aesthetic mappings and adds any that map to
-/// discrete columns (string, boolean, date, categorical) to the layer's
-/// partition_by. This ensures proper grouping for all layers, not just stat geoms.
+/// discrete columns to the layer's partition_by. This ensures proper grouping
+/// for all layers, not just stat geoms.
+///
+/// Discreteness is determined by:
+/// 1. If the aesthetic has an explicit scale with a scale_type:
+///    - ScaleTypeKind::Discrete or Binned → discrete (add to partition_by)
+///    - ScaleTypeKind::Continuous → not discrete (skip)
+///    - ScaleTypeKind::Identity → fall back to schema
+/// 2. Otherwise, use schema's is_discrete flag (based on column data type)
 ///
 /// Columns already in partition_by (from explicit PARTITION BY clause) are skipped.
 /// Stat-consumed aesthetics (x for bar, x for histogram) are also skipped.
-fn add_discrete_columns_to_partition_by(layers: &mut [Layer], layer_schemas: &[Schema]) {
+fn add_discrete_columns_to_partition_by(
+    layers: &mut [Layer],
+    layer_schemas: &[Schema],
+    scales: &[Scale],
+) {
     // Positional aesthetics should NOT be auto-added to grouping.
     // Stats that need to group by positional aesthetics (like bar/histogram)
     // already handle this themselves via stat_consumed_aesthetics().
     const POSITIONAL_AESTHETICS: &[&str] =
         &["x", "y", "xmin", "xmax", "ymin", "ymax", "xend", "yend"];
+
+    // Build a map of aesthetic -> scale for quick lookup
+    let scale_map: HashMap<&str, &Scale> = scales
+        .iter()
+        .map(|s| (s.aesthetic.as_str(), s))
+        .collect();
 
     for (layer, schema) in layers.iter_mut().zip(layer_schemas.iter()) {
         let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
@@ -558,8 +576,31 @@ fn add_discrete_columns_to_partition_by(layers: &mut [Layer], layer_schemas: &[S
                     continue;
                 }
 
-                // Skip if column is not discrete
-                if !discrete_columns.contains(col) {
+                // Determine if this aesthetic is discrete:
+                // 1. Check if there's an explicit scale with a scale_type
+                // 2. Fall back to schema's is_discrete
+                //
+                // Discrete and Binned scales produce categorical groupings.
+                // Continuous scales don't group. Identity defers to column type.
+                let primary_aesthetic = GeomAesthetics::primary_aesthetic(aesthetic);
+                let is_discrete = if let Some(scale) = scale_map.get(primary_aesthetic) {
+                    if let Some(ref scale_type) = scale.scale_type {
+                        match scale_type.scale_type_kind() {
+                            ScaleTypeKind::Discrete | ScaleTypeKind::Binned => true,
+                            ScaleTypeKind::Continuous => false,
+                            ScaleTypeKind::Identity => discrete_columns.contains(col),
+                        }
+                    } else {
+                        // Scale exists but no explicit type - use schema
+                        discrete_columns.contains(col)
+                    }
+                } else {
+                    // No scale for this aesthetic - use schema
+                    discrete_columns.contains(col)
+                };
+
+                // Skip if not discrete
+                if !is_discrete {
                     continue;
                 }
 
@@ -1236,7 +1277,10 @@ where
 
     // Add discrete mapped columns to partition_by for all layers
     // This ensures proper grouping for color, fill, shape, etc. aesthetics
-    add_discrete_columns_to_partition_by(&mut specs[0].layers, &layer_schemas);
+    // Uses scale type (if explicit) to determine discreteness, falling back to schema
+    // Clone scales to avoid borrow conflict (layers borrowed mutably, scales immutably)
+    let scales = specs[0].scales.clone();
+    add_discrete_columns_to_partition_by(&mut specs[0].layers, &layer_schemas, &scales);
 
     // Execute layer-specific queries
     // build_layer_query() handles all cases:
@@ -4792,6 +4836,205 @@ mod tests {
             x_scale.transform.as_ref().unwrap().name(),
             "date",
             "Date column should infer Date transform"
+        );
+    }
+
+    #[test]
+    fn test_discrete_scale_triggers_partition_by() {
+        // Test that explicit SCALE DISCRETE on an integer column adds it to partition_by
+        use crate::plot::{AestheticValue, Geom, Layer, Plot, Scale, ScaleType};
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value"))
+            .with_aesthetic("color".to_string(), AestheticValue::standard_column("group_id"));
+        spec.layers.push(layer);
+
+        // Create a discrete scale for color (even though group_id might be an integer)
+        let mut color_scale = Scale::new("color");
+        color_scale.scale_type = Some(ScaleType::discrete());
+        spec.scales.push(color_scale);
+
+        // Schema where group_id is NOT discrete (integer column)
+        let schema = vec![
+            ColumnInfo {
+                name: "date".to_string(),
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "value".to_string(),
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "group_id".to_string(),
+                is_discrete: false, // Integer column, NOT discrete by schema
+                min: None,
+                max: None,
+            },
+        ];
+
+        // Before: partition_by should be empty
+        assert!(spec.layers[0].partition_by.is_empty());
+
+        add_discrete_columns_to_partition_by(&mut spec.layers, &[schema], &spec.scales);
+
+        // After: group_id should be added to partition_by because SCALE DISCRETE color
+        assert!(
+            spec.layers[0].partition_by.contains(&"group_id".to_string()),
+            "Integer column with explicit SCALE DISCRETE should be added to partition_by"
+        );
+    }
+
+    #[test]
+    fn test_continuous_scale_prevents_partition_by() {
+        // Test that explicit SCALE CONTINUOUS on a string column does NOT add it to partition_by
+        use crate::plot::{AestheticValue, Geom, Layer, Plot, Scale, ScaleType};
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value"))
+            .with_aesthetic("color".to_string(), AestheticValue::standard_column("category"));
+        spec.layers.push(layer);
+
+        // Create a continuous scale for color (overriding schema's discrete)
+        let mut color_scale = Scale::new("color");
+        color_scale.scale_type = Some(ScaleType::continuous());
+        spec.scales.push(color_scale);
+
+        // Schema where category IS discrete (string column)
+        let schema = vec![
+            ColumnInfo {
+                name: "date".to_string(),
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "value".to_string(),
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "category".to_string(),
+                is_discrete: true, // String column, discrete by schema
+                min: None,
+                max: None,
+            },
+        ];
+
+        add_discrete_columns_to_partition_by(&mut spec.layers, &[schema], &spec.scales);
+
+        // category should NOT be added because SCALE CONTINUOUS overrides schema
+        assert!(
+            !spec.layers[0].partition_by.contains(&"category".to_string()),
+            "String column with explicit SCALE CONTINUOUS should NOT be added to partition_by"
+        );
+    }
+
+    #[test]
+    fn test_identity_scale_falls_back_to_schema() {
+        // Test that Identity scale falls back to schema's is_discrete
+        use crate::plot::{AestheticValue, Geom, Layer, Plot, Scale, ScaleType};
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value"))
+            .with_aesthetic("color".to_string(), AestheticValue::standard_column("category"));
+        spec.layers.push(layer);
+
+        // Create an identity scale for color
+        let mut color_scale = Scale::new("color");
+        color_scale.scale_type = Some(ScaleType::identity());
+        spec.scales.push(color_scale);
+
+        // Schema where category IS discrete
+        let schema = vec![
+            ColumnInfo {
+                name: "date".to_string(),
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "value".to_string(),
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "category".to_string(),
+                is_discrete: true,
+                min: None,
+                max: None,
+            },
+        ];
+
+        add_discrete_columns_to_partition_by(&mut spec.layers, &[schema], &spec.scales);
+
+        // category SHOULD be added because Identity falls back to schema (which says discrete)
+        assert!(
+            spec.layers[0].partition_by.contains(&"category".to_string()),
+            "Discrete column with Identity scale should be added to partition_by"
+        );
+    }
+
+    #[test]
+    fn test_binned_scale_triggers_partition_by() {
+        // Test that SCALE BINNED on a continuous column adds it to partition_by
+        // (binned data creates discrete categories/bins)
+        use crate::plot::{AestheticValue, Geom, Layer, Plot, Scale, ScaleType};
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value"))
+            .with_aesthetic("color".to_string(), AestheticValue::standard_column("temperature"));
+        spec.layers.push(layer);
+
+        // Create a binned scale for color
+        let mut color_scale = Scale::new("color");
+        color_scale.scale_type = Some(ScaleType::binned());
+        spec.scales.push(color_scale);
+
+        // Schema where temperature is NOT discrete (continuous float column)
+        let schema = vec![
+            ColumnInfo {
+                name: "date".to_string(),
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "value".to_string(),
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "temperature".to_string(),
+                is_discrete: false, // Continuous column
+                min: None,
+                max: None,
+            },
+        ];
+
+        // Before: partition_by should be empty
+        assert!(spec.layers[0].partition_by.is_empty());
+
+        add_discrete_columns_to_partition_by(&mut spec.layers, &[schema], &spec.scales);
+
+        // After: temperature should be added to partition_by because SCALE BINNED creates categories
+        assert!(
+            spec.layers[0].partition_by.contains(&"temperature".to_string()),
+            "Continuous column with SCALE BINNED should be added to partition_by"
         );
     }
 }
