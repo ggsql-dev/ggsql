@@ -1623,11 +1623,11 @@ mod tests {
 
     #[test]
     fn test_discrete_rejects_log_transform() {
-        let log10 = Transform::log10();
-        let result = ScaleType::discrete().resolve_transform("color", Some(&log10));
+        let log = Transform::log();
+        let result = ScaleType::discrete().resolve_transform("color", Some(&log));
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("log10"));
+        assert!(err.contains("log"));
         assert!(err.contains("not supported"));
         assert!(err.contains("discrete"));
     }
@@ -1651,8 +1651,8 @@ mod tests {
     #[test]
     fn test_resolve_transform_validates_user_input() {
         // Valid user input is accepted
-        let log10 = Transform::log10();
-        let result = ScaleType::continuous().resolve_transform("y", Some(&log10));
+        let log = Transform::log();
+        let result = ScaleType::continuous().resolve_transform("y", Some(&log));
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Log10);
 
         // Invalid user input is rejected (we can't easily test this anymore since
@@ -1683,11 +1683,11 @@ mod tests {
 
     #[test]
     fn test_date_rejects_log_transform() {
-        let log10 = Transform::log10();
-        let result = ScaleType::date().resolve_transform("x", Some(&log10));
+        let log = Transform::log();
+        let result = ScaleType::date().resolve_transform("x", Some(&log));
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("log10"));
+        assert!(err.contains("log"));
         assert!(err.contains("not supported"));
         assert!(err.contains("date"));
     }
@@ -1956,7 +1956,7 @@ mod tests {
         props.insert("breaks".to_string(), ParameterValue::Number(10.0));
         props.insert("pretty".to_string(), ParameterValue::Boolean(false));
 
-        let log10 = Transform::log10();
+        let log10 = Transform::log();
         let breaks =
             ScaleType::continuous().resolve_breaks(input_range.as_deref(), &props, Some(&log10));
 
@@ -1976,7 +1976,7 @@ mod tests {
         props.insert("breaks".to_string(), ParameterValue::Number(10.0));
         props.insert("pretty".to_string(), ParameterValue::Boolean(true));
 
-        let log10 = Transform::log10();
+        let log10 = Transform::log();
         let breaks =
             ScaleType::continuous().resolve_breaks(input_range.as_deref(), &props, Some(&log10));
 

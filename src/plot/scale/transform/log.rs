@@ -81,11 +81,11 @@ impl TransformTrait for Log {
 
     fn name(&self) -> &'static str {
         if self.is_base10() {
-            "log10"
+            "log"
         } else if self.is_base2() {
             "log2"
         } else {
-            "log"
+            "ln"
         }
     }
 
@@ -201,7 +201,7 @@ mod tests {
     fn test_log10_kind_and_name() {
         let t = Log::base10();
         assert_eq!(t.transform_kind(), TransformKind::Log10);
-        assert_eq!(t.name(), "log10");
+        assert_eq!(t.name(), "log");
     }
 
     // ==================== Base-2 (Log2) Tests ====================
@@ -338,7 +338,7 @@ mod tests {
     fn test_log_kind_and_name() {
         let t = Log::natural();
         assert_eq!(t.transform_kind(), TransformKind::Log);
-        assert_eq!(t.name(), "log");
+        assert_eq!(t.name(), "ln");
     }
 
     // ==================== General Tests ====================
@@ -358,7 +358,7 @@ mod tests {
         assert!((t.inverse(2.0) - 25.0).abs() < 1e-10);
         // Custom base maps to TransformKind::Log
         assert_eq!(t.transform_kind(), TransformKind::Log);
-        assert_eq!(t.name(), "log");
+        assert_eq!(t.name(), "ln");
     }
 
     #[test]
@@ -381,8 +381,8 @@ mod tests {
 
     #[test]
     fn test_display() {
-        assert_eq!(format!("{}", Log::base10()), "log10");
+        assert_eq!(format!("{}", Log::base10()), "log");
         assert_eq!(format!("{}", Log::base2()), "log2");
-        assert_eq!(format!("{}", Log::natural()), "log");
+        assert_eq!(format!("{}", Log::natural()), "ln");
     }
 }

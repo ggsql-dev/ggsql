@@ -64,7 +64,7 @@ pub enum TransformKind {
     Sqrt,
     /// Inverse hyperbolic sine
     Asinh,
-    /// Symmetric log (ggplot2 formula with configurable base)
+    /// Symmetric log
     PseudoLog,
 }
 
@@ -73,9 +73,9 @@ impl TransformKind {
     pub fn name(&self) -> &'static str {
         match self {
             TransformKind::Identity => "identity",
-            TransformKind::Log10 => "log10",
+            TransformKind::Log10 => "log",
             TransformKind::Log2 => "log2",
-            TransformKind::Log => "log",
+            TransformKind::Log => "ln",
             TransformKind::Sqrt => "sqrt",
             TransformKind::Asinh => "asinh",
             TransformKind::PseudoLog => "pseudo_log",
@@ -150,7 +150,7 @@ impl Transform {
     }
 
     /// Create a Log10 transform (base-10 logarithm)
-    pub fn log10() -> Self {
+    pub fn log() -> Self {
         Self(Arc::new(Log::base10()))
     }
 
@@ -160,7 +160,7 @@ impl Transform {
     }
 
     /// Create a Log transform (natural logarithm)
-    pub fn log() -> Self {
+    pub fn ln() -> Self {
         Self(Arc::new(Log::natural()))
     }
 
@@ -177,6 +177,16 @@ impl Transform {
     /// Create a PseudoLog transform (symmetric log, base 10)
     pub fn pseudo_log() -> Self {
         Self(Arc::new(PseudoLog::base10()))
+    }
+
+    /// Create a PseudoLog transform with base 2
+    pub fn pseudo_log2() -> Self {
+        Self(Arc::new(PseudoLog::base2()))
+    }
+
+    /// Create a PseudoLog transform with natural base (base e)
+    pub fn pseudo_ln() -> Self {
+        Self(Arc::new(PseudoLog::natural()))
     }
 
     /// Create a Transform from a string name
@@ -196,12 +206,14 @@ impl Transform {
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
             "identity" => Some(Self::identity()),
-            "log10" => Some(Self::log10()),
+            "log" | "log10" => Some(Self::log()),
             "log2" => Some(Self::log2()),
-            "log" => Some(Self::log()),
+            "ln" => Some(Self::ln()),
             "sqrt" => Some(Self::sqrt()),
             "asinh" => Some(Self::asinh()),
-            "pseudo_log" => Some(Self::pseudo_log()),
+            "pseudo_log" | "pseudo_log10" => Some(Self::pseudo_log()),
+            "pseudo_log2" => Some(Self::pseudo_log2()),
+            "pseudo_ln" => Some(Self::pseudo_ln()),
             _ => None,
         }
     }
@@ -210,9 +222,9 @@ impl Transform {
     pub fn from_kind(kind: TransformKind) -> Self {
         match kind {
             TransformKind::Identity => Self::identity(),
-            TransformKind::Log10 => Self::log10(),
+            TransformKind::Log10 => Self::log(),
             TransformKind::Log2 => Self::log2(),
-            TransformKind::Log => Self::log(),
+            TransformKind::Log => Self::ln(),
             TransformKind::Sqrt => Self::sqrt(),
             TransformKind::Asinh => Self::asinh(),
             TransformKind::PseudoLog => Self::pseudo_log(),
@@ -308,12 +320,16 @@ impl Default for Transform {
 /// List of all valid transform names
 pub const ALL_TRANSFORM_NAMES: &[&str] = &[
     "identity",
-    "log10",
-    "log2",
     "log",
+    "log10", // alias for log
+    "log2",
+    "ln",
     "sqrt",
     "asinh",
     "pseudo_log",
+    "pseudo_log10", // alias for pseudo_log
+    "pseudo_log2",
+    "pseudo_ln",
 ];
 
 #[cfg(test)]
@@ -326,21 +342,41 @@ mod tests {
         assert_eq!(identity.transform_kind(), TransformKind::Identity);
         assert_eq!(identity.name(), "identity");
 
-        let log10 = Transform::log10();
-        assert_eq!(log10.transform_kind(), TransformKind::Log10);
-        assert_eq!(log10.name(), "log10");
+        let log = Transform::log();
+        assert_eq!(log.transform_kind(), TransformKind::Log10);
+        assert_eq!(log.name(), "log");
+
+        let ln = Transform::ln();
+        assert_eq!(ln.transform_kind(), TransformKind::Log);
+        assert_eq!(ln.name(), "ln");
     }
 
     #[test]
     fn test_transform_from_name() {
         assert!(Transform::from_name("identity").is_some());
-        assert!(Transform::from_name("log10").is_some());
-        assert!(Transform::from_name("log2").is_some());
         assert!(Transform::from_name("log").is_some());
+        assert!(Transform::from_name("log10").is_some()); // alias for log
+        assert!(Transform::from_name("log2").is_some());
+        assert!(Transform::from_name("ln").is_some());
         assert!(Transform::from_name("sqrt").is_some());
         assert!(Transform::from_name("asinh").is_some());
         assert!(Transform::from_name("pseudo_log").is_some());
+        assert!(Transform::from_name("pseudo_log10").is_some()); // alias for pseudo_log
+        assert!(Transform::from_name("pseudo_log2").is_some());
+        assert!(Transform::from_name("pseudo_ln").is_some());
         assert!(Transform::from_name("unknown").is_none());
+
+        // Verify log variants return correct names
+        assert_eq!(Transform::from_name("log").unwrap().name(), "log");
+        assert_eq!(Transform::from_name("log10").unwrap().name(), "log");
+        assert_eq!(Transform::from_name("log2").unwrap().name(), "log2");
+        assert_eq!(Transform::from_name("ln").unwrap().name(), "ln");
+
+        // Verify pseudo_log variants return correct names
+        assert_eq!(Transform::from_name("pseudo_log").unwrap().name(), "pseudo_log");
+        assert_eq!(Transform::from_name("pseudo_log10").unwrap().name(), "pseudo_log");
+        assert_eq!(Transform::from_name("pseudo_log2").unwrap().name(), "pseudo_log2");
+        assert_eq!(Transform::from_name("pseudo_ln").unwrap().name(), "pseudo_ln");
     }
 
     #[test]
@@ -351,26 +387,27 @@ mod tests {
 
     #[test]
     fn test_transform_equality() {
-        let log10_a = Transform::log10();
-        let log10_b = Transform::log10();
+        let log_a = Transform::log();
+        let log_b = Transform::log();
         let log2 = Transform::log2();
 
-        assert_eq!(log10_a, log10_b);
-        assert_ne!(log10_a, log2);
+        assert_eq!(log_a, log_b);
+        assert_ne!(log_a, log2);
     }
 
     #[test]
     fn test_transform_display() {
         assert_eq!(format!("{}", Transform::identity()), "identity");
-        assert_eq!(format!("{}", Transform::log10()), "log10");
+        assert_eq!(format!("{}", Transform::log()), "log");
+        assert_eq!(format!("{}", Transform::ln()), "ln");
         assert_eq!(format!("{}", Transform::sqrt()), "sqrt");
     }
 
     #[test]
     fn test_transform_serialization() {
-        let log10 = Transform::log10();
-        let json = serde_json::to_string(&log10).unwrap();
-        assert_eq!(json, "\"log10\"");
+        let log = Transform::log();
+        let json = serde_json::to_string(&log).unwrap();
+        assert_eq!(json, "\"log10\""); // Serializes by TransformKind enum variant name
 
         let deserialized: Transform = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.transform_kind(), TransformKind::Log10);
@@ -379,7 +416,7 @@ mod tests {
     #[test]
     fn test_transform_is_identity() {
         assert!(Transform::identity().is_identity());
-        assert!(!Transform::log10().is_identity());
+        assert!(!Transform::log().is_identity());
         assert!(!Transform::sqrt().is_identity());
     }
 
@@ -392,7 +429,8 @@ mod tests {
     #[test]
     fn test_transform_kind_display() {
         assert_eq!(format!("{}", TransformKind::Identity), "identity");
-        assert_eq!(format!("{}", TransformKind::Log10), "log10");
+        assert_eq!(format!("{}", TransformKind::Log10), "log");
+        assert_eq!(format!("{}", TransformKind::Log), "ln");
         assert_eq!(format!("{}", TransformKind::PseudoLog), "pseudo_log");
     }
 }
