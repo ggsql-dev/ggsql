@@ -17,9 +17,13 @@ pub struct ColumnInfo {
     /// Column name
     pub name: String,
     /// Whether this column is discrete (suitable for grouping)
-    /// Discrete: String, Boolean, Categorical, Date
-    /// Continuous: numeric types, Datetime, Time
+    /// Discrete: String, Boolean, Categorical
+    /// Continuous: numeric types, Date, Datetime, Time
     pub is_discrete: bool,
+    /// Minimum value for this column (computed from data)
+    pub min: Option<ArrayElement>,
+    /// Maximum value for this column (computed from data)
+    pub max: Option<ArrayElement>,
 }
 
 /// Schema of a data source - list of columns with type info

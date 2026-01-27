@@ -166,41 +166,224 @@ fn literal_to_sql(lit: &LiteralValue) -> String {
     }
 }
 
-/// Fetch schema for a query using LIMIT 0
+/// Fetch schema for a query including column ranges (min/max)
 ///
-/// Executes a schema-only query to determine column names and types.
+/// Executes:
+/// 1. A schema-only query (LIMIT 0) to determine column names and types
+/// 2. A min/max query to compute value ranges for each column
+///
 /// Used to:
 /// 1. Resolve wildcard mappings to actual columns
 /// 2. Filter group_by to discrete columns only
 /// 3. Pass to stat transforms for column validation
+/// 4. Provide input ranges for scale resolution
 fn fetch_layer_schema<F>(query: &str, execute_query: &F) -> Result<Schema>
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
+    use polars::prelude::DataType;
+
+    // Step 1: Get column names and types with LIMIT 0
     let schema_query = format!(
         "SELECT * FROM ({}) AS {} LIMIT 0",
         query,
         naming::SCHEMA_ALIAS
     );
-    let df = execute_query(&schema_query)?;
+    let schema_df = execute_query(&schema_query)?;
 
-    Ok(df
+    // Collect column metadata (name, is_discrete, dtype)
+    let column_meta: Vec<(String, bool, DataType)> = schema_df
         .get_columns()
         .iter()
         .map(|col| {
-            use polars::prelude::DataType;
-            let dtype = col.dtype();
-            // Discrete: String, Boolean, Date (grouping by day makes sense), Categorical
-            // Continuous: numeric types, Datetime, Time (too granular for grouping)
+            let dtype = col.dtype().clone();
+            // Discrete: String, Boolean, Categorical
+            // Continuous: numeric types, Date, Datetime, Time
             let is_discrete =
-                matches!(dtype, DataType::String | DataType::Boolean | DataType::Date)
-                    || dtype.is_categorical();
+                matches!(dtype, DataType::String | DataType::Boolean) || dtype.is_categorical();
+            (col.name().to_string(), is_discrete, dtype)
+        })
+        .collect();
+
+    // If no columns, return empty schema
+    if column_meta.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Step 2: Build and execute min/max query
+    let column_names: Vec<&str> = column_meta.iter().map(|(n, _, _)| n.as_str()).collect();
+    let minmax_query = build_minmax_query(query, &column_names);
+    let range_df = execute_query(&minmax_query)?;
+
+    // Step 3: Extract min (row 0) and max (row 1) for each column
+    let schema = column_meta
+        .iter()
+        .map(|(name, is_discrete, _dtype)| {
+            let min = extract_series_value(&range_df, name, 0);
+            let max = extract_series_value(&range_df, name, 1);
             ColumnInfo {
-                name: col.name().to_string(),
-                is_discrete,
+                name: name.clone(),
+                is_discrete: *is_discrete,
+                min,
+                max,
             }
         })
-        .collect())
+        .collect();
+
+    Ok(schema)
+}
+
+/// Build SQL query to compute min and max for all columns
+///
+/// Generates a query that returns two rows:
+/// - Row 0: MIN of each column
+/// - Row 1: MAX of each column
+fn build_minmax_query(source_query: &str, column_names: &[&str]) -> String {
+    let min_exprs: Vec<String> = column_names
+        .iter()
+        .map(|name| format!("MIN(\"{}\") AS \"{}\"", name, name))
+        .collect();
+
+    let max_exprs: Vec<String> = column_names
+        .iter()
+        .map(|name| format!("MAX(\"{}\") AS \"{}\"", name, name))
+        .collect();
+
+    format!(
+        "WITH __ggsql_source__ AS ({}) SELECT {} FROM __ggsql_source__ UNION ALL SELECT {} FROM __ggsql_source__",
+        source_query,
+        min_exprs.join(", "),
+        max_exprs.join(", ")
+    )
+}
+
+/// Extract a value from a DataFrame at a given column and row index
+///
+/// Converts Polars values to ArrayElement for storage in ColumnInfo.
+fn extract_series_value(
+    df: &DataFrame,
+    column: &str,
+    row: usize,
+) -> Option<crate::plot::ArrayElement> {
+    use crate::plot::ArrayElement;
+    use polars::prelude::DataType;
+
+    let col = df.column(column).ok()?;
+    let series = col.as_materialized_series();
+
+    if row >= series.len() {
+        return None;
+    }
+
+    match series.dtype() {
+        DataType::Int8 => series
+            .i8()
+            .ok()
+            .and_then(|ca| ca.get(row))
+            .map(|v| ArrayElement::Number(v as f64)),
+        DataType::Int16 => series
+            .i16()
+            .ok()
+            .and_then(|ca| ca.get(row))
+            .map(|v| ArrayElement::Number(v as f64)),
+        DataType::Int32 => series
+            .i32()
+            .ok()
+            .and_then(|ca| ca.get(row))
+            .map(|v| ArrayElement::Number(v as f64)),
+        DataType::Int64 => series
+            .i64()
+            .ok()
+            .and_then(|ca| ca.get(row))
+            .map(|v| ArrayElement::Number(v as f64)),
+        DataType::UInt8 => series
+            .u8()
+            .ok()
+            .and_then(|ca| ca.get(row))
+            .map(|v| ArrayElement::Number(v as f64)),
+        DataType::UInt16 => series
+            .u16()
+            .ok()
+            .and_then(|ca| ca.get(row))
+            .map(|v| ArrayElement::Number(v as f64)),
+        DataType::UInt32 => series
+            .u32()
+            .ok()
+            .and_then(|ca| ca.get(row))
+            .map(|v| ArrayElement::Number(v as f64)),
+        DataType::UInt64 => series
+            .u64()
+            .ok()
+            .and_then(|ca| ca.get(row))
+            .map(|v| ArrayElement::Number(v as f64)),
+        DataType::Float32 => series
+            .f32()
+            .ok()
+            .and_then(|ca| ca.get(row))
+            .map(|v| ArrayElement::Number(v as f64)),
+        DataType::Float64 => series
+            .f64()
+            .ok()
+            .and_then(|ca| ca.get(row))
+            .map(|v| ArrayElement::Number(v)),
+        DataType::Boolean => series
+            .bool()
+            .ok()
+            .and_then(|ca| ca.get(row))
+            .map(ArrayElement::Boolean),
+        DataType::String => series
+            .str()
+            .ok()
+            .and_then(|ca| ca.get(row))
+            .map(|s| ArrayElement::String(s.to_string())),
+        DataType::Date => {
+            // Convert Date (days since epoch) to ISO string
+            series
+                .date()
+                .ok()
+                .and_then(|ca| ca.physical().get(row))
+                .map(|days| {
+                    let date = chrono::NaiveDate::from_num_days_from_ce_opt(
+                        days + 719_163, // Epoch adjustment (1970-01-01 is day 719163 from CE)
+                    );
+                    ArrayElement::String(
+                        date.map(|d| d.format("%Y-%m-%d").to_string())
+                            .unwrap_or_else(|| format!("{}", days)),
+                    )
+                })
+        }
+        DataType::Datetime(_, _) => {
+            // Convert Datetime (microseconds since epoch) to ISO string
+            series
+                .datetime()
+                .ok()
+                .and_then(|ca| ca.physical().get(row))
+                .map(|us| {
+                    let secs = us / 1_000_000;
+                    let nsecs = ((us % 1_000_000) * 1000) as u32;
+                    let dt = chrono::DateTime::from_timestamp(secs, nsecs);
+                    ArrayElement::String(
+                        dt.map(|d| d.format("%Y-%m-%dT%H:%M:%S").to_string())
+                            .unwrap_or_else(|| format!("{}", us)),
+                    )
+                })
+        }
+        DataType::Time => {
+            // Convert Time (nanoseconds since midnight) to string
+            series
+                .time()
+                .ok()
+                .and_then(|ca| ca.physical().get(row))
+                .map(|ns| {
+                    let secs = (ns / 1_000_000_000) as u32;
+                    let h = secs / 3600;
+                    let m = (secs % 3600) / 60;
+                    let s = secs % 60;
+                    ArrayElement::String(format!("{:02}:{:02}:{:02}", h, m, s))
+                })
+        }
+        _ => None,
+    }
 }
 
 /// Determine the data source table name for a layer
@@ -4081,5 +4264,175 @@ mod tests {
         // Default oob='censor' for non-positional, so C and D should be filtered
         let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         assert_eq!(df.height(), 2);
+    }
+
+    // ==========================================================================
+    // Schema with min/max range tests
+    // ==========================================================================
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_fetch_layer_schema_numeric_columns() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let execute_query = |sql: &str| reader.execute(sql);
+        let query = "SELECT * FROM (VALUES (1, 10.5), (5, 20.0), (3, 15.5)) AS t(x, y)";
+
+        let schema = fetch_layer_schema(query, &execute_query).unwrap();
+
+        assert_eq!(schema.len(), 2);
+
+        // Column x: integer
+        let col_x = &schema[0];
+        assert_eq!(col_x.name, "x");
+        assert!(!col_x.is_discrete);
+        assert_eq!(col_x.min, Some(ArrayElement::Number(1.0)));
+        assert_eq!(col_x.max, Some(ArrayElement::Number(5.0)));
+
+        // Column y: float
+        let col_y = &schema[1];
+        assert_eq!(col_y.name, "y");
+        assert!(!col_y.is_discrete);
+        assert_eq!(col_y.min, Some(ArrayElement::Number(10.5)));
+        assert_eq!(col_y.max, Some(ArrayElement::Number(20.0)));
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_fetch_layer_schema_string_columns() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let execute_query = |sql: &str| reader.execute(sql);
+        let query = "SELECT * FROM (VALUES ('apple'), ('cherry'), ('banana')) AS t(fruit)";
+
+        let schema = fetch_layer_schema(query, &execute_query).unwrap();
+
+        assert_eq!(schema.len(), 1);
+
+        let col = &schema[0];
+        assert_eq!(col.name, "fruit");
+        assert!(col.is_discrete);
+        // Lexicographic min/max
+        assert_eq!(col.min, Some(ArrayElement::String("apple".to_string())));
+        assert_eq!(col.max, Some(ArrayElement::String("cherry".to_string())));
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_fetch_layer_schema_date_columns() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let execute_query = |sql: &str| reader.execute(sql);
+        let query = "SELECT * FROM (VALUES
+            ('2024-01-15'::DATE),
+            ('2024-03-01'::DATE),
+            ('2024-02-10'::DATE)
+        ) AS t(date_col)";
+
+        let schema = fetch_layer_schema(query, &execute_query).unwrap();
+
+        assert_eq!(schema.len(), 1);
+
+        let col = &schema[0];
+        assert_eq!(col.name, "date_col");
+        // Date is now continuous (not discrete)
+        assert!(!col.is_discrete);
+        // Date min/max as ISO strings
+        assert_eq!(col.min, Some(ArrayElement::String("2024-01-15".to_string())));
+        assert_eq!(col.max, Some(ArrayElement::String("2024-03-01".to_string())));
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_fetch_layer_schema_empty_table() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let execute_query = |sql: &str| reader.execute(sql);
+        // Empty result set (WHERE 1=0 filters out all rows)
+        let query = "SELECT 1 as x, 2 as y WHERE 1=0";
+
+        let schema = fetch_layer_schema(query, &execute_query).unwrap();
+
+        assert_eq!(schema.len(), 2);
+
+        // For empty tables, min/max should be None
+        let col_x = &schema[0];
+        assert_eq!(col_x.name, "x");
+        assert!(col_x.min.is_none());
+        assert!(col_x.max.is_none());
+
+        let col_y = &schema[1];
+        assert_eq!(col_y.name, "y");
+        assert!(col_y.min.is_none());
+        assert!(col_y.max.is_none());
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_fetch_layer_schema_mixed_column_types() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let execute_query = |sql: &str| reader.execute(sql);
+        let query = "SELECT * FROM (VALUES
+            (1, 'A', true, '2024-01-01'::DATE),
+            (5, 'C', false, '2024-12-31'::DATE),
+            (3, 'B', true, '2024-06-15'::DATE)
+        ) AS t(num, str_col, bool_col, date_col)";
+
+        let schema = fetch_layer_schema(query, &execute_query).unwrap();
+
+        assert_eq!(schema.len(), 4);
+
+        // Numeric column
+        let col_num = &schema[0];
+        assert_eq!(col_num.name, "num");
+        assert!(!col_num.is_discrete);
+        assert_eq!(col_num.min, Some(ArrayElement::Number(1.0)));
+        assert_eq!(col_num.max, Some(ArrayElement::Number(5.0)));
+
+        // String column (discrete)
+        let col_str = &schema[1];
+        assert_eq!(col_str.name, "str_col");
+        assert!(col_str.is_discrete);
+        assert_eq!(col_str.min, Some(ArrayElement::String("A".to_string())));
+        assert_eq!(col_str.max, Some(ArrayElement::String("C".to_string())));
+
+        // Boolean column (discrete)
+        let col_bool = &schema[2];
+        assert_eq!(col_bool.name, "bool_col");
+        assert!(col_bool.is_discrete);
+        assert_eq!(col_bool.min, Some(ArrayElement::Boolean(false)));
+        assert_eq!(col_bool.max, Some(ArrayElement::Boolean(true)));
+
+        // Date column (continuous)
+        let col_date = &schema[3];
+        assert_eq!(col_date.name, "date_col");
+        assert!(!col_date.is_discrete);
+        assert_eq!(col_date.min, Some(ArrayElement::String("2024-01-01".to_string())));
+        assert_eq!(col_date.max, Some(ArrayElement::String("2024-12-31".to_string())));
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_fetch_layer_schema_with_nulls() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let execute_query = |sql: &str| reader.execute(sql);
+        let query = "SELECT * FROM (VALUES
+            (1, 'A'),
+            (NULL, 'B'),
+            (5, NULL),
+            (3, 'C')
+        ) AS t(num, str_col)";
+
+        let schema = fetch_layer_schema(query, &execute_query).unwrap();
+
+        assert_eq!(schema.len(), 2);
+
+        // Numeric column - nulls should be ignored for min/max
+        let col_num = &schema[0];
+        assert_eq!(col_num.name, "num");
+        assert_eq!(col_num.min, Some(ArrayElement::Number(1.0)));
+        assert_eq!(col_num.max, Some(ArrayElement::Number(5.0)));
+
+        // String column - nulls should be ignored for min/max
+        let col_str = &schema[1];
+        assert_eq!(col_str.name, "str_col");
+        assert_eq!(col_str.min, Some(ArrayElement::String("A".to_string())));
+        assert_eq!(col_str.max, Some(ArrayElement::String("C".to_string())));
     }
 }
