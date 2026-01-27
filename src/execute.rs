@@ -326,7 +326,7 @@ fn extract_series_value(
             .f64()
             .ok()
             .and_then(|ca| ca.get(row))
-            .map(|v| ArrayElement::Number(v)),
+            .map(ArrayElement::Number),
         DataType::Boolean => series
             .bool()
             .ok()

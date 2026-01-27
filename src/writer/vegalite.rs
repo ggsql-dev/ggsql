@@ -490,7 +490,7 @@ impl VegaLiteWriter {
                             "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
                         ) {
                             // Add to axis object
-                            if !encoding.get("axis").map_or(false, |v| v.is_null()) {
+                            if !encoding.get("axis").is_some_and(|v| v.is_null()) {
                                 let axis = encoding.get_mut("axis").and_then(|v| v.as_object_mut());
                                 if let Some(axis_map) = axis {
                                     axis_map.insert("values".to_string(), json!(values));
@@ -500,7 +500,7 @@ impl VegaLiteWriter {
                             }
                         } else {
                             // Add to legend object for non-positional aesthetics
-                            if !encoding.get("legend").map_or(false, |v| v.is_null()) {
+                            if !encoding.get("legend").is_some_and(|v| v.is_null()) {
                                 let legend =
                                     encoding.get_mut("legend").and_then(|v| v.as_object_mut());
                                 if let Some(legend_map) = legend {

@@ -74,7 +74,7 @@ impl TransformTrait for Time {
     }
 
     fn is_value_in_domain(&self, value: f64) -> bool {
-        value.is_finite() && value >= 0.0 && value <= MAX_TIME_NANOS
+        value.is_finite() && (0.0..=MAX_TIME_NANOS).contains(&value)
     }
 
     fn transform(&self, value: f64) -> f64 {

@@ -8,7 +8,7 @@ fn parse_hex_linetype(s: &str) -> Option<Vec<u32>> {
     let len = s.len();
 
     // Must be even length, 2-8 characters, all hex digits
-    if len < 2 || len > 8 || len % 2 != 0 {
+    if !(2..=8).contains(&len) || !len.is_multiple_of(2) {
         return None;
     }
 

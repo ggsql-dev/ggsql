@@ -287,11 +287,7 @@ fn thin_breaks(breaks: Vec<f64>, n: usize) -> Vec<f64> {
 /// let minors = minor_breaks_linear(&majors, 1, Some((0.0, 80.0)));
 /// // Returns [10, 30, 50, 70] - extends before 20 and after 60
 /// ```
-pub fn minor_breaks_linear(
-    major_breaks: &[f64],
-    n: usize,
-    range: Option<(f64, f64)>,
-) -> Vec<f64> {
+pub fn minor_breaks_linear(major_breaks: &[f64], n: usize, range: Option<(f64, f64)>) -> Vec<f64> {
     if major_breaks.len() < 2 || n == 0 {
         return vec![];
     }
@@ -403,11 +399,7 @@ pub fn minor_breaks_log(
 ///
 /// # Returns
 /// Minor break positions (excluding major breaks)
-pub fn minor_breaks_sqrt(
-    major_breaks: &[f64],
-    n: usize,
-    range: Option<(f64, f64)>,
-) -> Vec<f64> {
+pub fn minor_breaks_sqrt(major_breaks: &[f64], n: usize, range: Option<(f64, f64)>) -> Vec<f64> {
     if major_breaks.len() < 2 || n == 0 {
         return vec![];
     }
@@ -442,11 +434,7 @@ pub fn minor_breaks_sqrt(
 ///
 /// # Returns
 /// Minor break positions (excluding major breaks)
-pub fn minor_breaks_symlog(
-    major_breaks: &[f64],
-    n: usize,
-    range: Option<(f64, f64)>,
-) -> Vec<f64> {
+pub fn minor_breaks_symlog(major_breaks: &[f64], n: usize, range: Option<(f64, f64)>) -> Vec<f64> {
     if major_breaks.len() < 2 || n == 0 {
         return vec![];
     }
@@ -498,20 +486,15 @@ pub fn trim_temporal_breaks(breaks: &[String], range: (&str, &str)) -> Vec<Strin
 }
 
 /// Temporal minor break specification
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum MinorBreakSpec {
     /// Derive minor interval from major interval (default)
+    #[default]
     Auto,
     /// Explicit count per major interval
     Count(usize),
     /// Explicit interval string
     Interval(String),
-}
-
-impl Default for MinorBreakSpec {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 /// Derive minor interval from major interval (keeps count below 10)
@@ -529,7 +512,7 @@ impl Default for MinorBreakSpec {
 /// | minute      | 15 seconds   | 4            |
 /// | second      | 100 ms       | 10           |
 pub fn derive_minor_interval(major_interval: &str) -> &'static str {
-    let interval = TemporalInterval::from_str(major_interval);
+    let interval = TemporalInterval::create_from_str(major_interval);
     match interval {
         Some(TemporalInterval {
             unit: TemporalUnit::Year,
@@ -610,7 +593,7 @@ pub fn temporal_minor_breaks_date(
         MinorBreakSpec::Interval(s) => s,
     };
 
-    let interval = match TemporalInterval::from_str(&minor_interval) {
+    let interval = match TemporalInterval::create_from_str(&minor_interval) {
         Some(i) => i,
         None => return vec![],
     };
@@ -708,7 +691,11 @@ pub fn temporal_minor_breaks_datetime(
     // Parse major breaks to datetimes
     let major_dts: Vec<DateTime<Utc>> = major_breaks
         .iter()
-        .filter_map(|s| DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&Utc)))
+        .filter_map(|s| {
+            DateTime::parse_from_rfc3339(s)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+        })
         .collect();
 
     if major_dts.len() < 2 {
@@ -731,7 +718,7 @@ pub fn temporal_minor_breaks_datetime(
         MinorBreakSpec::Interval(s) => s,
     };
 
-    let interval = match TemporalInterval::from_str(&minor_interval) {
+    let interval = match TemporalInterval::create_from_str(&minor_interval) {
         Some(i) => i,
         None => return vec![],
     };
@@ -873,7 +860,7 @@ pub fn temporal_minor_breaks_time(
         MinorBreakSpec::Interval(s) => s,
     };
 
-    let interval = match TemporalInterval::from_str(&minor_interval) {
+    let interval = match TemporalInterval::create_from_str(&minor_interval) {
         Some(i) => i,
         None => return vec![],
     };
@@ -970,7 +957,7 @@ pub struct TemporalInterval {
 
 impl TemporalInterval {
     /// Parse interval string like "month", "2 months", "3 days"
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn create_from_str(s: &str) -> Option<Self> {
         let s = s.trim().to_lowercase();
         let parts: Vec<&str> = s.split_whitespace().collect();
 
@@ -1259,7 +1246,7 @@ fn advance_time_by_interval(
 ) -> Option<chrono::NaiveTime> {
     use chrono::Timelike;
 
-    let count = interval.count as u32;
+    let count = interval.count;
     match interval.unit {
         TemporalUnit::Second => time.with_second((time.second() + count) % 60),
         TemporalUnit::Minute => time.with_minute((time.minute() + count) % 60),
@@ -1619,39 +1606,39 @@ mod tests {
 
     #[test]
     fn test_temporal_interval_from_str_simple() {
-        let interval = TemporalInterval::from_str("month").unwrap();
+        let interval = TemporalInterval::create_from_str("month").unwrap();
         assert_eq!(interval.count, 1);
         assert_eq!(interval.unit, TemporalUnit::Month);
     }
 
     #[test]
     fn test_temporal_interval_from_str_with_count() {
-        let interval = TemporalInterval::from_str("2 months").unwrap();
+        let interval = TemporalInterval::create_from_str("2 months").unwrap();
         assert_eq!(interval.count, 2);
         assert_eq!(interval.unit, TemporalUnit::Month);
 
-        let interval = TemporalInterval::from_str("3 days").unwrap();
+        let interval = TemporalInterval::create_from_str("3 days").unwrap();
         assert_eq!(interval.count, 3);
         assert_eq!(interval.unit, TemporalUnit::Day);
     }
 
     #[test]
     fn test_temporal_interval_all_units() {
-        assert!(TemporalInterval::from_str("second").is_some());
-        assert!(TemporalInterval::from_str("seconds").is_some());
-        assert!(TemporalInterval::from_str("minute").is_some());
-        assert!(TemporalInterval::from_str("hour").is_some());
-        assert!(TemporalInterval::from_str("day").is_some());
-        assert!(TemporalInterval::from_str("week").is_some());
-        assert!(TemporalInterval::from_str("month").is_some());
-        assert!(TemporalInterval::from_str("year").is_some());
+        assert!(TemporalInterval::create_from_str("second").is_some());
+        assert!(TemporalInterval::create_from_str("seconds").is_some());
+        assert!(TemporalInterval::create_from_str("minute").is_some());
+        assert!(TemporalInterval::create_from_str("hour").is_some());
+        assert!(TemporalInterval::create_from_str("day").is_some());
+        assert!(TemporalInterval::create_from_str("week").is_some());
+        assert!(TemporalInterval::create_from_str("month").is_some());
+        assert!(TemporalInterval::create_from_str("year").is_some());
     }
 
     #[test]
     fn test_temporal_interval_invalid() {
-        assert!(TemporalInterval::from_str("invalid").is_none());
-        assert!(TemporalInterval::from_str("foo bar baz").is_none());
-        assert!(TemporalInterval::from_str("").is_none());
+        assert!(TemporalInterval::create_from_str("invalid").is_none());
+        assert!(TemporalInterval::create_from_str("foo bar baz").is_none());
+        assert!(TemporalInterval::create_from_str("").is_none());
     }
 
     // =========================================================================
@@ -1661,7 +1648,7 @@ mod tests {
     #[test]
     fn test_temporal_breaks_monthly() {
         // 2024-01-15 = day 19738, 2024-04-15 = day 19828
-        let interval = TemporalInterval::from_str("month").unwrap();
+        let interval = TemporalInterval::create_from_str("month").unwrap();
         let breaks = temporal_breaks_date(19738, 19828, interval);
         assert!(!breaks.is_empty());
         assert_eq!(breaks[0], "2024-01-01");
@@ -1674,7 +1661,7 @@ mod tests {
     fn test_temporal_breaks_bimonthly() {
         // Test "2 months" interval
         // 2024-01-01 = day 19724, 2024-07-01 = day 19907
-        let interval = TemporalInterval::from_str("2 months").unwrap();
+        let interval = TemporalInterval::create_from_str("2 months").unwrap();
         let breaks = temporal_breaks_date(19724, 19907, interval);
         assert_eq!(breaks[0], "2024-01-01");
         assert!(breaks.contains(&"2024-03-01".to_string()));
@@ -1687,7 +1674,7 @@ mod tests {
     fn test_temporal_breaks_yearly() {
         // Test yearly breaks spanning multiple years
         // 2022-01-01 = day 18993, 2024-12-31 = day 20089
-        let interval = TemporalInterval::from_str("year").unwrap();
+        let interval = TemporalInterval::create_from_str("year").unwrap();
         let breaks = temporal_breaks_date(18993, 20089, interval);
         assert!(breaks.contains(&"2022-01-01".to_string()));
         assert!(breaks.contains(&"2023-01-01".to_string()));
@@ -1698,7 +1685,7 @@ mod tests {
     fn test_temporal_breaks_weekly() {
         // Test weekly breaks
         // About 30 days
-        let interval = TemporalInterval::from_str("week").unwrap();
+        let interval = TemporalInterval::create_from_str("week").unwrap();
         let breaks = temporal_breaks_date(19724, 19754, interval);
         assert!(!breaks.is_empty());
         // Should be multiple weeks
@@ -1903,10 +1890,7 @@ mod tests {
 
     #[test]
     fn test_trim_temporal_breaks_all_inside() {
-        let breaks = vec![
-            "2024-02-01".to_string(),
-            "2024-02-15".to_string(),
-        ];
+        let breaks = vec!["2024-02-01".to_string(), "2024-02-15".to_string()];
         let trimmed = trim_temporal_breaks(&breaks, ("2024-01-01", "2024-03-01"));
         assert_eq!(trimmed.len(), 2);
     }
@@ -1953,10 +1937,7 @@ mod tests {
 
     #[test]
     fn test_temporal_minor_breaks_date_by_count() {
-        let majors = vec![
-            "2024-01-01".to_string(),
-            "2024-02-01".to_string(),
-        ];
+        let majors = vec!["2024-01-01".to_string(), "2024-02-01".to_string()];
         let minors = temporal_minor_breaks_date(&majors, "month", MinorBreakSpec::Count(3), None);
         // Count(3) means 3 minor breaks per month (dividing by 4)
         // ~7-8 days per minor interval
@@ -1965,11 +1946,13 @@ mod tests {
 
     #[test]
     fn test_temporal_minor_breaks_date_by_interval() {
-        let majors = vec![
-            "2024-01-01".to_string(),
-            "2024-02-01".to_string(),
-        ];
-        let minors = temporal_minor_breaks_date(&majors, "month", MinorBreakSpec::Interval("week".to_string()), None);
+        let majors = vec!["2024-01-01".to_string(), "2024-02-01".to_string()];
+        let minors = temporal_minor_breaks_date(
+            &majors,
+            "month",
+            MinorBreakSpec::Interval("week".to_string()),
+            None,
+        );
         // Should have weekly dates within January
         assert!(!minors.is_empty());
         // January has about 4 weeks
@@ -1978,10 +1961,7 @@ mod tests {
 
     #[test]
     fn test_temporal_minor_breaks_date_with_extension() {
-        let majors = vec![
-            "2024-02-01".to_string(),
-            "2024-03-01".to_string(),
-        ];
+        let majors = vec!["2024-02-01".to_string(), "2024-03-01".to_string()];
         let minors = temporal_minor_breaks_date(
             &majors,
             "month",

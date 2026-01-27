@@ -293,7 +293,7 @@ fn micros_to_datetime(micros: i64) -> chrono::NaiveDateTime {
     let nsecs = ((micros % 1_000_000).abs() * 1000) as u32;
     chrono::DateTime::from_timestamp(secs, nsecs)
         .map(|dt| dt.naive_utc())
-        .unwrap_or_else(|| chrono::NaiveDateTime::default())
+        .unwrap_or_default()
 }
 
 /// Convert NaiveDateTime to microseconds since epoch

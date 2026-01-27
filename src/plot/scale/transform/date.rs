@@ -167,7 +167,7 @@ fn calculate_pretty_date_breaks(min: f64, max: f64, n: usize, interval: DateInte
             let mut quarter = start_quarter;
 
             while year < end_year || (year == end_year && quarter <= end_quarter) {
-                let month = (quarter * 3 + 1) as u32;
+                let month = quarter * 3 + 1;
                 if let Some(date) = chrono::NaiveDate::from_ymd_opt(year, month, 1) {
                     let days = (date - unix_epoch).num_days() as f64;
                     if days >= min && days <= max {
