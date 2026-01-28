@@ -147,6 +147,79 @@ DRAW line MAPPING month AS x, total AS y
 
 ---
 
+## Public API (`src/api.rs`)
+
+### Quick Start
+
+```rust
+use ggsql::{prepare, reader::DuckDBReader, writer::VegaLiteWriter};
+
+// Create a reader
+let reader = DuckDBReader::from_connection_string("duckdb://memory")?;
+
+// Prepare the visualization
+let prepared = ggsql::prepare(
+    "SELECT x, y FROM data VISUALISE x, y DRAW point",
+    &reader
+)?;
+
+// Render to Vega-Lite JSON
+let writer = VegaLiteWriter::new();
+let json = prepared.render(&writer)?;
+```
+
+### Core Functions
+
+| Function                 | Purpose                                                |
+| ------------------------ | ------------------------------------------------------ |
+| `prepare(query, reader)` | Main entry point: parse, execute SQL, resolve mappings |
+| `render(writer)`         | Generate output (Vega-Lite JSON) from prepared data    |
+| `validate(query)`        | Validate syntax + semantics, inspect query structure   |
+
+### Key Types
+
+**`Validated`** - Result of `validate()`:
+
+- `has_visual()` - Whether query has VISUALISE clause
+- `sql()` - The SQL portion (before VISUALISE)
+- `visual()` - The VISUALISE portion (raw text)
+- `tree()` - CST for advanced inspection
+- `valid()` - Whether query is valid
+- `errors()` - Validation errors
+- `warnings()` - Validation warnings
+
+**`Prepared`** - Result of `prepare()`, ready for rendering:
+
+- `render(writer)` - Generate output (Vega-Lite JSON)
+- `plot()` - Resolved plot specification
+- `metadata()` - Rows, columns, layer count
+- `warnings()` - Validation warnings from preparation
+- `data()` / `layer_data(i)` / `stat_data(i)` - Access DataFrames
+- `sql()` / `visual()` / `layer_sql(i)` / `stat_sql(i)` - Query introspection
+
+**`Metadata`**:
+
+- `rows` - Number of rows in primary data
+- `columns` - Column names
+- `layer_count` - Number of layers
+
+### Reader & Writer
+
+**Reader trait** (data source abstraction):
+
+- `execute(sql)` - Run SQL, return DataFrame
+- `register(name, df)` - Register DataFrame as table
+- Implementation: `DuckDBReader`
+
+**Writer trait** (output format abstraction):
+
+- `write(spec, data)` - Generate output string
+- Implementation: `VegaLiteWriter` (Vega-Lite v6 JSON)
+
+For detailed API documentation, see [`src/doc/API.md`](src/doc/API.md).
+
+---
+
 ## Component Breakdown
 
 ### 1. Parser Module (`src/parser/`)
@@ -462,7 +535,6 @@ pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
 The codebase includes connection string parsing and feature flags for additional readers, but they are not yet implemented:
 
 - **PostgreSQL Reader** (`postgres://...`)
-
   - Feature flag: `postgres`
   - Connection string parsing exists in `connection.rs`
   - Reader implementation: Not yet available
@@ -800,7 +872,9 @@ When running in Positron IDE, the extension provides enhanced functionality:
 - Works with any narwhals-compatible DataFrame (polars, pandas, etc.)
 - LazyFrames are collected automatically
 - Returns native `altair.Chart` objects for easy display and customization
-- Query splitting to separate SQL from VISUALISE portions
+- Two-stage API: `prepare()` → `render()`
+- DuckDB reader with DataFrame registration
+- Query introspection (SQL, layer queries, stat queries)
 
 **Installation**:
 
@@ -817,26 +891,41 @@ maturin develop
 import ggsql
 import polars as pl
 
-# Split a ggSQL query into SQL and VISUALISE portions
-sql, viz = ggsql.split_query("""
-    SELECT date, revenue FROM sales
-    VISUALISE date AS x, revenue AS y
-    DRAW line
-""")
-
-# Execute SQL and render to Altair chart
+# Create reader and register data
+reader = ggsql.DuckDBReader("duckdb://memory")
 df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
-chart = ggsql.render_altair(df, "VISUALISE x, y DRAW point")
+reader.register("data", df)
 
-# Display or save
-chart.display()  # In Jupyter
-chart.save("chart.html")
+# Prepare visualization
+prepared = ggsql.prepare(
+    "SELECT * FROM data VISUALISE x, y DRAW point",
+    reader
+)
+
+# Inspect
+print(f"Rows: {prepared.metadata()['rows']}")
+print(f"SQL: {prepared.sql()}")
+
+# Render to Vega-Lite JSON
+writer = ggsql.VegaLiteWriter()
+json_output = prepared.render(writer)
 ```
+
+**Classes**:
+
+| Class                      | Description                  |
+| -------------------------- | ---------------------------- |
+| `DuckDBReader(connection)` | Database reader              |
+| `VegaLiteWriter()`         | Vega-Lite JSON output writer |
+| `Validated`                | Result of `validate()`       |
 
 **Functions**:
 
-- `split_query(query: str) -> tuple[str, str]` - Split ggSQL query into SQL and VISUALISE portions
-- `render_altair(df, viz, **kwargs) -> altair.Chart` - Render DataFrame with VISUALISE spec to Altair chart
+| Function                 | Description                                      |
+| ------------------------ | ------------------------------------------------ |
+| `validate(query)`        | Syntax/semantic validation with query inspection |
+| `prepare(query, reader)` | Full preparation pipeline                        |
+| `render_altair(df, viz)` | Render DataFrame to Altair chart                 |
 
 **Dependencies**:
 
@@ -920,22 +1009,23 @@ cargo build --all-features
 ```
 
 Where `<global_mapping>` can be:
+
 - Empty: `VISUALISE` (layers must define all mappings)
 - Mappings: `VISUALISE x, y, date AS x` (mixed implicit/explicit)
 - Wildcard: `VISUALISE *` (map all columns)
 
 ### Clause Types
 
-| Clause         | Repeatable | Purpose            | Example                              |
-| -------------- | ---------- | ------------------ | ------------------------------------ |
-| `VISUALISE`    | ✅ Yes     | Entry point        | `VISUALISE date AS x, revenue AS y`  |
-| `DRAW`         | ✅ Yes     | Define layers      | `DRAW line MAPPING date AS x, value AS y` |
-| `SCALE`        | ✅ Yes     | Configure scales   | `SCALE x SETTING type => 'date'`          |
-| `FACET`        | ❌ No      | Small multiples    | `FACET WRAP region`                  |
-| `COORD`        | ❌ No      | Coordinate system  | `COORD cartesian SETTING xlim => [0,100]` |
-| `LABEL`        | ❌ No      | Text labels        | `LABEL title => 'My Chart', x => 'Date'`   |
-| `GUIDE`        | ✅ Yes     | Legend/axis config | `GUIDE color SETTING position => 'right'` |
-| `THEME`        | ❌ No      | Visual styling     | `THEME minimal`                      |
+| Clause      | Repeatable | Purpose            | Example                                   |
+| ----------- | ---------- | ------------------ | ----------------------------------------- |
+| `VISUALISE` | ✅ Yes     | Entry point        | `VISUALISE date AS x, revenue AS y`       |
+| `DRAW`      | ✅ Yes     | Define layers      | `DRAW line MAPPING date AS x, value AS y` |
+| `SCALE`     | ✅ Yes     | Configure scales   | `SCALE x SETTING type => 'date'`          |
+| `FACET`     | ❌ No      | Small multiples    | `FACET WRAP region`                       |
+| `COORD`     | ❌ No      | Coordinate system  | `COORD cartesian SETTING xlim => [0,100]` |
+| `LABEL`     | ❌ No      | Text labels        | `LABEL title => 'My Chart', x => 'Date'`  |
+| `GUIDE`     | ✅ Yes     | Legend/axis config | `GUIDE color SETTING position => 'right'` |
+| `THEME`     | ❌ No      | Visual styling     | `THEME minimal`                           |
 
 ### DRAW Clause (Layers)
 
@@ -1200,7 +1290,6 @@ DRAW bar MAPPING category AS x, value AS y
 COORD cartesian SETTING xlim => [0, 100], ylim => [0, 200]
 LABEL x => 'Category', y => 'Count'
 ```
-
 
 ### LABEL Clause
 

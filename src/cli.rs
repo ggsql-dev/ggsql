@@ -10,12 +10,12 @@ use ggsql::{parser, VERSION};
 use std::path::PathBuf;
 
 #[cfg(feature = "duckdb")]
-use ggsql::execute::prepare_data;
-#[cfg(feature = "duckdb")]
 use ggsql::reader::{DuckDBReader, Reader};
+#[cfg(feature = "duckdb")]
+use ggsql::{prepare, validate};
 
 #[cfg(feature = "vegalite")]
-use ggsql::writer::{VegaLiteWriter, Writer};
+use ggsql::writer::VegaLiteWriter;
 
 #[derive(Parser)]
 #[command(name = "ggsql")]
@@ -169,15 +169,16 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
     }
     let db_reader = db_reader.unwrap();
 
-    // Check if visualise part is empty
-    let parsed = parser::split_query(&query);
-    if let Err(e) = parsed {
-        eprintln!("Failed to split query: {}", e);
-        std::process::exit(1);
-    }
-    let (_, viz_part) = parsed.unwrap();
+    // Use validate() to check if query has visualization
+    let validated = match validate(&query) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Failed to validate query: {}", e);
+            std::process::exit(1);
+        }
+    };
 
-    if viz_part.is_empty() {
+    if !validated.has_visual() {
         if verbose {
             eprintln!("Visualisation is empty. Printing table instead.");
         }
@@ -185,28 +186,27 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
         return;
     }
 
-    // Prepare data (parses query, executes SQL, handles layer sources)
-    let prepared = prepare_data(&query, &db_reader);
-    if let Err(e) = prepared {
-        eprintln!("Failed to prepare data: {}", e);
-        std::process::exit(1);
-    }
-    let prepared = prepared.unwrap();
+    // Prepare data
+    let prepared = match prepare(&query, &db_reader) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to prepare data: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     if verbose {
-        eprintln!("\nData sources loaded:");
-        for (key, df) in &prepared.data {
-            eprintln!("  {}: {:?}", key, df.shape());
-        }
-        eprintln!("\nParsed {} visualisation spec(s)", prepared.specs.len());
+        let metadata = prepared.metadata();
+        eprintln!("\nData prepared:");
+        eprintln!("  Rows: {}", metadata.rows);
+        eprintln!("  Columns: {}", metadata.columns.join(", "));
+        eprintln!("  Layers: {}", metadata.layer_count);
     }
 
-    let first_spec = prepared.specs.first();
-    if first_spec.is_none() {
+    if prepared.plot().layers.is_empty() {
         eprintln!("No visualization specifications found");
         std::process::exit(1);
     }
-    let first_spec = first_spec.unwrap();
 
     // Check writer
     if writer != "vegalite" {
@@ -220,14 +220,15 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
         std::process::exit(1)
     }
 
-    // Write visualization
+    // Render
     let vl_writer = VegaLiteWriter::new();
-    let json_output = vl_writer.write(first_spec, &prepared.data);
-    if let Err(ref e) = json_output {
-        eprintln!("Failed to generate Vega-Lite output: {}", e);
-        std::process::exit(1);
-    }
-    let json_output = json_output.unwrap();
+    let json_output = match prepared.render(&vl_writer) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to generate Vega-Lite output: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     if output.is_none() {
         // Empty output location, write to stdout
@@ -237,7 +238,7 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
     let output = output.unwrap();
 
     // Write to file
-    match std::fs::write(&output, &json_output) {
+    match std::fs::write(&output, json_output) {
         Ok(_) => {
             if verbose {
                 eprintln!("\nVega-Lite JSON written to: {}", output.display());
@@ -291,13 +292,38 @@ fn cmd_parse(query: String, format: String) {
     }
 }
 
-fn cmd_validate(query: String, reader: Option<String>) {
-    println!("Validating query: {}", query);
-    if let Some(reader) = reader {
-        println!("Reader: {}", reader);
+fn cmd_validate(query: String, _reader: Option<String>) {
+    #[cfg(feature = "duckdb")]
+    {
+        match validate(&query) {
+            Ok(validated) if validated.valid() => {
+                println!("✓ Query syntax is valid");
+            }
+            Ok(validated) => {
+                println!("✗ Validation errors:");
+                for err in validated.errors() {
+                    println!("  - {}", err.message);
+                }
+                if !validated.warnings().is_empty() {
+                    println!("\nWarnings:");
+                    for warning in validated.warnings() {
+                        println!("  - {}", warning.message);
+                    }
+                }
+                std::process::exit(1);
+            }
+            Err(e) => {
+                eprintln!("Error during validation: {}", e);
+                std::process::exit(1);
+            }
+        }
     }
-    // TODO: Implement validation logic
-    println!("Validation not yet implemented");
+
+    #[cfg(not(feature = "duckdb"))]
+    {
+        eprintln!("Validation requires the duckdb feature");
+        std::process::exit(1);
+    }
 }
 
 // Prints a CSV-like output to stdout with aligned columns

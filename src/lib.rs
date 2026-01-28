@@ -27,10 +27,10 @@ ggsql splits queries at the `VISUALISE` boundary:
 
 ## Core Components
 
+- [`api`] - High-level API (prepare, parse, validate)
 - [`parser`] - Query parsing and AST generation
-- [`engine`] - Core execution engine
-- [`readers`] - Data source abstraction layer
-- [`writers`] - Output format abstraction layer
+- [`reader`] - Data source abstraction layer
+- [`writer`] - Output format abstraction layer
 */
 
 pub mod naming;
@@ -46,14 +46,17 @@ pub mod writer;
 #[cfg(feature = "duckdb")]
 pub mod execute;
 
+pub mod api;
+
 // Re-export key types for convenience
 pub use plot::{
     AestheticValue, DataSource, Facet, Geom, Layer, Mappings, Plot, Scale, SqlExpression,
 };
 
-// Future modules - not yet implemented
-// #[cfg(feature = "engine")]
-// pub mod engine;
+// Re-export API types and functions
+pub use api::{
+    prepare, validate, Location, Metadata, Prepared, Validated, ValidationError, ValidationWarning,
+};
 
 // DataFrame abstraction (wraps Polars)
 pub use polars::prelude::DataFrame;
@@ -547,7 +550,7 @@ mod integration_tests {
             !prepared.data.contains_key(&naming::layer_key(1)),
             "Layer 1 should use global data, not layer-specific data"
         );
-        assert_eq!(prepared.specs.len(), 1);
+        assert_eq!(prepared.spec.layers.len(), 2);
 
         // Verify global data contains layer-indexed constant columns
         let global_df = prepared.data.get(naming::GLOBAL_DATA_KEY).unwrap();
@@ -565,7 +568,7 @@ mod integration_tests {
 
         // Generate Vega-Lite
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer.write(&prepared.spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify we have two layers
@@ -685,7 +688,7 @@ mod integration_tests {
 
         // Generate Vega-Lite and verify faceting structure
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer.write(&prepared.spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Should have facet structure (row and column)
@@ -750,7 +753,7 @@ mod integration_tests {
 
         // Generate Vega-Lite and verify it works
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer.write(&prepared.spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Both layers should have color field-mapped to their indexed constant columns

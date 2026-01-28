@@ -6,6 +6,7 @@ use crate::reader::data::init_builtin_data;
 use crate::reader::{connection::ConnectionInfo, Reader};
 use crate::{DataFrame, GgsqlError, Result};
 use duckdb::{params, Connection};
+use polars::prelude::*;
 
 /// DuckDB database reader
 ///
@@ -413,29 +414,12 @@ impl Reader for DuckDBReader {
         Ok(df)
     }
 
-    fn validate_columns(&self, sql: &str, columns: &[String]) -> Result<()> {
-        // Execute the query to get the schema
-        let df = self.execute(sql)?;
-
-        // Get column names from the DataFrame
-        let schema_columns: Vec<String> = df
-            .get_column_names()
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-
-        // Check if all required columns exist
-        for col in columns {
-            if !schema_columns.contains(col) {
-                return Err(GgsqlError::ValidationError(format!(
-                    "Column '{}' not found in query result. Available columns: {}",
-                    col,
-                    schema_columns.join(", ")
-                )));
-            }
-        }
-
+    fn register(&mut self, _name: &str, _df: DataFrame) -> Result<()> {
         Ok(())
+    }
+
+    fn supports_register(&self) -> bool {
+        false
     }
 }
 
@@ -479,28 +463,6 @@ mod tests {
 
         assert_eq!(df.shape(), (2, 2));
         assert_eq!(df.get_column_names(), vec!["x", "y"]);
-    }
-
-    #[test]
-    fn test_validate_columns_success() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let sql = "SELECT 1 as x, 2 as y";
-
-        let result = reader.validate_columns(sql, &["x".to_string(), "y".to_string()]);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_validate_columns_missing() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let sql = "SELECT 1 as x, 2 as y";
-
-        let result = reader.validate_columns(sql, &["z".to_string()]);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Column 'z' not found"));
     }
 
     #[test]
