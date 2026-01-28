@@ -59,13 +59,7 @@ impl GeomTrait for Boxplot {
     }
 
     fn default_remappings(&self) -> &'static [(&'static str, &'static str)] {
-        &[
-            ("lower", "ymin"),
-            ("q1", "q1"),
-            ("median", "y"),
-            ("q3", "q3"),
-            ("upper", "ymax"),
-        ]
+        &[("value", "y")]
     }
 
     fn apply_stat_transform(
@@ -75,16 +69,9 @@ impl GeomTrait for Boxplot {
         aesthetics: &Mappings,
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
-        execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
     ) -> Result<StatResult> {
-        stat_boxplot(
-            query,
-            schema,
-            aesthetics,
-            group_by,
-            parameters,
-            execute_query,
-        )
+        stat_boxplot(query, schema, aesthetics, group_by, parameters)
     }
 }
 
@@ -100,97 +87,214 @@ fn stat_boxplot(
     aesthetics: &Mappings,
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
-    _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
 ) -> Result<StatResult> {
+    // Fetch coef parameter
+    let coef = match parameters.get("coef") {
+        Some(ParameterValue::Number(num)) => num,
+        _ => {
+            return Err(GgsqlError::InternalError(
+                "The 'coef' boxplot parameter must be a numeric value.".to_string(),
+            ))
+        }
+    };
+
+    // Fetch outliers parameter
+    let outliers = match parameters.get("outliers") {
+        Some(ParameterValue::Boolean(draw)) => draw,
+        _ => {
+            return Err(GgsqlError::InternalError(
+                "The 'outliers' parameter must be `true` or `false`.".to_string(),
+            ))
+        }
+    };
+
+    // Determine horizontal or vertical boxplot
     let (value_col, group_col) = set_boxplot_orientation(aesthetics, schema, parameters)?;
 
-    // Sort out grouping
+    // The `groups` vector is never empty, it contains at least the opposite axis as column
+    // This absolves us from every having to guard against empty groups
     let mut groups = group_by.to_vec();
-    if groups.contains(&group_col) {
-        // Regular groups should not contain x-axis group
-        groups.retain(|s| s != &group_col);
+    if !groups.contains(&group_col) {
+        groups.push(group_col);
     }
-    let non_axis_groups = if groups.is_empty() {
-        String::new()
-    } else {
-        format!(", {}", groups.join(", "))
-    };
-    let group_by_clause = format!("GROUP BY {}{}", group_col, non_axis_groups);
-
-    // Get coef parameter for whisker calculation
-    let coef;
-    if let Some(ParameterValue::Number(num)) = parameters.get("coef") {
-        coef = num;
-    } else {
+    if groups.is_empty() {
+        // We should never end up here, but this is just to enforce the assumption above.
         return Err(GgsqlError::InternalError(
-            "The 'coef' boxplot parameter must a numeric value".to_string(),
+            "Boxplots cannot have empty groups".to_string(),
         ));
     }
 
-    // Generate prefixed column names for stat outputs
-    let stat_lower = naming::stat_column("lower");
-    let stat_q1 = naming::stat_column("q1");
-    let stat_median = naming::stat_column("median");
-    let stat_q3 = naming::stat_column("q3");
-    let stat_upper = naming::stat_column("upper");
-
-    // Create 5-number summary query with IQR and whisker endpoints
-    let stats_query = format!(
-        "SELECT
-          MIN({v})                 AS min,
-          quantile_cont({v}, 0.25) AS q1,
-          median({v})              AS median,
-          quantile_cont({v}, 0.75) AS q3,
-          MAX({v})                 AS max,
-          {group_col}
-          {non_axis_groups}
-        FROM ({query})
-        {group_by_clause}
-        ",
-        v = value_col,
-        group_col = group_col,
-        non_axis_groups = non_axis_groups,
-        query = query,
-        group_by_clause = group_by_clause
-    );
-
-    // Add IQR calculation and whisker endpoints with proper prefixes
-    let stats_query = format!(
-        "SELECT
-          *,
-          q3 - q1 AS iqr,
-          GREATEST(q1 - {coef} * (q3 - q1), min) AS {lower},
-          q1 AS {q1},
-          median AS {median},
-          q3 AS {q3},
-          LEAST(q3 + {coef} * (q3 - q1), max) AS {upper}
-        FROM (
-          {stats_query}
-         ) s
-        ",
-        coef = coef,
-        lower = stat_lower,
-        q1 = stat_q1,
-        median = stat_median,
-        q3 = stat_q3,
-        upper = stat_upper,
-        stats_query = stats_query
-    );
+    // Query for boxplot summary statistics
+    let summary = boxplot_sql_compute_summary(query, &groups, &value_col, coef);
+    let stats_query = boxplot_sql_append_outliers(&summary, &groups, &value_col, query, outliers);
 
     Ok(StatResult::Transformed {
         query: stats_query,
-        stat_columns: vec![
-            "lower".to_string(),
-            "q1".to_string(),
-            "median".to_string(),
-            "q3".to_string(),
-            "upper".to_string(),
-        ],
+        stat_columns: vec!["type".to_string(), "value".to_string()],
         dummy_columns: vec![],
         consumed_aesthetics: vec!["y".to_string()],
     })
 }
 
+fn boxplot_sql_assign_quartiles(from: &str, groups: &[String], value: &str) -> String {
+    // Selects all relevant columns and adds a quartile column.
+    // NTILE(4) may create uneven groups
+    format!(
+        "SELECT
+          {value},
+          {groups},
+          NTILE(4) OVER (PARTITION BY {groups} ORDER BY {value} ASC) AS _Q
+        FROM ({from})
+        WHERE {value} IS NOT NULL",
+        value = value,
+        groups = groups.join(", "),
+        from = from
+    )
+}
+
+fn boxplot_sql_quartile_minmax(from: &str, groups: &[String], value: &str) -> String {
+    // Compute the min and max for every quartile.
+    // The verbosity here is to pivot the table to a wide format.
+    // The output is a table with 1 row per groups annotated with quartile metrics
+    format!(
+        "SELECT
+          MIN(CASE WHEN _Q = 1 THEN {value} END) AS Q1_min,
+          MAX(CASE WHEN _Q = 1 THEN {value} END) AS Q1_max,
+          MIN(CASE WHEN _Q = 2 THEN {value} END) AS Q2_min,
+          MAX(CASE WHEN _Q = 2 THEN {value} END) AS Q2_max,
+          MIN(CASE WHEN _Q = 3 THEN {value} END) AS Q3_min,
+          MAX(CASE WHEN _Q = 3 THEN {value} END) AS Q3_max,
+          MIN(CASE WHEN _Q = 4 THEN {value} END) AS Q4_min,
+          MAX(CASE WHEN _Q = 4 THEN {value} END) AS Q4_max,
+          {groups}
+        FROM ({from})
+        GROUP BY {groups}",
+        groups = groups.join(", "),
+        value = value,
+        from = from
+    )
+}
+
+fn boxplot_sql_compute_fivenum(from: &str, groups: &[String], coef: &f64) -> String {
+    // Here we compute the 5 statistics:
+    // * lower: lower whisker
+    // * upper: upper whisker
+    // * q1: box start
+    // * q3: box end
+    // * median
+    // We're assuming equally sized quartiles here, but we may have 1-member
+    // differences. For large datasets this shouldn't be a problem, but in smaller
+    // datasets one might notice.
+    format!(
+        "SELECT
+          *,
+          GREATEST(q1 - {coef} * (q3 - q1), min) AS lower,
+          LEAST(   q3 + {coef} * (q3 - q1), max) AS upper
+        FROM (
+          SELECT
+            Q1_min AS min,
+            Q4_max AS max,
+            (Q2_max + Q3_min) / 2.0 AS median,
+            (Q1_max + Q2_min) / 2.0 AS q1,
+            (Q3_max + Q4_min) / 2.0 AS q3,
+            {groups}
+          FROM ({from})
+        )",
+        coef = coef,
+        groups = groups.join(", "),
+        from = from
+    )
+}
+
+fn boxplot_sql_compute_summary(from: &str, groups: &[String], value: &str, coef: &f64) -> String {
+    let query = boxplot_sql_assign_quartiles(from, groups, value);
+    let query = boxplot_sql_quartile_minmax(&query, groups, value);
+    boxplot_sql_compute_fivenum(&query, groups, coef)
+}
+
+fn boxplot_sql_filter_outliers(groups: &[String], value: &str, from: &str) -> String {
+    let mut join_pairs = Vec::new();
+    let mut keep_columns = Vec::new();
+    for column in groups {
+        join_pairs.push(format!("raw.{} = summary.{}", column, column));
+        keep_columns.push(format!("raw.{}", column));
+    }
+
+    // We're joining outliers with the summary to use the lower/upper whisker
+    // values as a filter
+    format!(
+        "SELECT
+          raw.{value} AS value,
+          'outlier' AS type,
+          {groups}
+        FROM ({from}) raw
+        JOIN summary ON {pairs}
+        WHERE raw.{value} NOT BETWEEN summary.lower AND summary.upper",
+        value = value,
+        groups = keep_columns.join(", "),
+        pairs = join_pairs.join(" AND "),
+        from = from
+    )
+}
+
+fn boxplot_sql_append_outliers(
+    from: &str,
+    groups: &[String],
+    value: &str,
+    raw_query: &str,
+    draw_outliers: &bool,
+) -> String {
+    let value_name = naming::stat_column("value");
+    let type_name = naming::stat_column("type");
+
+    if !*draw_outliers {
+        // Just reshape summary to long format
+        let sql = format!(
+            "SELECT {groups}, type AS {type_name}, value AS {value_name}
+            FROM ({summary})
+            UNPIVOT(value FOR type IN (min, max, median, q1, q3, upper, lower))",
+            groups = groups.join(", "),
+            value_name = value_name,
+            type_name = type_name,
+            summary = from
+        );
+        return sql;
+    }
+
+    // Grab query for outliers. Outcome is long format data.
+    let outliers = boxplot_sql_filter_outliers(groups, value, raw_query);
+
+    // Reshape summary to long format and combine with outliers in single table
+    format!(
+        "WITH
+        summary AS (
+          {summary}
+        ),
+        outliers AS (
+          {outliers}
+        )
+        (
+          SELECT {groups}, type AS {type_name}, value AS {value_name}
+          FROM summary
+          UNPIVOT(value FOR type IN (min, max, median, q1, q3, upper, lower))
+        )
+        UNION ALL
+        (
+          SELECT {groups}, type AS {type_name}, value AS {value_name}
+          FROM outliers
+        )
+        ",
+        summary = from,
+        outliers = outliers,
+        type_name = type_name,
+        value_name = value_name,
+        groups = groups.join(", ")
+    )
+}
+
+// Tries to figure out wether we should have horizontal or vertical boxplots.
+// If the data is ambiguous, because x *and* y are both discrete or both continuous,
+//  we fallback to vertical boxplots.
 fn set_boxplot_orientation(
     aesthetics: &Mappings,
     schema: &crate::plot::Schema,
