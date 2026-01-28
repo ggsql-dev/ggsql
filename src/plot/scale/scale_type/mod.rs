@@ -227,10 +227,8 @@ fn compute_unique_values_multi(columns: &[&Column]) -> Vec<ArrayElement> {
         if let Ok(unique) = series.unique() {
             let unique_series = unique.into_series();
             if let Ok(str_series) = unique_series.str() {
-                for opt in str_series.into_iter() {
-                    if let Some(s) = opt {
-                        unique_strings.insert(s.to_string());
-                    }
+                for s in str_series.into_iter().flatten() {
+                    unique_strings.insert(s.to_string());
                 }
             } else {
                 // Non-string: convert to string representation

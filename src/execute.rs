@@ -758,28 +758,6 @@ fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> Optio
     }
 }
 
-/// Build a layer query handling all source types
-///
-/// Handles:
-/// - `None` source with filter, constants, or stat transform needed → queries `__ggsql_global__`
-/// - `None` source without filter, constants, or stat transform → returns `None` (use global directly)
-/// - `Identifier` source → checks if CTE, uses temp table or table name
-/// - `FilePath` source → wraps path in single quotes
-///
-/// Constants are injected as synthetic columns (e.g., `'value' AS __ggsql_const_color__`).
-/// Also applies statistical transformations for geoms that need them
-/// (e.g., histogram binning, bar counting).
-///
-/// Returns:
-/// - `Ok(Some(query))` - execute this query and store result
-/// - `Ok(None)` - layer uses `__global__` directly (no source, no filter, no constants, no stat transform)
-/// - `Err(...)` - validation error (e.g., filter without global data)
-///
-/// Note: This function takes `&mut Layer` because stat transforms may add new aesthetic mappings
-/// (e.g., mapping y to `__ggsql_stat__count` for histogram or bar count).
-///
-/// Pre-stat transforms are applied (e.g., binning for Binned scales) before stat transforms.
-
 // =============================================================================
 // Pre-Stat Transform
 // =============================================================================
@@ -866,6 +844,27 @@ fn apply_pre_stat_transform(query: &str, layer: &Layer, scales: &[crate::plot::S
     )
 }
 
+/// Build a layer query handling all source types
+///
+/// Handles:
+/// - `None` source with filter, constants, or stat transform needed → queries `__ggsql_global__`
+/// - `None` source without filter, constants, or stat transform → returns `None` (use global directly)
+/// - `Identifier` source → checks if CTE, uses temp table or table name
+/// - `FilePath` source → wraps path in single quotes
+///
+/// Constants are injected as synthetic columns (e.g., `'value' AS __ggsql_const_color__`).
+/// Also applies statistical transformations for geoms that need them
+/// (e.g., histogram binning, bar counting).
+///
+/// Returns:
+/// - `Ok(Some(query))` - execute this query and store result
+/// - `Ok(None)` - layer uses `__global__` directly (no source, no filter, no constants, no stat transform)
+/// - `Err(...)` - validation error (e.g., filter without global data)
+///
+/// Note: This function takes `&mut Layer` because stat transforms may add new aesthetic mappings
+/// (e.g., mapping y to `__ggsql_stat__count` for histogram or bar count).
+///
+/// Pre-stat transforms are applied (e.g., binning for Binned scales) before stat transforms.
 fn build_layer_query<F>(
     layer: &mut Layer,
     schema: &Schema,
