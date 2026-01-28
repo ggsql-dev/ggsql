@@ -624,13 +624,14 @@ module.exports = grammar({
       $.boolean
     ),
 
-    // SCALE clause - SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...]
+    // SCALE clause - SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]
     // Examples:
     //   SCALE DATE x
     //   SCALE CONTINUOUS y FROM [0, 100]
     //   SCALE DISCRETE color FROM ['A', 'B'] TO ['red', 'blue']
     //   SCALE color TO viridis
     //   SCALE x FROM [0, 100] SETTING breaks => '1 month'
+    //   SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
     scale_clause: $ => seq(
       caseInsensitive('SCALE'),
       optional($.scale_type_identifier),  // optional type before aesthetic
@@ -638,7 +639,22 @@ module.exports = grammar({
       optional($.scale_from_clause),
       optional($.scale_to_clause),
       optional($.scale_via_clause),
-      optional($.setting_clause)  // reuse existing setting_clause from DRAW
+      optional($.setting_clause),  // reuse existing setting_clause from DRAW
+      optional($.scale_renaming_clause)  // custom label mappings
+    ),
+
+    // RENAMING clause for custom axis/legend labels
+    // Syntax: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'C' => NULL
+    scale_renaming_clause: $ => seq(
+      caseInsensitive('RENAMING'),
+      $.renaming_assignment,
+      repeat(seq(',', $.renaming_assignment))
+    ),
+
+    renaming_assignment: $ => seq(
+      field('from', choice($.string, $.number)),  // Accept string or number keys
+      '=>',
+      field('to', choice($.string, $.null_literal))  // String label or NULL to suppress
     ),
 
     // Scale types - describe the nature of the data

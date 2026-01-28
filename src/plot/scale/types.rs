@@ -11,13 +11,14 @@ use super::transform::Transform;
 
 /// Scale configuration (from SCALE clause)
 ///
-/// New syntax: `SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...]`
+/// New syntax: `SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]`
 ///
 /// Examples:
 /// - `SCALE DATE x`
 /// - `SCALE CONTINUOUS y FROM [0, 100]`
 /// - `SCALE DISCRETE color FROM ['A', 'B'] TO ['red', 'blue']`
 /// - `SCALE color TO viridis`
+/// - `SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scale {
     /// The aesthetic this scale applies to
@@ -41,6 +42,11 @@ pub struct Scale {
     /// Used to skip re-resolution of pre-resolved scales (e.g., Binned scales)
     #[serde(default)]
     pub resolved: bool,
+    /// Label mappings for custom axis/legend labels (RENAMING clause)
+    /// Maps raw data values to display labels. `None` value suppresses the label.
+    /// Example: `RENAMING 'A' => 'Alpha', 'internal' => NULL`
+    #[serde(default)]
+    pub label_mapping: Option<HashMap<String, Option<String>>>,
 }
 
 impl Scale {
@@ -54,6 +60,7 @@ impl Scale {
             transform: None,
             properties: HashMap::new(),
             resolved: false,
+            label_mapping: None,
         }
     }
 }

@@ -30,6 +30,40 @@ use polars::prelude::*;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 
+/// Build a Vega-Lite labelExpr from label mappings
+///
+/// Generates a conditional expression that renames or suppresses labels:
+/// - `Some(label)` → rename to that label
+/// - `None` → suppress label (empty string)
+///
+/// Example output: `"datum.label == 'A' ? 'Alpha' : datum.label == 'B' ? 'Beta' : datum.label"`
+fn build_label_expr(mappings: &HashMap<String, Option<String>>) -> String {
+    if mappings.is_empty() {
+        return "datum.label".to_string();
+    }
+
+    let mut parts: Vec<String> = mappings
+        .iter()
+        .map(|(from, to)| {
+            let from_escaped = from.replace('\'', "\\'");
+            match to {
+                Some(label) => {
+                    let to_escaped = label.replace('\'', "\\'");
+                    format!("datum.label == '{}' ? '{}'", from_escaped, to_escaped)
+                }
+                None => {
+                    // NULL suppresses the label (empty string)
+                    format!("datum.label == '{}' ? ''", from_escaped)
+                }
+            }
+        })
+        .collect();
+
+    // Fallback to original label
+    parts.push("datum.label".to_string());
+    parts.join(" : ")
+}
+
 /// Vega-Lite JSON writer
 ///
 /// Generates Vega-Lite v6 specifications from ggsql specs and data.
@@ -640,6 +674,35 @@ impl VegaLiteWriter {
                                     legend_map.insert("values".to_string(), json!(values));
                                 } else {
                                     encoding["legend"] = json!({"values": values});
+                                }
+                            }
+                        }
+                    }
+
+                    // Handle label_mapping -> labelExpr (RENAMING clause)
+                    if let Some(ref label_mapping) = scale.label_mapping {
+                        if !label_mapping.is_empty() {
+                            let label_expr = build_label_expr(label_mapping);
+
+                            if matches!(
+                                aesthetic,
+                                "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
+                            ) {
+                                // Add to axis object
+                                let axis = encoding.get_mut("axis").and_then(|v| v.as_object_mut());
+                                if let Some(axis_map) = axis {
+                                    axis_map.insert("labelExpr".to_string(), json!(label_expr));
+                                } else {
+                                    encoding["axis"] = json!({"labelExpr": label_expr});
+                                }
+                            } else {
+                                // Add to legend object for non-positional aesthetics
+                                let legend =
+                                    encoding.get_mut("legend").and_then(|v| v.as_object_mut());
+                                if let Some(legend_map) = legend {
+                                    legend_map.insert("labelExpr".to_string(), json!(label_expr));
+                                } else {
+                                    encoding["legend"] = json!({"labelExpr": label_expr});
                                 }
                             }
                         }
@@ -4775,5 +4838,158 @@ mod tests {
         assert_eq!(axis_values[0], 0.0);
         assert_eq!(axis_values[1], 50.0);
         assert_eq!(axis_values[2], 100.0);
+    }
+
+    // ========================================
+    // RENAMING clause / labelExpr tests
+    // ========================================
+
+    #[test]
+    fn test_scale_renaming_generates_axis_label_expr() {
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::bar())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("cat".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("val".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add scale with RENAMING
+        let mut scale = Scale::new("x");
+        let mut label_mapping = std::collections::HashMap::new();
+        label_mapping.insert("A".to_string(), Some("Alpha".to_string()));
+        label_mapping.insert("B".to_string(), Some("Beta".to_string()));
+        scale.label_mapping = Some(label_mapping);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "cat" => &["A", "B"],
+            "val" => &[10, 20],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that axis.labelExpr is generated
+        let label_expr = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["labelExpr"];
+        assert!(label_expr.is_string(), "axis.labelExpr should be a string");
+        let expr = label_expr.as_str().unwrap();
+        assert!(
+            expr.contains("datum.label"),
+            "labelExpr should reference datum.label"
+        );
+        assert!(
+            expr.contains("Alpha"),
+            "labelExpr should contain renamed label"
+        );
+        assert!(
+            expr.contains("Beta"),
+            "labelExpr should contain renamed label"
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_generates_legend_label_expr() {
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "color".to_string(),
+                AestheticValue::standard_column("cat".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add scale with RENAMING for color (legend)
+        let mut scale = Scale::new("color");
+        let mut label_mapping = std::collections::HashMap::new();
+        label_mapping.insert("cat_a".to_string(), Some("Category A".to_string()));
+        label_mapping.insert("cat_b".to_string(), Some("Category B".to_string()));
+        scale.label_mapping = Some(label_mapping);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2],
+            "y" => &[3, 4],
+            "cat" => &["cat_a", "cat_b"],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that legend.labelExpr is generated
+        let label_expr = &vl_spec["layer"][0]["encoding"]["color"]["legend"]["labelExpr"];
+        assert!(
+            label_expr.is_string(),
+            "legend.labelExpr should be a string"
+        );
+        let expr = label_expr.as_str().unwrap();
+        assert!(
+            expr.contains("Category A"),
+            "labelExpr should contain renamed label"
+        );
+        assert!(
+            expr.contains("Category B"),
+            "labelExpr should contain renamed label"
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_with_null_suppresses_label() {
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::bar())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("cat".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("val".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add scale with RENAMING including NULL suppression
+        let mut scale = Scale::new("x");
+        let mut label_mapping = std::collections::HashMap::new();
+        label_mapping.insert("visible".to_string(), Some("Shown".to_string()));
+        label_mapping.insert("internal".to_string(), None); // NULL -> suppress
+        scale.label_mapping = Some(label_mapping);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "cat" => &["visible", "internal"],
+            "val" => &[10, 20],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that axis.labelExpr handles NULL (empty string)
+        let label_expr = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["labelExpr"];
+        let expr = label_expr.as_str().unwrap();
+        // NULL should result in empty string
+        assert!(
+            expr.contains("? ''"),
+            "NULL suppression should produce empty string"
+        );
     }
 }

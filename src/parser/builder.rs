@@ -614,7 +614,7 @@ fn parse_literal_value(node: &Node, source: &str) -> Result<AestheticValue> {
 }
 
 /// Build a Scale from a scale_clause node
-/// New syntax: SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...]
+/// New syntax: SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]
 fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     let mut aesthetic = String::new();
     let mut scale_type: Option<ScaleType> = None;
@@ -622,11 +622,12 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     let mut output_range: Option<OutputRange> = None;
     let mut transform: Option<Transform> = None;
     let mut properties = HashMap::new();
+    let mut label_mapping: Option<HashMap<String, Option<String>>> = None;
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "SCALE" | "SETTING" | "=>" | "," | "FROM" | "TO" | "VIA" => continue, // Skip keywords
+            "SCALE" | "SETTING" | "=>" | "," | "FROM" | "TO" | "VIA" | "RENAMING" => continue, // Skip keywords
             "scale_type_identifier" => {
                 // Parse scale type: CONTINUOUS, DISCRETE, BINNED, DATE, DATETIME
                 let type_text = get_node_text(&child, source);
@@ -650,6 +651,10 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
             "setting_clause" => {
                 // Reuse existing setting_clause parser
                 properties = parse_setting_clause(&child, source)?;
+            }
+            "scale_renaming_clause" => {
+                // Parse RENAMING 'A' => 'Alpha', 'B' => 'Beta'
+                label_mapping = Some(parse_scale_renaming_clause(&child, source)?);
             }
             _ => {}
         }
@@ -687,6 +692,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
         transform,
         properties,
         resolved: false,
+        label_mapping,
     })
 }
 
@@ -756,6 +762,59 @@ fn parse_scale_via_clause(node: &Node, source: &str) -> Result<Option<Transform>
         }
     }
     Ok(None)
+}
+
+/// Parse RENAMING clause: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'internal' => NULL
+///
+/// Returns a HashMap where:
+/// - Key: original value (string representation)
+/// - Value: Some(label) for renamed labels, None for suppressed labels (NULL)
+fn parse_scale_renaming_clause(
+    node: &Node,
+    source: &str,
+) -> Result<HashMap<String, Option<String>>> {
+    let mut mappings = HashMap::new();
+    let mut cursor = node.walk();
+
+    for child in node.children(&mut cursor) {
+        if child.kind() == "renaming_assignment" {
+            let mut from_value: Option<String> = None;
+            let mut to_value: Option<Option<String>> = None; // None = not set, Some(None) = NULL
+
+            let mut assignment_cursor = child.walk();
+            for assignment_child in child.children(&mut assignment_cursor) {
+                match assignment_child.kind() {
+                    "string" => {
+                        let text = get_node_text(&assignment_child, source);
+                        let unquoted = text.trim_matches(|c| c == '\'' || c == '"').to_string();
+                        if from_value.is_none() {
+                            from_value = Some(unquoted);
+                        } else {
+                            to_value = Some(Some(unquoted));
+                        }
+                    }
+                    "number" => {
+                        // Handle numeric keys for continuous/binned scales
+                        let text = get_node_text(&assignment_child, source);
+                        if from_value.is_none() {
+                            from_value = Some(text);
+                        }
+                    }
+                    "null_literal" => {
+                        // NULL suppresses the label
+                        to_value = Some(None);
+                    }
+                    _ => {}
+                }
+            }
+
+            if let (Some(from), Some(to)) = (from_value, to_value) {
+                mappings.insert(from, to);
+            }
+        }
+    }
+
+    Ok(mappings)
 }
 
 /// Parse an array node into Vec<ArrayElement>
@@ -3253,5 +3312,142 @@ mod tests {
         assert_eq!(scales[0].aesthetic, "x");
         assert!(scales[0].transform.is_some());
         assert_eq!(scales[0].transform.as_ref().unwrap().name(), "date");
+    }
+
+    // ========================================
+    // RENAMING clause tests
+    // ========================================
+
+    #[test]
+    fn test_scale_renaming_basic() {
+        // Basic RENAMING clause with string keys
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW bar
+            SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "x");
+
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(label_mapping.len(), 2);
+        assert_eq!(label_mapping.get("A"), Some(&Some("Alpha".to_string())));
+        assert_eq!(label_mapping.get("B"), Some(&Some("Beta".to_string())));
+    }
+
+    #[test]
+    fn test_scale_renaming_with_null() {
+        // RENAMING with NULL to suppress labels
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW bar
+            SCALE DISCRETE x RENAMING 'internal' => NULL, 'visible' => 'Shown'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+
+        assert_eq!(label_mapping.get("internal"), Some(&None)); // NULL -> None
+        assert_eq!(
+            label_mapping.get("visible"),
+            Some(&Some("Shown".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_with_numeric_keys() {
+        // RENAMING with numeric keys (for binned scales)
+        let query = r#"
+            VISUALISE temp AS x, count AS y
+            DRAW bar
+            SCALE BINNED x RENAMING 0 => '0-10', 10 => '10-20', 20 => '20-30'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+
+        assert_eq!(label_mapping.len(), 3);
+        assert_eq!(label_mapping.get("0"), Some(&Some("0-10".to_string())));
+        assert_eq!(label_mapping.get("10"), Some(&Some("10-20".to_string())));
+        assert_eq!(label_mapping.get("20"), Some(&Some("20-30".to_string())));
+    }
+
+    #[test]
+    fn test_scale_renaming_for_color_legend() {
+        // RENAMING for color legend labels
+        let query = r#"
+            VISUALISE x, y, category AS color
+            DRAW point
+            SCALE DISCRETE color RENAMING 'cat_a' => 'Category A', 'cat_b' => 'Category B'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "color");
+
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(
+            label_mapping.get("cat_a"),
+            Some(&Some("Category A".to_string()))
+        );
+        assert_eq!(
+            label_mapping.get("cat_b"),
+            Some(&Some("Category B".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_with_setting() {
+        // RENAMING combined with SETTING
+        let query = r#"
+            VISUALISE x, y
+            DRAW bar
+            SCALE DISCRETE x SETTING reverse => true RENAMING 'A' => 'First', 'B' => 'Second'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        // Check SETTING was parsed
+        assert_eq!(
+            scales[0].properties.get("reverse"),
+            Some(&ParameterValue::Boolean(true))
+        );
+
+        // Check RENAMING was parsed
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(label_mapping.get("A"), Some(&Some("First".to_string())));
+        assert_eq!(label_mapping.get("B"), Some(&Some("Second".to_string())));
+    }
+
+    #[test]
+    fn test_scale_renaming_with_from_to() {
+        // RENAMING combined with FROM and TO clauses
+        let query = r#"
+            VISUALISE x, y, cat AS color
+            DRAW point
+            SCALE DISCRETE color FROM ['A', 'B'] TO ['red', 'blue']
+                RENAMING 'A' => 'Option A', 'B' => 'Option B'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        // Check FROM was parsed
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+
+        // Check TO was parsed
+        assert!(scales[0].output_range.is_some());
+
+        // Check RENAMING was parsed
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(label_mapping.get("A"), Some(&Some("Option A".to_string())));
     }
 }
