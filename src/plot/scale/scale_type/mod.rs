@@ -196,7 +196,10 @@ fn compute_column_range_multi(columns: &[&Column]) -> Option<Vec<ArrayElement>> 
 /// Merge user-provided range with context-computed range.
 ///
 /// Replaces Null values in user_range with corresponding values from context_range.
-fn merge_with_context(user_range: &[ArrayElement], context_range: &[ArrayElement]) -> Vec<ArrayElement> {
+fn merge_with_context(
+    user_range: &[ArrayElement],
+    context_range: &[ArrayElement],
+) -> Vec<ArrayElement> {
     user_range
         .iter()
         .enumerate()
@@ -248,7 +251,6 @@ fn compute_unique_values_multi(columns: &[&Column]) -> Vec<ArrayElement> {
         .map(ArrayElement::String)
         .collect()
 }
-
 
 /// Enum of all scale types for pattern matching and serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -595,8 +597,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         scale.properties = self.resolve_properties(aesthetic, &scale.properties)?;
 
         // 2. Resolve transform from context dtype and aesthetic
-        let resolved_transform =
-            self.resolve_transform(aesthetic, None, context.dtype.as_ref())?;
+        let resolved_transform = self.resolve_transform(aesthetic, None, context.dtype.as_ref())?;
         scale.transform = Some(resolved_transform);
 
         // 3. Resolve input range
@@ -630,10 +631,9 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                     &scale.properties,
                     scale.transform.as_ref(),
                 ) {
-                    scale.properties.insert(
-                        "breaks".to_string(),
-                        ParameterValue::Array(breaks),
-                    );
+                    scale
+                        .properties
+                        .insert("breaks".to_string(), ParameterValue::Array(breaks));
                 }
             }
             // If breaks is already Array, user provided it - leave as-is

@@ -752,7 +752,7 @@ mod integration_tests {
         let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
-        // Both layers should have color field-mapped to their indexed constant columns
+        // Both layers should have stroke field-mapped to their indexed constant columns
         assert_eq!(vl_spec["layer"].as_array().unwrap().len(), 2);
         assert_eq!(
             vl_spec["layer"][0]["encoding"]["stroke"]["field"]

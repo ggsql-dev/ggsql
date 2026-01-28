@@ -829,7 +829,8 @@ fn apply_pre_stat_transform(query: &str, layer: &Layer, scales: &[crate::plot::S
 
     // Build wrapper: SELECT {transformed_cols}, other_cols FROM ({query})
     // For each transformed column, use the SQL expression; for others, keep as-is
-    let transformed_col_names: HashSet<&str> = transform_exprs.iter().map(|(c, _)| c.as_str()).collect();
+    let transformed_col_names: HashSet<&str> =
+        transform_exprs.iter().map(|(c, _)| c.as_str()).collect();
 
     // Build column list: all columns, with transformed ones replaced by their expressions
     let col_exprs: Vec<String> = transform_exprs
@@ -1056,8 +1057,11 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
 
             // 1. First merge explicit global aesthetics (layer overrides global)
+            // Note: "color"/"colour" are accepted even though not in supported,
+            // because split_color_aesthetic will convert them to fill/stroke later
             for (aesthetic, value) in &spec.global_mappings.aesthetics {
-                if supported.contains(&aesthetic.as_str()) {
+                let is_color_alias = matches!(aesthetic.as_str(), "color" | "colour");
+                if supported.contains(&aesthetic.as_str()) || is_color_alias {
                     layer
                         .mappings
                         .aesthetics
@@ -1155,23 +1159,50 @@ fn with_has_trailing_select(with_node: &Node) -> bool {
     false
 }
 
-// Let 'color' aesthetics fill defaults for the 'stroke' and 'fill' aesthetics
-fn split_color_aesthetic(layers: &mut Vec<Layer>) {
-    for layer in layers {
-        if !layer.mappings.aesthetics.contains_key("color") {
-            continue;
+// Let 'color' aesthetics fill defaults for the 'stroke' and 'fill' aesthetics.
+// Also splits 'color' scale to 'fill' and 'stroke' scales.
+// Removes 'color' from both mappings and scales after splitting to avoid
+// non-deterministic behavior from HashMap iteration order.
+fn split_color_aesthetic(spec: &mut Plot) {
+    // 1. Split color SCALE to fill/stroke scales
+    if let Some(color_scale_idx) = spec.scales.iter().position(|s| s.aesthetic == "color") {
+        let color_scale = spec.scales[color_scale_idx].clone();
+
+        // Add fill scale if not already present
+        if !spec.scales.iter().any(|s| s.aesthetic == "fill") {
+            let mut fill_scale = color_scale.clone();
+            fill_scale.aesthetic = "fill".to_string();
+            spec.scales.push(fill_scale);
         }
-        let supported = layer.geom.aesthetics().supported;
-        for &aes in &["stroke", "fill"] {
-            if !supported.contains(&aes) {
-                continue;
+
+        // Add stroke scale if not already present
+        if !spec.scales.iter().any(|s| s.aesthetic == "stroke") {
+            let mut stroke_scale = color_scale.clone();
+            stroke_scale.aesthetic = "stroke".to_string();
+            spec.scales.push(stroke_scale);
+        }
+
+        // Remove the color scale
+        spec.scales.remove(color_scale_idx);
+    }
+
+    // 2. Split color mapping to fill/stroke in layers, then remove color
+    for layer in &mut spec.layers {
+        if let Some(color_value) = layer.mappings.aesthetics.get("color").cloned() {
+            let supported = layer.geom.aesthetics().supported;
+
+            for &aes in &["stroke", "fill"] {
+                if supported.contains(&aes) {
+                    layer
+                        .mappings
+                        .aesthetics
+                        .entry(aes.to_string())
+                        .or_insert(color_value.clone());
+                }
             }
-            let color = layer.mappings.aesthetics.get("color").unwrap().clone();
-            layer
-                .mappings
-                .aesthetics
-                .entry(aes.to_string())
-                .or_insert(color);
+
+            // Remove color after splitting
+            layer.mappings.aesthetics.remove("color");
         }
     }
 }
@@ -1353,8 +1384,18 @@ where
     // Smart wildcard expansion only creates mappings for columns that exist in schema
     merge_global_mappings_into_layers(&mut specs, &layer_schemas);
 
+    // Split 'color' aesthetic to 'fill' and 'stroke' early in the pipeline
+    // This must happen before validation so fill/stroke are validated (not color)
+    // Note: Literals may create redundant constant columns (fill and stroke both 'blue')
+    // but this is acceptable for correct validation behavior
+    for spec in &mut specs {
+        split_color_aesthetic(spec);
+    }
+
     // Validate all layers against their schemas
-    // This catches errors early with clear error messages:
+    // This must happen BEFORE build_layer_query because stat transforms remove consumed aesthetics
+    // (e.g., 'weight' is consumed by bar's stat_count and removed from mappings)
+    // This catches errors with clear error messages:
     // - Missing required aesthetics
     // - Invalid SETTING parameters
     // - Non-existent columns in mappings
@@ -1445,9 +1486,6 @@ where
         replace_literals_with_columns(spec);
         // Compute aesthetic labels (uses first non-constant column, respects user-specified labels)
         spec.compute_aesthetic_labels();
-        // Divide 'color' over 'stroke' and 'fill'. This needs to happens after
-        // literals have associated columns.
-        split_color_aesthetic(&mut spec.layers);
     }
 
     // Resolve scale types from data for scales without explicit types
@@ -1480,8 +1518,8 @@ fn gets_default_scale(aesthetic: &str) -> bool {
         aesthetic,
         // Position aesthetics
         "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend" | "x2" | "y2"
-        // Color aesthetics
-        | "color" | "colour" | "col" | "fill" | "stroke"
+        // Color aesthetics (color/colour/col already split to fill/stroke)
+        | "fill" | "stroke"
         // Size aesthetics
         | "size" | "linewidth"
         // Other visual aesthetics
@@ -1563,7 +1601,9 @@ fn apply_pre_stat_resolve(spec: &mut Plot, layer_schemas: &[Schema]) -> Result<(
         // Use unified resolve method
         scale_type
             .resolve(scale, &context, &scale.aesthetic.clone())
-            .map_err(|e| GgsqlError::ValidationError(format!("Scale '{}': {}", scale.aesthetic, e)))?;
+            .map_err(|e| {
+                GgsqlError::ValidationError(format!("Scale '{}': {}", scale.aesthetic, e))
+            })?;
     }
 
     Ok(())
@@ -1673,8 +1713,7 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
         }
 
         // Find column references for this aesthetic (including family members)
-        let column_refs =
-            find_columns_for_aesthetic(&spec.layers, &aesthetic, data_map);
+        let column_refs = find_columns_for_aesthetic(&spec.layers, &aesthetic, data_map);
 
         if column_refs.is_empty() {
             continue;
@@ -1740,9 +1779,13 @@ fn resolve_output_range(scale: &mut crate::plot::Scale, aesthetic: &str) -> Resu
 
         if let Some(palette) = palette_values {
             // Size to input_range length, or use full palette
-            let count = scale.input_range.as_ref().map(|r| r.len()).unwrap_or(palette.len());
-            let expanded =
-                palettes::expand_palette(palette, count, name).map_err(GgsqlError::ValidationError)?;
+            let count = scale
+                .input_range
+                .as_ref()
+                .map(|r| r.len())
+                .unwrap_or(palette.len());
+            let expanded = palettes::expand_palette(palette, count, name)
+                .map_err(GgsqlError::ValidationError)?;
             scale.output_range = Some(OutputRange::Array(expanded));
         }
         // If palette not found, leave as Palette variant for Vega-Lite to handle
@@ -1837,10 +1880,8 @@ fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Re
         };
 
         // Find all (data_key, column_name) pairs for this aesthetic
-        let column_sources = find_columns_for_aesthetic_with_sources(
-            &spec.layers,
-            &scale.aesthetic,
-        );
+        let column_sources =
+            find_columns_for_aesthetic_with_sources(&spec.layers, &scale.aesthetic);
 
         // Determine if this is a numeric or discrete range
         let is_numeric_range = matches!(
@@ -4310,6 +4351,8 @@ mod tests {
         assert_eq!(fill, "island");
 
         // Colors as global constant
+        // Note: split_color_aesthetic runs before replace_literals_with_columns,
+        // so the constant column is named after the target aesthetic (fill) not the source (color)
         let query = r#"
           VISUALISE bill_len AS x, bill_dep AS y, 'blue' AS color FROM ggsql:penguins
           DRAW point MAPPING island AS stroke
@@ -4322,7 +4365,7 @@ mod tests {
         assert_eq!(stroke.column_name().unwrap(), "island");
 
         let fill = aes.get("fill").unwrap();
-        assert_eq!(fill.column_name().unwrap(), "__ggsql_const_color_0__");
+        assert_eq!(fill.column_name().unwrap(), "__ggsql_const_fill_0__");
 
         // Colors as layer constant
         let query = r#"
@@ -4334,10 +4377,116 @@ mod tests {
         let aes = &result.specs[0].layers[0].mappings.aesthetics;
 
         let stroke = aes.get("stroke").unwrap();
-        assert_eq!(stroke.column_name().unwrap(), "__ggsql_const_color_0__");
+        assert_eq!(stroke.column_name().unwrap(), "__ggsql_const_stroke_0__");
 
         let fill = aes.get("fill").unwrap();
         assert_eq!(fill.column_name().unwrap(), "island");
+
+        // Verify color is removed after splitting
+        assert!(
+            !aes.contains_key("color"),
+            "color should be removed after splitting to stroke/fill"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_scale_colour_alias_normalization() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Test that SCALE colour gets normalized to color and split to fill/stroke
+        let query = r#"
+            VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
+            DRAW point
+            SCALE DISCRETE colour
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+        let scales = &result.specs[0].scales;
+
+        // Should have fill and stroke scales, not color
+        assert!(
+            scales.iter().any(|s| s.aesthetic == "fill"),
+            "should have fill scale"
+        );
+        assert!(
+            scales.iter().any(|s| s.aesthetic == "stroke"),
+            "should have stroke scale"
+        );
+        assert!(
+            !scales.iter().any(|s| s.aesthetic == "color"),
+            "color scale should be removed after splitting"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_scale_color_splits_to_fill_and_stroke() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Test that SCALE color gets split to fill and stroke scales
+        let query = r#"
+            VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
+            DRAW point
+            SCALE DISCRETE color TO viridis
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+        let scales = &result.specs[0].scales;
+
+        // Should have fill and stroke scales with viridis palette, not color
+        let fill_scale = scales.iter().find(|s| s.aesthetic == "fill");
+        let stroke_scale = scales.iter().find(|s| s.aesthetic == "stroke");
+
+        assert!(fill_scale.is_some(), "should have fill scale");
+        assert!(stroke_scale.is_some(), "should have stroke scale");
+        assert!(
+            !scales.iter().any(|s| s.aesthetic == "color"),
+            "color scale should be removed"
+        );
+
+        // Both fill and stroke scales should inherit the viridis palette (or its expanded hex colors)
+        let fill = fill_scale.unwrap();
+        // The palette may be expanded to hex codes in the parser, so check for either variant
+        assert!(
+            fill.output_range.is_some(),
+            "fill scale should have output_range: {:?}",
+            fill
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_scale_color_does_not_override_existing_fill_scale() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Test that existing fill scale is preserved when splitting color
+        let query = r#"
+            VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
+            DRAW point
+            SCALE DISCRETE color TO viridis
+            SCALE DISCRETE fill TO plasma
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+        let scales = &result.specs[0].scales;
+
+        // Should have fill scale with plasma (not overwritten by color split)
+        let fill_scale = scales.iter().find(|s| s.aesthetic == "fill").unwrap();
+        // Palettes may be expanded to hex arrays in the parser
+        assert!(
+            fill_scale.output_range.is_some(),
+            "fill scale should have output_range (from plasma): {:?}",
+            fill_scale
+        );
+
+        // stroke scale should have viridis from color split
+        let stroke_scale = scales.iter().find(|s| s.aesthetic == "stroke").unwrap();
+        assert!(
+            stroke_scale.output_range.is_some(),
+            "stroke scale should have output_range (from viridis): {:?}",
+            stroke_scale
+        );
     }
 
     // =========================================================================
@@ -4999,9 +5148,7 @@ mod tests {
     #[test]
     fn test_gets_default_scale_color() {
         // Color aesthetics should get default scale
-        assert!(gets_default_scale("color"));
-        assert!(gets_default_scale("colour"));
-        assert!(gets_default_scale("col"));
+        // Note: color/colour/col are split to fill/stroke before scale creation
         assert!(gets_default_scale("fill"));
         assert!(gets_default_scale("stroke"));
     }

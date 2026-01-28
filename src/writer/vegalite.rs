@@ -547,14 +547,13 @@ impl VegaLiteWriter {
     /// Map ggsql aesthetic name to Vega-Lite encoding channel name
     fn map_aesthetic_name(&self, aesthetic: &str) -> String {
         match aesthetic {
-            // Color aesthetics
-            "fill" => "color",
-            "colour" => "color",
             // Line aesthetics
             "linetype" => "strokeDash",
             "linewidth" => "strokeWidth",
             // Text aesthetics
             "label" => "text",
+            // All other aesthetics pass through directly
+            // (fill and stroke map to Vega-Lite's separate fill/stroke channels)
             _ => aesthetic,
         }
         .to_string()
@@ -1452,16 +1451,16 @@ mod tests {
     #[test]
     fn test_aesthetic_name_mapping() {
         let writer = VegaLiteWriter::new();
-        // Pass-through aesthetics
+        // Pass-through aesthetics (including fill and stroke for separate color control)
         assert_eq!(writer.map_aesthetic_name("x"), "x");
         assert_eq!(writer.map_aesthetic_name("y"), "y");
         assert_eq!(writer.map_aesthetic_name("color"), "color");
+        assert_eq!(writer.map_aesthetic_name("fill"), "fill");
+        assert_eq!(writer.map_aesthetic_name("stroke"), "stroke");
         assert_eq!(writer.map_aesthetic_name("opacity"), "opacity");
         assert_eq!(writer.map_aesthetic_name("size"), "size");
         assert_eq!(writer.map_aesthetic_name("shape"), "shape");
         // Mapped aesthetics
-        assert_eq!(writer.map_aesthetic_name("fill"), "color");
-        assert_eq!(writer.map_aesthetic_name("colour"), "color");
         assert_eq!(writer.map_aesthetic_name("linetype"), "strokeDash");
         assert_eq!(writer.map_aesthetic_name("linewidth"), "strokeWidth");
         assert_eq!(writer.map_aesthetic_name("label"), "text");
@@ -1893,8 +1892,8 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        // 'fill' should be mapped to 'color' in Vega-Lite
-        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["field"], "region");
+        // 'fill' maps directly to Vega-Lite's 'fill' channel
+        assert_eq!(vl_spec["layer"][0]["encoding"]["fill"]["field"], "region");
     }
 
     #[test]
@@ -2796,7 +2795,7 @@ mod tests {
     }
 
     #[test]
-    fn test_guide_fill_maps_to_color() {
+    fn test_guide_fill_applies_to_fill_channel() {
         use crate::plot::{Guide, GuideType, ParameterValue};
 
         let writer = VegaLiteWriter::new();
@@ -2817,7 +2816,7 @@ mod tests {
             );
         spec.layers.push(layer);
 
-        // Add guide for fill (should map to color)
+        // Add guide for fill
         let mut properties = HashMap::new();
         properties.insert(
             "title".to_string(),
@@ -2839,10 +2838,10 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        // fill should be mapped to color channel
-        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["field"], "region");
+        // fill maps to Vega-Lite fill channel
+        assert_eq!(vl_spec["layer"][0]["encoding"]["fill"]["field"], "region");
         assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["legend"]["title"],
+            vl_spec["layer"][0]["encoding"]["fill"]["legend"]["title"],
             "Region"
         );
     }
@@ -3890,7 +3889,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_in_setting_literal_encoding() {
-        // Test that aesthetics in SETTING (e.g., SETTING color => 'red') are encoded as literals
+        // Test that aesthetics in SETTING (e.g., SETTING stroke => 'red') are encoded as literals
         let writer = VegaLiteWriter::new();
 
         let mut spec = Plot::new();
@@ -3904,7 +3903,7 @@ mod tests {
                 AestheticValue::standard_column("value".to_string()),
             )
             .with_parameter(
-                "color".to_string(),
+                "stroke".to_string(),
                 ParameterValue::String("red".to_string()),
             );
         spec.layers.push(layer);
@@ -3918,10 +3917,10 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        // Color should be encoded as a literal value
+        // Stroke should be encoded as a literal value in the stroke channel
         assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["value"], "red",
-            "SETTING color => 'red' should produce {{\"value\": \"red\"}}"
+            vl_spec["layer"][0]["encoding"]["stroke"]["value"], "red",
+            "SETTING stroke => 'red' should produce {{\"value\": \"red\"}} in stroke channel"
         );
     }
 
@@ -3980,11 +3979,11 @@ mod tests {
                 AestheticValue::standard_column("y".to_string()),
             )
             .with_aesthetic(
-                "color".to_string(),
+                "fill".to_string(),
                 AestheticValue::standard_column("category".to_string()),
             )
             .with_parameter(
-                "color".to_string(),
+                "fill".to_string(),
                 ParameterValue::String("red".to_string()),
             );
         spec.layers.push(layer);
@@ -3999,13 +3998,13 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        // Color should be field-mapped (from MAPPING), not value (from SETTING)
+        // Fill should be field-mapped (from MAPPING), not value (from SETTING)
         assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["field"], "category",
+            vl_spec["layer"][0]["encoding"]["fill"]["field"], "category",
             "MAPPING should take precedence over SETTING"
         );
         assert!(
-            vl_spec["layer"][0]["encoding"]["color"]["value"].is_null(),
+            vl_spec["layer"][0]["encoding"]["fill"]["value"].is_null(),
             "Should not have value encoding when MAPPING is present"
         );
     }

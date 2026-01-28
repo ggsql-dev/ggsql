@@ -137,7 +137,8 @@ impl ScaleTypeTrait for Binned {
         use super::super::palettes;
 
         match aesthetic {
-            "stroke" | "fill" | "colour" | "color" => {
+            // Note: "color"/"colour" already split to fill/stroke before scale resolution
+            "stroke" | "fill" => {
                 let palette = palettes::get_color_palette("sequential")
                     .ok_or_else(|| "Default color palette 'ggsql' not found".to_string())?;
                 Ok(Some(
@@ -246,10 +247,7 @@ impl ScaleTypeTrait for Binned {
         }
 
         // Build final CASE expression
-        Some(format!(
-            "(CASE {} ELSE NULL END)",
-            cases.join(" ")
-        ))
+        Some(format!("(CASE {} ELSE NULL END)", cases.join(" ")))
     }
 }
 

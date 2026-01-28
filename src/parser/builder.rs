@@ -633,7 +633,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
                 scale_type = Some(parse_scale_type_identifier(&type_text)?);
             }
             "aesthetic_name" => {
-                aesthetic = get_node_text(&child, source);
+                aesthetic = normalise_aes_name(&get_node_text(&child, source));
             }
             "scale_from_clause" => {
                 // Parse FROM [array] -> input_range
