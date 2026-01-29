@@ -1323,6 +1323,42 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_input_range_discrete_boolean_columns() {
+        use polars::prelude::*;
+
+        // Boolean column with both values
+        let col: Column = Series::new("flag".into(), &[true, false, true, false]).into();
+        let props = HashMap::new();
+
+        let result = ScaleType::discrete()
+            .resolve_input_range(None, &[&col], &props)
+            .unwrap();
+
+        // Should return ArrayElement::Boolean values in logical order [false, true]
+        assert_eq!(
+            result,
+            Some(vec![
+                ArrayElement::Boolean(false),
+                ArrayElement::Boolean(true),
+            ])
+        );
+
+        // Boolean column with only true values
+        let col_true_only: Column = Series::new("flag".into(), &[true, true]).into();
+        let result = ScaleType::discrete()
+            .resolve_input_range(None, &[&col_true_only], &props)
+            .unwrap();
+        assert_eq!(result, Some(vec![ArrayElement::Boolean(true)]));
+
+        // Boolean column with only false values
+        let col_false_only: Column = Series::new("flag".into(), &[false, false]).into();
+        let result = ScaleType::discrete()
+            .resolve_input_range(None, &[&col_false_only], &props)
+            .unwrap();
+        assert_eq!(result, Some(vec![ArrayElement::Boolean(false)]));
+    }
+
+    #[test]
     fn test_resolve_input_range_identity_rejects_range() {
         use polars::prelude::*;
         let col: Column = Series::new("x".into(), &[1.0f64]).into();

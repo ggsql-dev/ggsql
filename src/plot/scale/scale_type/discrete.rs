@@ -96,36 +96,82 @@ impl ScaleTypeTrait for Discrete {
 }
 
 /// Compute discrete input range as unique sorted values from Columns.
+///
+/// For boolean columns, returns `ArrayElement::Boolean` values in logical order `[false, true]`.
+/// For other column types, returns `ArrayElement::String` values sorted alphabetically.
 fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
-    let mut unique_values: Vec<String> = Vec::new();
+    if column_refs.is_empty() {
+        return None;
+    }
 
-    for column in column_refs {
-        let series = column.as_materialized_series();
-        if let Ok(unique) = series.unique() {
-            for i in 0..unique.len() {
-                if let Ok(val) = unique.get(i) {
-                    let s = val.to_string();
-                    if s != "null" {
-                        let clean = s.trim_matches('"').to_string();
-                        if !unique_values.contains(&clean) {
-                            unique_values.push(clean);
+    // Check if all columns are boolean
+    let all_boolean = column_refs
+        .iter()
+        .all(|c| c.dtype() == &DataType::Boolean);
+
+    if all_boolean {
+        // For boolean columns, return ArrayElement::Boolean values
+        // Order: [false, true] for consistency (logical order)
+        let mut has_false = false;
+        let mut has_true = false;
+
+        for column in column_refs {
+            if let Ok(ca) = column.as_materialized_series().bool() {
+                for val in ca.into_iter().flatten() {
+                    if val {
+                        has_true = true;
+                    } else {
+                        has_false = true;
+                    }
+                }
+            }
+        }
+
+        let mut result = Vec::new();
+        if has_false {
+            result.push(ArrayElement::Boolean(false));
+        }
+        if has_true {
+            result.push(ArrayElement::Boolean(true));
+        }
+
+        if result.is_empty() {
+            None
+        } else {
+            Some(result)
+        }
+    } else {
+        // String-based logic for other types (categorical, string)
+        let mut unique_values: Vec<String> = Vec::new();
+
+        for column in column_refs {
+            let series = column.as_materialized_series();
+            if let Ok(unique) = series.unique() {
+                for i in 0..unique.len() {
+                    if let Ok(val) = unique.get(i) {
+                        let s = val.to_string();
+                        if s != "null" {
+                            let clean = s.trim_matches('"').to_string();
+                            if !unique_values.contains(&clean) {
+                                unique_values.push(clean);
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
-    if unique_values.is_empty() {
-        None
-    } else {
-        unique_values.sort();
-        Some(
-            unique_values
-                .into_iter()
-                .map(ArrayElement::String)
-                .collect(),
-        )
+        if unique_values.is_empty() {
+            None
+        } else {
+            unique_values.sort();
+            Some(
+                unique_values
+                    .into_iter()
+                    .map(ArrayElement::String)
+                    .collect(),
+            )
+        }
     }
 }
 
