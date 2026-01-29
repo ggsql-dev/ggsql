@@ -34,9 +34,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use ggsql::{parser, validate, GgsqlError, VERSION};
 
 #[cfg(feature = "duckdb")]
-use ggsql::reader::DuckDBReader;
-#[cfg(feature = "duckdb")]
 use ggsql::prepare;
+#[cfg(feature = "duckdb")]
+use ggsql::reader::DuckDBReader;
 
 #[cfg(feature = "vegalite")]
 use ggsql::writer::VegaLiteWriter;
@@ -445,9 +445,9 @@ async fn query_handler(
         // Use shared reader or create new one
         let prepared = if request.reader == "duckdb://memory" && state.reader.is_some() {
             let reader_mutex = state.reader.as_ref().unwrap();
-            let reader = reader_mutex.lock().map_err(|e| {
-                GgsqlError::InternalError(format!("Failed to lock reader: {}", e))
-            })?;
+            let reader = reader_mutex
+                .lock()
+                .map_err(|e| GgsqlError::InternalError(format!("Failed to lock reader: {}", e)))?;
             prepare(&request.query, &*reader)?
         } else {
             let reader = DuckDBReader::from_connection_string(&request.reader)?;
