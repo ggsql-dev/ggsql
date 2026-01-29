@@ -17,6 +17,10 @@ The following aesthetics are recognised by the boxplot layer.
 * `fill`: The colour of the box interior.
 * `colour`: Shorthand for setting `stroke` and `fill` simultaneously. Note that the median line will have bad visibility if `stroke` and `fill` are the same.
 * `opacity`: The opacity of the box interior.
+* `linewidth` The width of the box outline, whiskers, median line and outlier stroke.
+* `linetype` The linetype of the box outline, whiskers, median line and outlier stroke.
+* `size` The absolute size of outlier points.
+* `shape` The shape of outlier points.
 
 ## Settings
 * `outliers`: Whether to display outliers as points. Defaults to `true`.

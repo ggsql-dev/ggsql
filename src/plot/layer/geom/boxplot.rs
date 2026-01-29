@@ -22,7 +22,19 @@ impl GeomTrait for Boxplot {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["x", "y", "color", "colour", "fill", "stroke", "opacity"],
+            supported: &[
+                "x",
+                "y",
+                "color",
+                "colour",
+                "fill",
+                "stroke",
+                "opacity",
+                "linetype",
+                "linewidth",
+                "size",
+                "shape",
+            ],
             required: &["x", "y"],
             // Internal aesthetics produced by stat transform
             hidden: &["ymin", "ymax", "y", "q1", "q3"],
@@ -547,7 +559,9 @@ mod tests {
         assert!(result.contains("summary_query"));
         assert!(result.contains("outliers AS ("));
         assert!(result.contains("UNION ALL"));
-        assert!(result.contains("UNPIVOT(value FOR type IN (min, max, median, q1, q3, upper, lower))"));
+        assert!(
+            result.contains("UNPIVOT(value FOR type IN (min, max, median, q1, q3, upper, lower))")
+        );
         assert!(result.contains(&format!("AS {}", naming::stat_column("value"))));
         assert!(result.contains(&format!("AS {}", naming::stat_column("type"))));
     }
@@ -765,10 +779,7 @@ mod tests {
         let result = set_boxplot_orientation(&aesthetics, &schema, &parameters);
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("'x' aesthetic"));
+        assert!(result.unwrap_err().to_string().contains("'x' aesthetic"));
     }
 
     #[test]
@@ -789,10 +800,7 @@ mod tests {
         let result = set_boxplot_orientation(&aesthetics, &schema, &parameters);
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("'y' aesthetic"));
+        assert!(result.unwrap_err().to_string().contains("'y' aesthetic"));
     }
 
     #[test]
@@ -885,7 +893,13 @@ mod tests {
         );
         parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
 
-        let result = stat_boxplot("SELECT * FROM data", &schema, &aesthetics, &groups, &parameters);
+        let result = stat_boxplot(
+            "SELECT * FROM data",
+            &schema,
+            &aesthetics,
+            &groups,
+            &parameters,
+        );
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("coef"));
@@ -901,7 +915,13 @@ mod tests {
         parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
         // Missing coef
 
-        let result = stat_boxplot("SELECT * FROM data", &schema, &aesthetics, &groups, &parameters);
+        let result = stat_boxplot(
+            "SELECT * FROM data",
+            &schema,
+            &aesthetics,
+            &groups,
+            &parameters,
+        );
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("coef"));
@@ -920,7 +940,13 @@ mod tests {
             ParameterValue::String("yes".to_string()),
         );
 
-        let result = stat_boxplot("SELECT * FROM data", &schema, &aesthetics, &groups, &parameters);
+        let result = stat_boxplot(
+            "SELECT * FROM data",
+            &schema,
+            &aesthetics,
+            &groups,
+            &parameters,
+        );
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("outliers"));
@@ -936,7 +962,13 @@ mod tests {
         parameters.insert("coef".to_string(), ParameterValue::Number(1.5));
         // Missing outliers
 
-        let result = stat_boxplot("SELECT * FROM data", &schema, &aesthetics, &groups, &parameters);
+        let result = stat_boxplot(
+            "SELECT * FROM data",
+            &schema,
+            &aesthetics,
+            &groups,
+            &parameters,
+        );
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("outliers"));
@@ -1002,11 +1034,15 @@ mod tests {
 
         // Find and verify coef param
         let coef_param = params.iter().find(|p| p.name == "coef").unwrap();
-        assert!(matches!(coef_param.default, DefaultParamValue::Number(v) if (v - 1.5).abs() < f64::EPSILON));
+        assert!(
+            matches!(coef_param.default, DefaultParamValue::Number(v) if (v - 1.5).abs() < f64::EPSILON)
+        );
 
         // Find and verify width param
         let width_param = params.iter().find(|p| p.name == "width").unwrap();
-        assert!(matches!(width_param.default, DefaultParamValue::Number(v) if (v - 0.9).abs() < f64::EPSILON));
+        assert!(
+            matches!(width_param.default, DefaultParamValue::Number(v) if (v - 0.9).abs() < f64::EPSILON)
+        );
 
         // Find and verify orientation param
         let orientation_param = params.iter().find(|p| p.name == "orientation").unwrap();

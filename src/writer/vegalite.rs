@@ -1309,7 +1309,7 @@ impl Writer for VegaLiteWriter {
 
 fn render_boxplot(
     data: &DataFrame,
-    prototype: Value,
+    mut prototype: Value,
     layer: &Layer,
     writer: &VegaLiteWriter,
     datasets: &mut Map<String, Value>,
@@ -1364,17 +1364,22 @@ fn render_boxplot(
         .map(|s| s.equal("outlier"))
         .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
 
-    let mut points: Option<Value> = None;
+    let mut outliers: Option<Value> = None;
     if is_outlier.any() {
-        let mut outliers = prototype.clone();
+        let mut points = prototype.clone();
 
         let outlier_data = data
             .filter(&is_outlier)
             .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
         let outlier_data = writer.dataframe_to_values(&outlier_data)?;
-        outliers["mark"] = json!({"type": "point"});
-        outliers["data"] = json!({"values": outlier_data});
-        points = Some(outliers);
+        points["data"] = json!({"values": outlier_data});
+        outliers = Some(points);
+    }
+
+    // 'size' and 'shape' apply only to points, not lines
+    if let Some(Value::Object(ref mut encoding)) = prototype.get_mut("encoding") {
+        encoding.remove("size");
+        encoding.remove("shape");
     }
 
     let summary = data
@@ -1418,21 +1423,38 @@ fn render_boxplot(
     }
     let default_stroke = "black"; // This is a temporary solution until we have proper geom defaults
     let default_fill = "#FFFFFF00"; // Setting these in the 'mark' will allow them to be overridden by encoding
+    let default_linewidth = 1.0;
 
-    lower_whiskers["mark"] = json!({"type": "rule", "stroke": default_stroke});
+    lower_whiskers["mark"] = json!({
+        "type": "rule",
+        "stroke": default_stroke,
+        "size": default_linewidth
+    });
     box_part["mark"] = json!({
         "type": "bar",
         "width": {"band": width},
         "align": "center",
         "stroke": default_stroke,
-        "color": default_fill
+        "color": default_fill,
+        "strokeWidth": default_linewidth
     });
     median_line["mark"] = json!({
         "type": "tick",
         "stroke": default_stroke,
         "width": {"band": width},
-        "align": "center"
+        "align": "center",
+        "strokeWidth": default_linewidth
     });
+    if let Some(ref mut points) = outliers {
+        points["mark"] = json!({
+            "type": "point",
+            "stroke": default_stroke,
+            "strokeWidth": default_linewidth
+        });
+        if points["encoding"].get("color").is_some() {
+            points["mark"]["filled"] = json!(true);
+        }
+    }
 
     // Build encodings for the 5 boxplot numbers
     let mut summary_encoding = HashMap::new();
@@ -1444,6 +1466,12 @@ fn render_boxplot(
     }
 
     // Set encodings
+    if let Some(linewidth) = lower_whiskers["encoding"].get("strokeWidth") {
+        lower_whiskers["encoding"]["size"] = linewidth.clone();
+        if let Some(Value::Object(ref mut encoding)) = lower_whiskers.get_mut("encoding") {
+            encoding.remove("strokeWidth");
+        }
+    }
     let mut upper_whiskers = lower_whiskers.clone();
     lower_whiskers["encoding"][value_var1] = summary_encoding["q1"].clone();
     lower_whiskers["encoding"][value_var2] = summary_encoding["lower"].clone();
@@ -1459,16 +1487,16 @@ fn render_boxplot(
         // This is simplified because we may later have to coordinate with other
         // layer types how dodging will work in general.
         let offset_val = json!({"field": dodge_groups[0]});
-        if let Some(ref mut point_layer) = points {
-            point_layer["encoding"][offset] = offset_val.clone();
+        if let Some(ref mut points) = outliers {
+            points["encoding"][offset] = offset_val.clone();
         }
         lower_whiskers["encoding"][offset] = offset_val.clone();
         upper_whiskers["encoding"][offset] = offset_val.clone();
         box_part["encoding"][offset] = offset_val.clone();
         median_line["encoding"][offset] = offset_val;
     }
-    if let Some(point_layer) = points {
-        layers.push(point_layer);
+    if let Some(points) = outliers {
+        layers.push(points);
     }
     layers.push(lower_whiskers);
     layers.push(upper_whiskers);
