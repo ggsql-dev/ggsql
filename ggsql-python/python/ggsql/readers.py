@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 import narwhals as nw
@@ -13,7 +14,122 @@ if TYPE_CHECKING:
     import polars as pl
     from ggsql._ggsql import Prepared
 
-__all__ = ["DuckDB"]
+__all__ = ["Reader", "DuckDB"]
+
+
+class Reader(ABC):
+    """Abstract base class for ggsql readers.
+
+    Custom reader implementations should subclass this and implement
+    the required abstract methods. The built-in `DuckDB` reader provides
+    a complete implementation.
+
+    Examples
+    --------
+    >>> from ggsql.readers import Reader
+    >>> import polars as pl
+    >>>
+    >>> class MyReader(Reader):
+    ...     def __init__(self):
+    ...         self._tables = {}
+    ...
+    ...     def execute(self, query: str, data=None) -> "Prepared":
+    ...         # Register tables, execute query, cleanup
+    ...         ...
+    ...
+    ...     def execute_sql(self, sql: str) -> pl.DataFrame:
+    ...         # Your SQL execution logic here
+    ...         return pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
+    ...
+    ...     def register(self, name: str, df) -> None:
+    ...         self._tables[name] = df
+    ...
+    ...     def unregister(self, name: str) -> None:
+    ...         self._tables.pop(name, None)
+    """
+
+    @abstractmethod
+    def execute(
+        self,
+        query: str,
+        data: dict[str, IntoDataFrame] | None = None,
+    ) -> "Prepared":
+        """Execute a ggsql query with optional DataFrame registration.
+
+        DataFrames should be registered before query execution and automatically
+        unregistered afterward (even on error) to avoid polluting the namespace.
+
+        Parameters
+        ----------
+        query
+            The ggsql query to execute. Must contain a VISUALISE clause.
+        data
+            DataFrames to register as queryable tables. Keys are table names.
+
+        Returns
+        -------
+        Prepared
+            A prepared visualization ready for rendering.
+
+        Raises
+        ------
+        NoVisualiseError
+            If the query has no VISUALISE clause.
+        """
+        ...
+
+    @abstractmethod
+    def execute_sql(self, sql: str) -> "pl.DataFrame":
+        """Execute a SQL query and return the result as a DataFrame.
+
+        This is for plain SQL queries without visualization. For ggsql queries
+        with VISUALISE clauses, use execute() instead.
+
+        Parameters
+        ----------
+        sql
+            The SQL query to execute.
+
+        Returns
+        -------
+        polars.DataFrame
+            The query result as a polars DataFrame.
+        """
+        ...
+
+    @abstractmethod
+    def register(self, name: str, df: IntoDataFrame) -> None:
+        """Register a DataFrame as a queryable table.
+
+        Parameters
+        ----------
+        name
+            The table name to register under.
+        df
+            The DataFrame to register.
+        """
+        ...
+
+    @abstractmethod
+    def unregister(self, name: str) -> None:
+        """Unregister a table by name.
+
+        Should fail silently if the table doesn't exist.
+
+        Parameters
+        ----------
+        name
+            The table name to unregister.
+        """
+        ...
+
+    def __enter__(self) -> "Reader":
+        """Enter context manager."""
+        return self
+
+    def __exit__(self, _exc_type, _exc_val, _exc_tb) -> None:
+        """Exit context manager."""
+        pass
 
 
 def _to_polars(df: IntoDataFrame) -> "pl.DataFrame":
@@ -29,7 +145,7 @@ def _to_polars(df: IntoDataFrame) -> "pl.DataFrame":
     return nw_df.to_polars()
 
 
-class DuckDB:
+class DuckDB(Reader):
     """DuckDB database reader for executing SQL queries and ggsql visualizations.
 
     Creates an in-memory or file-based DuckDB connection that can execute
