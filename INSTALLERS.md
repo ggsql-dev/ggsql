@@ -33,7 +33,6 @@ cargo packager --release --formats dmg     # Creates .dmg disk image
 # Linux
 cd src
 cargo packager --release --formats deb     # Creates .deb package (Debian/Ubuntu)
-cargo packager --release --formats rpm     # Creates .rpm package (Fedora/RHEL)
 cargo packager --release --formats appimage # Creates .AppImage (portable)
 ```
 
@@ -43,12 +42,11 @@ Output location: `src/target/release/packager/`
 
 | Platform | Format | Command | Output |
 |----------|--------|---------|--------|
-| **Windows** | NSIS | `--formats nsis` | `ggsql_0.1.0_x64-setup.exe` (22MB) |
-| **Windows** | MSI | `--formats wix` | `ggsql_0.1.0_x64_en-US.msi` (31MB) |
+| **Windows** | NSIS | `--formats nsis` | `ggsql_0.1.0_x64-setup.exe` (12MB) |
+| **Windows** | MSI | `--formats wix` | `ggsql_0.1.0_x64_en-US.msi` (15MB) |
 | **macOS** | DMG | `--formats dmg` | `ggsql_0.1.0_x64.dmg` |
 | **macOS** | App Bundle | `--formats app` | `ggsql.app` |
 | **Linux** | Debian | `--formats deb` | `ggsql_0.1.0_amd64.deb` |
-| **Linux** | RPM | `--formats rpm` | `ggsql-0.1.0-1.x86_64.rpm` |
 | **Linux** | AppImage | `--formats appimage` | `ggsql_0.1.0_amd64.AppImage` |
 
 ## What Gets Packaged

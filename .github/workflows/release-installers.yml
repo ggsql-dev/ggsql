@@ -165,11 +165,6 @@ jobs:
           cd src
           cargo packager --release --formats deb
 
-      - name: Build RPM package
-        run: |
-          cd src
-          cargo packager --release --formats rpm
-
       - name: Build AppImage
         run: |
           cd src
@@ -180,13 +175,6 @@ jobs:
         with:
           name: ggsql-linux-deb
           path: src/target/release/packager/*.deb
-          retention-days: 30
-
-      - name: Upload RPM package
-        uses: actions/upload-artifact@v4
-        with:
-          name: ggsql-linux-rpm
-          path: src/target/release/packager/*.rpm
           retention-days: 30
 
       - name: Upload AppImage
