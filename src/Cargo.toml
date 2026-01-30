@@ -90,7 +90,7 @@ icons = ["../doc/assets/logo.png"]
 license-file = "../LICENSE.md"
 out-dir = "target/release/packager"
 homepage = "https://ggsql.org/"
-short-description = "SQL extension for declarative data visualization"
+description = "SQL extension for declarative data visualization"
 long-description = "ggsql extends SQL with a VISUALISE clause for declarative data visualization based on Grammar of Graphics principles. Combine SQL queries with visualization specifications to create charts directly from your data."
 copyright = "Copyright (c) 2026 ggsql Team"
 
