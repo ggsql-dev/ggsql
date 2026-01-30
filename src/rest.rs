@@ -39,7 +39,7 @@ use ggsql::prepare;
 use ggsql::reader::DuckDBReader;
 
 #[cfg(feature = "vegalite")]
-use ggsql::writer::VegaLiteWriter;
+use ggsql::writer::{VegaLiteWriter, Writer};
 
 /// CLI arguments for the REST API server
 #[derive(Parser)]
@@ -196,6 +196,7 @@ impl From<GgsqlError> for ApiErrorResponse {
             GgsqlError::ReaderError(_) => (StatusCode::BAD_REQUEST, "ReaderError"),
             GgsqlError::WriterError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "WriterError"),
             GgsqlError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "InternalError"),
+            GgsqlError::NoVisualise => (StatusCode::BAD_REQUEST, "NoVisualise"),
         };
 
         ApiErrorResponse {
@@ -258,8 +259,7 @@ fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlE
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("data")
-            .replace('-', "_")
-            .replace(' ', "_");
+            .replace(['-', ' '], "_");
 
         info!("Loading {} into table '{}'", file_path, table_name);
 
@@ -572,6 +572,7 @@ async fn health_handler() -> Json<HealthResponse> {
 }
 
 /// GET /api/v1/version - Version information
+#[allow(clippy::vec_init_then_push)] // Feature-flag dependent pushes
 async fn version_handler() -> Json<VersionResponse> {
     let mut features = Vec::new();
 
