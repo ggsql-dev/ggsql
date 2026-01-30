@@ -2,11 +2,13 @@
 title: "Installing ggsql"
 ---
 
+<!-- UNCOMMENT THIS WHEN WE RELEASE
+
 ggsql provides native installers for Windows, macOS, and Linux. You can also build from source if you prefer.
 
 ## Native Installers
 
-Download the latest installer for your platform from the [GitHub Releases page](https://github.com/georgestagg/ggsql/releases).
+Download the latest installer for your platform from the [GitHub Releases page](https://github.com/posit-dev/ggsql/releases).
 
 ### Windows
 
@@ -58,6 +60,8 @@ The native installers include the **ggsql CLI** binary only. Additional componen
 - **REST API server**: `cargo install ggsql --features rest-api`
 - **Jupyter kernel**: `cargo install ggsql-jupyter`
 
+// -->
+
 ## Building from Source
 
 If you prefer to build from source or need the latest development version:
@@ -65,7 +69,7 @@ If you prefer to build from source or need the latest development version:
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/georgestagg/ggsql
+   git clone https://github.com/posit-dev/ggsql
    cd ggsql
    ```
 
