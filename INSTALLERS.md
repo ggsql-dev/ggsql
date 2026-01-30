@@ -33,7 +33,6 @@ cargo packager --release --formats dmg     # Creates .dmg disk image
 # Linux
 cd src
 cargo packager --release --formats deb     # Creates .deb package (Debian/Ubuntu)
-cargo packager --release --formats appimage # Creates .AppImage (portable)
 ```
 
 Output location: `src/target/release/packager/`
@@ -47,7 +46,6 @@ Output location: `src/target/release/packager/`
 | **macOS** | DMG | `--formats dmg` | `ggsql_0.1.0_x64.dmg` |
 | **macOS** | App Bundle | `--formats app` | `ggsql.app` |
 | **Linux** | Debian | `--formats deb` | `ggsql_0.1.0_amd64.deb` |
-| **Linux** | AppImage | `--formats appimage` | `ggsql_0.1.0_amd64.AppImage` |
 
 ## What Gets Packaged
 
@@ -88,7 +86,7 @@ git push origin v0.1.0
 
 The workflow (`.github/workflows/release-installers.yml`) will:
 
-1. **Build installers** for Windows (NSIS + MSI), macOS (DMG), and Linux (Deb + RPM + AppImage)
+1. **Build installers** for Windows (NSIS + MSI), macOS (DMG), and Linux (Deb)
 2. **Create a GitHub Release** with all installers attached
 3. **Generate release notes** automatically
 
@@ -120,17 +118,6 @@ You can also trigger builds manually from the Actions tab.
 **Debian/Ubuntu** (.deb):
 ```bash
 sudo dpkg -i ggsql_0.1.0_amd64.deb
-```
-
-**Fedora/RHEL** (.rpm):
-```bash
-sudo rpm -i ggsql-0.1.0-1.x86_64.rpm
-```
-
-**AppImage** (portable, no installation):
-```bash
-chmod +x ggsql_0.1.0_amd64.AppImage
-./ggsql_0.1.0_amd64.AppImage
 ```
 
 ## Testing Locally

@@ -165,23 +165,11 @@ jobs:
           cd src
           cargo packager --release --formats deb
 
-      - name: Build AppImage
-        run: |
-          cd src
-          cargo packager --release --formats appimage
-
       - name: Upload Debian package
         uses: actions/upload-artifact@v4
         with:
           name: ggsql-linux-deb
           path: src/target/release/packager/*.deb
-          retention-days: 30
-
-      - name: Upload AppImage
-        uses: actions/upload-artifact@v4
-        with:
-          name: ggsql-linux-appimage
-          path: src/target/release/packager/*.AppImage
           retention-days: 30
 
   create-release:
@@ -207,8 +195,6 @@ jobs:
             artifacts/**/*.msi
             artifacts/**/*.dmg
             artifacts/**/*.deb
-            artifacts/**/*.rpm
-            artifacts/**/*.AppImage
           draft: false
           prerelease: false
           generate_release_notes: true
