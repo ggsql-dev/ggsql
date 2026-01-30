@@ -167,74 +167,6 @@ fn literal_to_sql(lit: &LiteralValue) -> String {
     }
 }
 
-/// Fetch schema for a query including column ranges (min/max)
-///
-/// Executes:
-/// 1. A schema-only query (LIMIT 0) to determine column names and types
-/// 2. A min/max query to compute value ranges for each column
-///
-/// Used to:
-/// 1. Resolve wildcard mappings to actual columns
-/// 2. Filter group_by to discrete columns only
-/// 3. Pass to stat transforms for column validation
-/// 4. Provide input ranges for scale resolution
-fn fetch_layer_schema<F>(query: &str, execute_query: &F) -> Result<Schema>
-where
-    F: Fn(&str) -> Result<DataFrame>,
-{
-    use polars::prelude::DataType;
-
-    // Step 1: Get column names and types with LIMIT 0
-    let schema_query = format!(
-        "SELECT * FROM ({}) AS {} LIMIT 0",
-        query,
-        naming::SCHEMA_ALIAS
-    );
-    let schema_df = execute_query(&schema_query)?;
-
-    // Collect column metadata (name, is_discrete, dtype)
-    let column_meta: Vec<(String, bool, DataType)> = schema_df
-        .get_columns()
-        .iter()
-        .map(|col| {
-            let dtype = col.dtype().clone();
-            // Discrete: String, Boolean, Categorical
-            // Continuous: numeric types, Date, Datetime, Time
-            let is_discrete =
-                matches!(dtype, DataType::String | DataType::Boolean) || dtype.is_categorical();
-            (col.name().to_string(), is_discrete, dtype)
-        })
-        .collect();
-
-    // If no columns, return empty schema
-    if column_meta.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    // Step 2: Build and execute min/max query
-    let column_names: Vec<&str> = column_meta.iter().map(|(n, _, _)| n.as_str()).collect();
-    let minmax_query = build_minmax_query(query, &column_names);
-    let range_df = execute_query(&minmax_query)?;
-
-    // Step 3: Extract min (row 0) and max (row 1) for each column
-    let schema = column_meta
-        .iter()
-        .map(|(name, is_discrete, dtype)| {
-            let min = extract_series_value(&range_df, name, 0);
-            let max = extract_series_value(&range_df, name, 1);
-            ColumnInfo {
-                name: name.clone(),
-                dtype: dtype.clone(),
-                is_discrete: *is_discrete,
-                min,
-                max,
-            }
-        })
-        .collect();
-
-    Ok(schema)
-}
-
 /// Build SQL query to compute min and max for all columns
 ///
 /// Generates a query that returns two rows:
@@ -388,6 +320,328 @@ fn extract_series_value(
     }
 }
 
+// =============================================================================
+// Type-only Schema Extraction (for early resolution)
+// =============================================================================
+
+/// Simple type info tuple: (name, dtype, is_discrete)
+pub type TypeInfo = (String, polars::prelude::DataType, bool);
+
+/// Fetch only column types (no min/max) from a query.
+///
+/// Uses LIMIT 0 to get schema without reading data.
+/// Returns `(name, dtype, is_discrete)` tuples for each column.
+///
+/// This is the first phase of the split schema extraction approach:
+/// 1. fetch_schema_types() - get dtypes only (before casting)
+/// 2. Apply casting to queries
+/// 3. complete_schema_ranges() - get min/max from cast queries
+fn fetch_schema_types<F>(query: &str, execute_query: &F) -> Result<Vec<TypeInfo>>
+where
+    F: Fn(&str) -> Result<DataFrame>,
+{
+    use polars::prelude::DataType;
+
+    let schema_query = format!(
+        "SELECT * FROM ({}) AS {} LIMIT 0",
+        query,
+        naming::SCHEMA_ALIAS
+    );
+    let schema_df = execute_query(&schema_query)?;
+
+    let type_info: Vec<TypeInfo> = schema_df
+        .get_columns()
+        .iter()
+        .map(|col| {
+            let dtype = col.dtype().clone();
+            let is_discrete =
+                matches!(dtype, DataType::String | DataType::Boolean) || dtype.is_categorical();
+            (col.name().to_string(), is_discrete, dtype)
+        })
+        .map(|(name, is_discrete, dtype)| (name, dtype, is_discrete))
+        .collect();
+
+    Ok(type_info)
+}
+
+/// Complete schema with min/max ranges from a (possibly cast) query.
+///
+/// Takes pre-computed type info and extracts min/max values.
+/// Called after casting is applied to queries.
+fn complete_schema_ranges<F>(
+    query: &str,
+    type_info: &[TypeInfo],
+    execute_query: &F,
+) -> Result<Schema>
+where
+    F: Fn(&str) -> Result<DataFrame>,
+{
+    if type_info.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Build and execute min/max query
+    let column_names: Vec<&str> = type_info.iter().map(|(n, _, _)| n.as_str()).collect();
+    let minmax_query = build_minmax_query(query, &column_names);
+    let range_df = execute_query(&minmax_query)?;
+
+    // Extract min (row 0) and max (row 1) for each column
+    let schema = type_info
+        .iter()
+        .map(|(name, dtype, is_discrete)| {
+            let min = extract_series_value(&range_df, name, 0);
+            let max = extract_series_value(&range_df, name, 1);
+            ColumnInfo {
+                name: name.clone(),
+                dtype: dtype.clone(),
+                is_discrete: *is_discrete,
+                min,
+                max,
+            }
+        })
+        .collect();
+
+    Ok(schema)
+}
+
+/// Convert type info to schema (without min/max).
+///
+/// Used when we need a Schema but don't have min/max yet.
+fn type_info_to_schema(type_info: &[TypeInfo]) -> Schema {
+    type_info
+        .iter()
+        .map(|(name, dtype, is_discrete)| ColumnInfo {
+            name: name.clone(),
+            dtype: dtype.clone(),
+            is_discrete: *is_discrete,
+            min: None,
+            max: None,
+        })
+        .collect()
+}
+
+// =============================================================================
+// Type Requirements and Casting
+// =============================================================================
+
+use crate::plot::{CastTargetType, SqlTypeNames};
+
+/// Describes a column that needs type casting.
+#[derive(Debug, Clone)]
+pub struct TypeRequirement {
+    /// Column name to cast
+    pub column: String,
+    /// Target type for casting
+    pub target_type: CastTargetType,
+    /// SQL type name (e.g., "DATE", "DOUBLE", "VARCHAR")
+    pub sql_type_name: String,
+}
+
+/// Determine which columns need casting based on scale requirements.
+///
+/// For each layer, collects columns that need casting to match the scale's
+/// target type (determined by type coercion across all columns for that aesthetic).
+///
+/// # Arguments
+///
+/// * `spec` - The Plot specification with scales
+/// * `layer_type_info` - Type info for each layer
+/// * `type_names` - SQL type names for the database backend
+///
+/// # Returns
+///
+/// Vec of TypeRequirements for each layer.
+fn determine_type_requirements(
+    spec: &Plot,
+    layer_type_info: &[Vec<TypeInfo>],
+    type_names: &SqlTypeNames,
+) -> Vec<Vec<TypeRequirement>> {
+    use crate::plot::scale::coerce_dtypes;
+    let mut layer_requirements: Vec<Vec<TypeRequirement>> = Vec::new();
+
+    for (layer_idx, layer) in spec.layers.iter().enumerate() {
+        let mut requirements: Vec<TypeRequirement> = Vec::new();
+        let type_info = &layer_type_info[layer_idx];
+
+        // Build a map of column name to dtype for quick lookup
+        let column_dtypes: HashMap<&str, &polars::prelude::DataType> = type_info
+            .iter()
+            .map(|(name, dtype, _)| (name.as_str(), dtype))
+            .collect();
+
+        // For each aesthetic mapped in this layer, check if casting is needed
+        for (aesthetic, value) in &layer.mappings.aesthetics {
+            let col_name = match value.column_name() {
+                Some(name) => name,
+                None => continue, // Skip literals
+            };
+
+            // Skip synthetic columns
+            if naming::is_synthetic_column(col_name) {
+                continue;
+            }
+
+            let col_dtype = match column_dtypes.get(col_name) {
+                Some(dtype) => *dtype,
+                None => continue, // Column not in schema
+            };
+
+            // Find the scale for this aesthetic
+            let scale = match spec.scales.iter().find(|s| s.aesthetic == *aesthetic) {
+                Some(s) => s,
+                None => continue, // No scale for this aesthetic
+            };
+
+            // Get the scale type
+            let scale_type = match &scale.scale_type {
+                Some(st) => st,
+                None => continue, // Scale type not yet resolved
+            };
+
+            // Collect all dtypes for this aesthetic across all layers
+            let all_dtypes: Vec<polars::prelude::DataType> = layer_type_info
+                .iter()
+                .zip(spec.layers.iter())
+                .filter_map(|(info, l)| {
+                    l.mappings
+                        .get(aesthetic)
+                        .and_then(|v| v.column_name())
+                        .and_then(|name| info.iter().find(|(n, _, _)| n == name))
+                        .map(|(_, dtype, _)| dtype.clone())
+                })
+                .collect();
+
+            // Determine target dtype through coercion
+            let target_dtype = match coerce_dtypes(&all_dtypes) {
+                Ok(dt) => dt,
+                Err(_) => continue, // Skip if coercion fails
+            };
+
+            // Check if this specific column needs casting
+            if let Some(cast_target) = scale_type.required_cast_type(col_dtype, &target_dtype) {
+                if let Some(sql_type) = type_names.for_target(cast_target) {
+                    // Don't add duplicate requirements for same column
+                    if !requirements.iter().any(|r| r.column == col_name) {
+                        requirements.push(TypeRequirement {
+                            column: col_name.to_string(),
+                            target_type: cast_target,
+                            sql_type_name: sql_type.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        layer_requirements.push(requirements);
+    }
+
+    layer_requirements
+}
+
+/// Apply column casting to a SQL query.
+///
+/// Wraps the query to cast specified columns to their target types.
+/// Uses DuckDB's EXCLUDE syntax for clean column replacement.
+///
+/// Example output:
+/// ```sql
+/// SELECT * EXCLUDE (date_col, value_col),
+///        CAST(date_col AS DATE) AS date_col,
+///        CAST(value_col AS DOUBLE) AS value_col
+/// FROM (original_query)
+/// ```
+fn apply_column_casting(query: &str, requirements: &[TypeRequirement]) -> String {
+    if requirements.is_empty() {
+        return query.to_string();
+    }
+
+    // Build EXCLUDE clause
+    let exclude_cols: Vec<&str> = requirements.iter().map(|r| r.column.as_str()).collect();
+    let exclude_clause = if exclude_cols.len() == 1 {
+        format!("EXCLUDE (\"{}\")", exclude_cols[0])
+    } else {
+        format!(
+            "EXCLUDE ({})",
+            exclude_cols
+                .iter()
+                .map(|c| format!("\"{}\"", c))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+
+    // Build CAST expressions
+    let cast_exprs: Vec<String> = requirements
+        .iter()
+        .map(|r| {
+            format!(
+                "CAST(\"{}\" AS {}) AS \"{}\"",
+                r.column, r.sql_type_name, r.column
+            )
+        })
+        .collect();
+
+    format!(
+        "SELECT * {}, {} FROM ({})",
+        exclude_clause,
+        cast_exprs.join(", "),
+        query
+    )
+}
+
+/// Update type info with post-cast dtypes.
+///
+/// After determining casting requirements, updates the type info
+/// to reflect the target dtypes (so subsequent schema extraction
+/// and scale resolution see the correct types).
+fn update_type_info_for_casting(type_info: &mut [TypeInfo], requirements: &[TypeRequirement]) {
+    use polars::prelude::{DataType, TimeUnit};
+
+    for req in requirements {
+        if let Some(entry) = type_info
+            .iter_mut()
+            .find(|(name, _, _)| name == &req.column)
+        {
+            entry.1 = match req.target_type {
+                CastTargetType::Number => DataType::Float64,
+                CastTargetType::Date => DataType::Date,
+                CastTargetType::DateTime => DataType::Datetime(TimeUnit::Microseconds, None),
+                CastTargetType::Time => DataType::Time,
+                CastTargetType::String => DataType::String,
+                CastTargetType::Boolean => DataType::Boolean,
+            };
+            // Update is_discrete flag based on new type
+            entry.2 = matches!(entry.1, DataType::String | DataType::Boolean);
+        }
+    }
+}
+
+/// Collect type requirements for the global query.
+///
+/// For the global query, we need to cast columns that are used by any layer
+/// that reads from global data (layers without explicit source).
+fn collect_requirements_for_global(
+    layer_requirements: &[Vec<TypeRequirement>],
+    spec: &Plot,
+) -> Vec<TypeRequirement> {
+    let mut global_reqs: Vec<TypeRequirement> = Vec::new();
+
+    for (layer_idx, layer) in spec.layers.iter().enumerate() {
+        // Only include requirements from layers that use global data
+        if layer.source.is_none()
+            && layer_idx < layer_requirements.len() {
+                for req in &layer_requirements[layer_idx] {
+                    // Don't add duplicates
+                    if !global_reqs.iter().any(|r| r.column == req.column) {
+                        global_reqs.push(req.clone());
+                    }
+                }
+            }
+    }
+
+    global_reqs
+}
+
 /// Determine the data source table name for a layer
 ///
 /// Returns the table/CTE name to query from:
@@ -411,6 +665,68 @@ fn determine_layer_source(layer: &Layer, materialized_ctes: &HashSet<String>) ->
             // Layer uses global data
             None
         }
+    }
+}
+
+/// Build the base query for a layer including constant columns.
+///
+/// Returns `SELECT * [, constants...] FROM source` or None if layer uses global directly
+/// without needing any transformation.
+///
+/// Constants are included in the base query ONLY for layers with their own source or filter.
+/// For layers using global data (no source, no filter), constants are injected into the
+/// global table with layer-indexed names by `prepare_data_with_executor`, so we don't add
+/// them here.
+fn build_base_layer_query(
+    layer: &Layer,
+    materialized_ctes: &HashSet<String>,
+    has_global: bool,
+) -> Option<String> {
+    // For layers using global data (no source, no filter), constants are already
+    // in the global table with layer-indexed names. Return None to use global directly.
+    let uses_global_directly = layer.source.is_none() && layer.filter.is_none();
+
+    // Determine source table
+    let source = match &layer.source {
+        Some(DataSource::Identifier(name)) => {
+            if materialized_ctes.contains(name) {
+                naming::cte_table(name)
+            } else {
+                name.clone()
+            }
+        }
+        Some(DataSource::FilePath(path)) => format!("'{}'", path),
+        None => {
+            // Layer uses global data
+            if has_global {
+                naming::global_table()
+            } else {
+                return None;
+            }
+        }
+    };
+
+    // For layers using global directly, don't add constants (they're already in global)
+    if uses_global_directly {
+        return Some(format!("SELECT * FROM {}", source));
+    }
+
+    // For layers with their own source or filter, add constants with non-indexed names
+    let constants = extract_constants(layer);
+
+    // Build query with constants
+    if constants.is_empty() {
+        Some(format!("SELECT * FROM {}", source))
+    } else {
+        let const_cols: Vec<String> = constants
+            .iter()
+            .map(|(aes, lit)| format!("{} AS {}", literal_to_sql(lit), naming::const_column(aes)))
+            .collect();
+        Some(format!(
+            "SELECT *, {} FROM {}",
+            const_cols.join(", "),
+            source
+        ))
     }
 }
 
@@ -775,17 +1091,16 @@ fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> Optio
 /// * `layer` - The layer configuration
 /// * `schema` - The layer's schema (used for column dtype lookup)
 /// * `scales` - All resolved scales
+/// * `type_names` - SQL type names for the database backend
 fn apply_pre_stat_transform(
     query: &str,
     layer: &Layer,
     schema: &Schema,
     scales: &[crate::plot::Scale],
+    type_names: &SqlTypeNames,
 ) -> String {
-    use crate::plot::scale::{ScaleTypeKind, SqlTypeNames};
+    use crate::plot::scale::ScaleTypeKind;
     use polars::prelude::DataType;
-
-    // Create default type names (DuckDB defaults)
-    let type_names = SqlTypeNames::duckdb();
 
     let mut transform_exprs: Vec<(String, String)> = vec![];
 
@@ -818,7 +1133,7 @@ fn apply_pre_stat_transform(
                 }
                 // Get binning SQL from scale type
                 if let Some(sql) =
-                    scale_type.pre_stat_transform_sql(&col_name, &col_dtype, scale, &type_names)
+                    scale_type.pre_stat_transform_sql(&col_name, &col_dtype, scale, type_names)
                 {
                     transform_exprs.push((col_name, sql));
                 }
@@ -890,15 +1205,18 @@ fn apply_pre_stat_transform(
 /// (e.g., mapping y to `__ggsql_stat__count` for histogram or bar count).
 ///
 /// Pre-stat transforms are applied (e.g., binning for Binned scales) before stat transforms.
+///
+/// Note: Constants are now included in the cast_base_query (via build_base_layer_query),
+/// so this function no longer needs to add them.
 fn build_layer_query<F>(
     layer: &mut Layer,
+    cast_base_query: &str,
     schema: &Schema,
-    materialized_ctes: &HashSet<String>,
     has_global: bool,
     layer_idx: usize,
     facet: Option<&Facet>,
-    constants: &[(String, LiteralValue)],
     scales: &[crate::plot::Scale],
+    type_names: &SqlTypeNames,
     execute_query: &F,
 ) -> Result<Option<String>>
 where
@@ -911,29 +1229,22 @@ where
     let filter = layer.filter.as_ref().map(|f| f.as_str());
     let order_by = layer.order_by.as_ref().map(|f| f.as_str());
 
-    let table_name = match &layer.source {
-        Some(DataSource::Identifier(name)) => {
-            // Check if it's a materialized CTE
-            if materialized_ctes.contains(name) {
-                naming::cte_table(name)
-            } else {
-                name.clone()
-            }
-        }
-        Some(DataSource::FilePath(path)) => {
-            // File paths need single quotes
-            format!("'{}'", path)
-        }
+    // Check if layer needs a query or can use global directly
+    // NOTE: Constants alone do NOT trigger a query for layers using global data (no source, no filter)
+    // because those constants are already injected into the global table with layer-indexed names.
+    // Constants only require a query when combined with a filter (which creates layer-specific data).
+    let needs_query = match &layer.source {
+        Some(_) => true, // Has explicit source
         None => {
-            // No source - validate and use global if filter, order_by or constants present
-            if filter.is_some() || order_by.is_some() || !constants.is_empty() {
+            // No source - check if we need to query
+            if filter.is_some() || order_by.is_some() {
                 if !has_global {
                     return Err(GgsqlError::ValidationError(format!(
-                        "Layer {} has a FILTER, ORDER BY, or constants but no data source. Either provide a SQL query or use MAPPING FROM.",
+                        "Layer {} has a FILTER or ORDER BY but no data source. Either provide a SQL query or use MAPPING FROM.",
                         layer_idx + 1
                     )));
                 }
-                naming::global_table()
+                true
             } else if layer.geom.needs_stat_transform(&layer.mappings) {
                 if !has_global {
                     return Err(GgsqlError::ValidationError(format!(
@@ -941,24 +1252,35 @@ where
                         layer_idx + 1
                     )));
                 }
-                naming::global_table()
+                true
             } else {
-                // No source, no filter, no constants, no stat transform - use __global__ data directly
-                return Ok(None);
+                // No source, no filter, no stat transform - use __global__ data directly
+                // (constants are already in global table with layer-indexed names)
+                false
             }
         }
     };
 
-    // Build base query with optional constant columns
-    let mut query = if constants.is_empty() {
-        format!("SELECT * FROM {}", table_name)
-    } else {
-        let const_cols: Vec<String> = constants
-            .iter()
-            .map(|(aes, lit)| format!("{} AS {}", literal_to_sql(lit), naming::const_column(aes)))
-            .collect();
-        format!("SELECT *, {} FROM {}", const_cols.join(", "), table_name)
+    if !needs_query {
+        return Ok(None);
+    }
+
+    // Determine the base query source
+    // For layers with explicit source, cast_base_query already includes constants
+    // For layers without source, cast_base_query is the cast global query
+    let base_source = match &layer.source {
+        Some(DataSource::FilePath(path)) => {
+            // File paths need to be queried directly (casting not applied to files)
+            format!("SELECT * FROM '{}'", path)
+        }
+        _ => {
+            // Use the pre-built cast base query (which now includes constants)
+            cast_base_query.to_string()
+        }
     };
+
+    // Wrap the cast base query (constants are already included)
+    let mut query = format!("SELECT * FROM ({})", base_source);
 
     // Combine partition_by (which includes discrete mapped columns) and facet variables for grouping
     // Note: partition_by is pre-populated with discrete columns by add_discrete_columns_to_partition_by()
@@ -978,7 +1300,7 @@ where
 
     // Apply pre-stat transformations (e.g., binning for Binned scales)
     // This must happen before stat transforms so that data is transformed first
-    query = apply_pre_stat_transform(&query, layer, schema, scales);
+    query = apply_pre_stat_transform(&query, layer, schema, scales, type_names);
 
     // Apply statistical transformation (after filter, uses combined group_by)
     // Returns StatResult::Identity for no transformation, StatResult::Transformed for transformed query
@@ -1045,16 +1367,13 @@ where
         }
         StatResult::Identity => {
             // Identity - no stat transformation
-            // If the layer has no explicit source, no filter, no order_by, and no constants,
+            // If the layer has no explicit source, no filter, and no order_by,
             // we can use __global__ directly (return None)
-            if layer.source.is_none()
-                && filter.is_none()
-                && order_by.is_none()
-                && constants.is_empty()
-            {
+            // NOTE: Constants don't require a query because they're already in global table
+            if layer.source.is_none() && filter.is_none() && order_by.is_none() {
                 Ok(None)
             } else {
-                // Layer has filter, order_by, or constants - still need the query
+                // Layer has source, filter, or order_by - still need the query
                 let mut final_query = query;
                 if let Some(o) = order_by {
                     final_query = format!("{} ORDER BY {}", final_query, o);
@@ -1247,7 +1566,12 @@ pub struct PreparedData {
 /// # Arguments
 /// * `query` - The full ggsql query string
 /// * `execute_query` - A function that executes SQL and returns a DataFrame
-pub fn prepare_data_with_executor<F>(query: &str, execute_query: F) -> Result<PreparedData>
+/// * `type_names` - SQL type names for the database backend
+pub fn prepare_data_with_executor<F>(
+    query: &str,
+    execute_query: F,
+    type_names: &SqlTypeNames,
+) -> Result<PreparedData>
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
@@ -1337,6 +1661,8 @@ where
     // Execute global SQL if present
     // If there's a WITH clause, extract just the trailing SELECT and transform CTE references.
     // The global result is stored as a temp table so filtered layers can query it efficiently.
+    // Track whether we actually create the temp table (depends on transform_global_sql succeeding)
+    let mut has_global_table = false;
     if !sql_part.trim().is_empty() {
         if let Some(transformed_sql) = transform_global_sql(&sql_part, &materialized_ctes) {
             // Inject global constants into the query (with layer-indexed names)
@@ -1368,41 +1694,45 @@ where
             );
             execute_query(&create_global)?;
 
-            // Read back into DataFrame for data_map
-            let df = execute_query(&format!("SELECT * FROM {}", naming::global_table()))?;
-            data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
+            // NOTE: Don't read into data_map yet - defer until after casting is determined
+            // The temp table exists and can be used for schema fetching
+            has_global_table = true;
         }
     }
 
-    // Fetch schemas upfront for smart wildcard expansion and validation
-    let has_global = data_map.contains_key(naming::GLOBAL_DATA_KEY);
+    // Build base queries for all layers BEFORE other processing
+    // These are the raw SELECT * FROM source queries, without filters/stats
+    let global_base_query = format!("SELECT * FROM {}", naming::global_table());
+    let mut layer_base_queries: Vec<Option<String>> = Vec::new();
+    for layer in &specs[0].layers {
+        let source = determine_layer_source(layer, &materialized_ctes);
+        let base_query = source.map(|src| format!("SELECT * FROM {}", src));
+        layer_base_queries.push(base_query);
+    }
 
-    // Fetch global schema (used by layers without explicit source)
-    let global_schema = if has_global {
-        fetch_layer_schema(
-            &format!("SELECT * FROM {}", naming::global_table()),
-            &execute_query,
-        )?
+    // Get types from base queries (Phase 1: types only, no min/max yet)
+    let global_type_info = if has_global_table {
+        fetch_schema_types(&global_base_query, &execute_query)?
     } else {
         Vec::new()
     };
 
-    // Fetch schemas for all layers
-    let mut layer_schemas: Vec<Schema> = Vec::new();
-    for layer in &specs[0].layers {
-        let source = determine_layer_source(layer, &materialized_ctes);
-        let schema = match source {
-            Some(src) => {
-                let base_query = format!("SELECT * FROM {}", src);
-                fetch_layer_schema(&base_query, &execute_query)?
-            }
-            None => {
-                // Layer uses global data - use global schema
-                global_schema.clone()
-            }
+    // Get types for each layer
+    let mut layer_type_info: Vec<Vec<TypeInfo>> = Vec::new();
+    for base_query in &layer_base_queries {
+        let type_info = match base_query {
+            Some(q) => fetch_schema_types(q, &execute_query)?,
+            None => global_type_info.clone(), // Uses global
         };
-        layer_schemas.push(schema);
+        layer_type_info.push(type_info);
     }
+
+    // Initial schemas (types only, no min/max - will be completed after casting)
+    let global_schema = type_info_to_schema(&global_type_info);
+    let mut layer_schemas: Vec<Schema> = layer_type_info
+        .iter()
+        .map(|ti| type_info_to_schema(ti))
+        .collect();
 
     // Merge global mappings into layer aesthetics and expand wildcards
     // Smart wildcard expansion only creates mappings for columns that exist in schema
@@ -1415,6 +1745,30 @@ where
     for spec in &mut specs {
         split_color_aesthetic(spec);
     }
+
+    // Rebuild base queries WITH constants now that global mappings are merged
+    // This ensures constants are included in schema extraction and can be cast if needed
+    let layer_base_queries: Vec<Option<String>> = specs[0]
+        .layers
+        .iter()
+        .map(|layer| build_base_layer_query(layer, &materialized_ctes, has_global_table))
+        .collect();
+
+    // Re-fetch type info from base queries now that they include constants
+    let mut layer_type_info: Vec<Vec<TypeInfo>> = Vec::new();
+    for base_query in &layer_base_queries {
+        let type_info = match base_query {
+            Some(q) => fetch_schema_types(q, &execute_query)?,
+            None => global_type_info.clone(), // Uses global
+        };
+        layer_type_info.push(type_info);
+    }
+
+    // Rebuild layer schemas with constant columns included
+    layer_schemas = layer_type_info
+        .iter()
+        .map(|ti| type_info_to_schema(ti))
+        .collect();
 
     // Validate all layers against their schemas
     // This must happen BEFORE build_layer_query because stat transforms remove consumed aesthetics
@@ -1431,6 +1785,59 @@ where
     // Create scales for all mapped aesthetics that don't have explicit SCALE clauses
     // This ensures temporal transform inference works even without explicit SCALE x
     create_missing_scales(&mut specs[0]);
+
+    // Resolve scale types and transforms early based on column dtypes
+    // This enables type coercion and determines what casting may be needed
+    resolve_scale_types_and_transforms(&mut specs[0], &layer_type_info)?;
+
+    // Determine which columns need type casting
+    // This is based on scale requirements and type coercion across layers
+    let type_requirements = determine_type_requirements(&specs[0], &layer_type_info, type_names);
+
+    // Apply casting to base queries
+    // This wraps queries with CAST expressions for columns that need type conversion
+    let cast_global_query = if has_global_table {
+        // Collect requirements for global query (columns mapped by any layer using global data)
+        let global_requirements = collect_requirements_for_global(&type_requirements, &specs[0]);
+        apply_column_casting(&global_base_query, &global_requirements)
+    } else {
+        global_base_query.clone()
+    };
+
+    // Apply casting to layer base queries
+    let cast_layer_queries: Vec<Option<String>> = layer_base_queries
+        .iter()
+        .enumerate()
+        .map(|(idx, base_q)| {
+            base_q
+                .as_ref()
+                .map(|q| apply_column_casting(q, &type_requirements[idx]))
+        })
+        .collect();
+
+    // Update type info with post-cast dtypes
+    // This ensures subsequent schema extraction and scale resolution see the correct types
+    for (layer_idx, requirements) in type_requirements.iter().enumerate() {
+        if layer_idx < layer_type_info.len() {
+            update_type_info_for_casting(&mut layer_type_info[layer_idx], requirements);
+        }
+    }
+
+    // Complete schemas with min/max from cast queries (Phase 2: ranges from cast data)
+    // This ensures min/max values reflect the actual cast types
+    let global_schema = if has_global_table {
+        complete_schema_ranges(&cast_global_query, &global_type_info, &execute_query)?
+    } else {
+        global_schema
+    };
+
+    // Complete layer schemas with min/max from cast queries
+    for (idx, cast_query) in cast_layer_queries.iter().enumerate() {
+        layer_schemas[idx] = match cast_query {
+            Some(cq) => complete_schema_ranges(cq, &layer_type_info[idx], &execute_query)?,
+            None => global_schema.clone(), // Uses global
+        };
+    }
 
     // Pre-resolve Binned scales using schema-derived context
     // This must happen before build_layer_query so pre_stat_transform_sql has resolved breaks
@@ -1453,24 +1860,21 @@ where
     let scales = specs[0].scales.clone();
 
     for (idx, layer) in specs[0].layers.iter_mut().enumerate() {
-        // For layers using global data without filter, constants are already in global data
-        // (injected with layer-indexed names). For other layers, extract constants for injection.
-        let constants = if layer.source.is_none() && layer.filter.is_none() {
-            vec![] // Constants already in global data
-        } else {
-            extract_constants(layer)
-        };
+        // Get the cast base query for this layer (or use global)
+        // Constants are now included in cast_layer_queries via build_base_layer_query
+        let cast_base = cast_layer_queries[idx].as_deref()
+            .unwrap_or(&cast_global_query);
 
         // Get mutable reference to layer for stat transform to update aesthetics
         if let Some(layer_query) = build_layer_query(
             layer,
+            cast_base,
             &layer_schemas[idx],
-            &materialized_ctes,
-            has_global,
+            has_global_table,
             idx,
             facet.as_ref(),
-            &constants,
             &scales,
+            type_names,
             &execute_query,
         )? {
             let df = execute_query(&layer_query).map_err(|e| {
@@ -1485,6 +1889,23 @@ where
         // If None returned, layer uses __global__ data directly (no entry needed)
     }
 
+    // Check if any layer uses global data directly
+    // A layer "uses global" only if:
+    // 1. There are no layers (VISUALISE without DRAW) - global data is the output
+    // 2. build_layer_query returned None (no entry in data_map) - layer uses global DataFrame directly
+    // Note: Layers with filters/stats query the global temp table but produce their own data,
+    // so they don't need GLOBAL_DATA_KEY in data_map
+    let needs_global_data = specs[0].layers.is_empty()
+        || (0..specs[0].layers.len()).any(|idx| !data_map.contains_key(&naming::layer_key(idx)));
+
+    // If global data is needed, execute the CAST global query now
+    // This ensures global data goes through the same casting pipeline as layer data
+    if needs_global_data && has_global_table {
+        let df = execute_query(&cast_global_query)
+            .map_err(|e| GgsqlError::ReaderError(format!("Failed to fetch global data: {}", e)))?;
+        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
+    }
+
     // Validate we have some data
     if data_map.is_empty() {
         return Err(GgsqlError::ValidationError(
@@ -1493,12 +1914,11 @@ where
         ));
     }
 
-    // For layers without specific sources, ensure global data exists
-    let has_layer_without_source = specs[0]
-        .layers
-        .iter()
-        .any(|l| l.source.is_none() && l.filter.is_none());
-    if has_layer_without_source && !data_map.contains_key(naming::GLOBAL_DATA_KEY) {
+    // For layers that use global data directly (no layer-specific data), ensure global data exists
+    // Note: Layers with stat transforms create their own data in layer_key(idx), so they don't need this
+    let layer_uses_global_directly =
+        (0..specs[0].layers.len()).any(|idx| !data_map.contains_key(&naming::layer_key(idx)));
+    if layer_uses_global_directly && !data_map.contains_key(naming::GLOBAL_DATA_KEY) {
         return Err(GgsqlError::ValidationError(
             "Some layers use global data but no SQL query was provided.".to_string(),
         ));
@@ -1587,6 +2007,131 @@ fn create_missing_scales(spec: &mut Plot) {
             spec.scales.push(scale);
         }
     }
+}
+
+/// Resolve scale types and transforms early, based on column dtypes.
+///
+/// This function:
+/// 1. Infers scale_type from column dtype if not explicitly set
+/// 2. Applies type coercion across layers for same aesthetic
+/// 3. Resolves transform from scale_type + dtype if not explicit
+///
+/// Called early in the pipeline so that type requirements can be determined
+/// before min/max extraction.
+fn resolve_scale_types_and_transforms(
+    spec: &mut Plot,
+    layer_type_info: &[Vec<TypeInfo>],
+) -> Result<()> {
+    use crate::plot::scale::coerce_dtypes;
+    use crate::plot::scale::transform::Transform;
+
+    for scale in &mut spec.scales {
+        // Skip scales that already have explicit types (user specified)
+        if scale.scale_type.is_some() {
+            // Still need to resolve transform if not set
+            if scale.transform.is_none() && !scale.explicit_transform {
+                // Find first column dtype for this aesthetic
+                let first_dtype =
+                    find_first_dtype_for_aesthetic(&spec.layers, &scale.aesthetic, layer_type_info);
+                if let Some(dtype) = first_dtype {
+                    let transform_kind = scale
+                        .scale_type
+                        .as_ref()
+                        .unwrap()
+                        .default_transform(&scale.aesthetic, Some(&dtype));
+                    scale.transform = Some(Transform::from_kind(transform_kind));
+                }
+            }
+            continue;
+        }
+
+        // Collect all dtypes for this aesthetic across layers
+        let all_dtypes =
+            collect_dtypes_for_aesthetic(&spec.layers, &scale.aesthetic, layer_type_info);
+
+        if all_dtypes.is_empty() {
+            continue;
+        }
+
+        // Determine common dtype through coercion
+        let common_dtype = match coerce_dtypes(&all_dtypes) {
+            Ok(dt) => dt,
+            Err(e) => {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Scale '{}': {}",
+                    scale.aesthetic, e
+                )));
+            }
+        };
+
+        // Infer scale type from common dtype
+        let inferred_scale_type = ScaleType::infer(&common_dtype);
+        scale.scale_type = Some(inferred_scale_type.clone());
+
+        // Infer transform if not explicit
+        if scale.transform.is_none() && !scale.explicit_transform {
+            let transform_kind =
+                inferred_scale_type.default_transform(&scale.aesthetic, Some(&common_dtype));
+            scale.transform = Some(Transform::from_kind(transform_kind));
+        }
+    }
+
+    Ok(())
+}
+
+/// Find the first column dtype for an aesthetic across layers.
+fn find_first_dtype_for_aesthetic(
+    layers: &[Layer],
+    aesthetic: &str,
+    layer_type_info: &[Vec<TypeInfo>],
+) -> Option<polars::prelude::DataType> {
+    let aesthetics_to_check = get_aesthetic_family(aesthetic);
+
+    for (layer_idx, layer) in layers.iter().enumerate() {
+        if layer_idx >= layer_type_info.len() {
+            continue;
+        }
+        let type_info = &layer_type_info[layer_idx];
+
+        for aes_name in &aesthetics_to_check {
+            if let Some(value) = layer.mappings.get(aes_name) {
+                if let Some(col_name) = value.column_name() {
+                    if let Some((_, dtype, _)) = type_info.iter().find(|(n, _, _)| n == col_name) {
+                        return Some(dtype.clone());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Collect all dtypes for an aesthetic across layers.
+fn collect_dtypes_for_aesthetic(
+    layers: &[Layer],
+    aesthetic: &str,
+    layer_type_info: &[Vec<TypeInfo>],
+) -> Vec<polars::prelude::DataType> {
+    let mut dtypes = Vec::new();
+    let aesthetics_to_check = get_aesthetic_family(aesthetic);
+
+    for (layer_idx, layer) in layers.iter().enumerate() {
+        if layer_idx >= layer_type_info.len() {
+            continue;
+        }
+        let type_info = &layer_type_info[layer_idx];
+
+        for aes_name in &aesthetics_to_check {
+            if let Some(value) = layer.mappings.get(aes_name) {
+                if let Some(col_name) = value.column_name() {
+                    if let Some((_, dtype, _)) = type_info.iter().find(|(n, _, _)| n == col_name) {
+                        dtypes.push(dtype.clone());
+                    }
+                }
+            }
+        }
+    }
+    dtypes
 }
 
 // =============================================================================
@@ -1754,18 +2299,18 @@ fn coerce_column_to_type(
     let dtype = series.dtype();
 
     // Check if already the target type
-    let already_target_type = match (dtype, target_type) {
-        (DataType::Boolean, ArrayElementType::Boolean) => true,
-        (
-            DataType::Float64 | DataType::Int64 | DataType::Int32 | DataType::Float32,
-            ArrayElementType::Number,
-        ) => true,
-        (DataType::Date, ArrayElementType::Date) => true,
-        (DataType::Datetime(_, _), ArrayElementType::DateTime) => true,
-        (DataType::Time, ArrayElementType::Time) => true,
-        (DataType::String, ArrayElementType::String) => true,
-        _ => false,
-    };
+    let already_target_type = matches!(
+        (dtype, target_type),
+        (DataType::Boolean, ArrayElementType::Boolean)
+            | (
+                DataType::Float64 | DataType::Int64 | DataType::Int32 | DataType::Float32,
+                ArrayElementType::Number,
+            )
+            | (DataType::Date, ArrayElementType::Date)
+            | (DataType::Datetime(_, _), ArrayElementType::DateTime)
+            | (DataType::Time, ArrayElementType::Time)
+            | (DataType::String, ArrayElementType::String)
+    );
 
     if already_target_type {
         return Ok(df.clone());
@@ -2026,7 +2571,7 @@ fn coerce_aesthetic_columns(
         let layer_key = naming::layer_key(i);
 
         for aes_name in &aesthetics_to_check {
-            if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(*aes_name) {
+            if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(aes_name) {
                 // Determine which data source to use
                 let data_key = if data_map.contains_key(&layer_key) {
                     layer_key.clone()
@@ -2443,7 +2988,7 @@ fn apply_oob_to_column_discrete(
 /// Convenience wrapper around `prepare_data_with_executor` for direct DuckDB reader usage.
 #[cfg(feature = "duckdb")]
 pub fn prepare_data(query: &str, reader: &DuckDBReader) -> Result<PreparedData> {
-    prepare_data_with_executor(query, |sql| reader.execute(sql))
+    prepare_data_with_executor(query, |sql| reader.execute(sql), &reader.sql_type_names())
 }
 
 #[cfg(test)]
@@ -2522,13 +3067,10 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Should have global data (unfiltered) and layer 0 data (filtered)
-        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        // Layer with filter creates its own data - global data is NOT needed in data_map
+        // (the filter query uses the global temp table internally, but the result is layer-specific)
+        assert!(!result.data.contains_key(naming::GLOBAL_DATA_KEY));
         assert!(result.data.contains_key(&naming::layer_key(0)));
-
-        // Global should have all 4 rows
-        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(global_df.height(), 4);
 
         // Layer 0 should have only 2 rows (filtered to category = 'A')
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
@@ -2669,57 +3211,72 @@ mod tests {
         Ok(DataFrame::default())
     }
 
+    /// Test helper to create SqlTypeNames with default values
+    fn test_type_names() -> SqlTypeNames {
+        SqlTypeNames {
+            number: Some("DOUBLE".to_string()),
+            date: Some("DATE".to_string()),
+            datetime: Some("TIMESTAMP".to_string()),
+            time: Some("TIME".to_string()),
+            string: Some("VARCHAR".to_string()),
+            boolean: Some("BOOLEAN".to_string()),
+        }
+    }
+
     #[test]
     fn test_build_layer_query_with_cte() {
-        let mut materialized = HashSet::new();
-        materialized.insert("sales".to_string());
         let empty_schema: Schema = Vec::new();
 
         let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("sales".to_string()));
 
+        // Build cast base query (simulating what prepare_data_with_executor would do)
+        let cast_base_query = format!("SELECT * FROM {}", naming::cte_table("sales"));
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            &cast_base_query,
             &empty_schema,
-            &materialized,
             false,
             0,
             None,
             &[],
-            &[],
+            &type_names,
             &mock_execute,
         );
 
-        // Should use temp table name with session UUID
+        // Should use the cast base query wrapped in FROM
         let query = result.unwrap().unwrap();
-        assert!(query.starts_with("SELECT * FROM __ggsql_cte_sales_"));
-        assert!(query.ends_with("__"));
+        assert!(query.contains("FROM (SELECT * FROM __ggsql_cte_sales_"));
         assert!(query.contains(naming::session_id()));
     }
 
     #[test]
     fn test_build_layer_query_with_cte_and_filter() {
-        let mut materialized = HashSet::new();
-        materialized.insert("sales".to_string());
         let empty_schema: Schema = Vec::new();
 
         let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("sales".to_string()));
         layer.filter = Some(SqlExpression::new("year = 2024"));
 
+        // Build cast base query (simulating what prepare_data_with_executor would do)
+        let cast_base_query = format!("SELECT * FROM {}", naming::cte_table("sales"));
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            &cast_base_query,
             &empty_schema,
-            &materialized,
             false,
             0,
             None,
             &[],
-            &[],
+            &type_names,
             &mock_execute,
         );
 
-        // Should use temp table name with session UUID and filter
+        // Should use the cast base query wrapped in FROM with filter
         let query = result.unwrap().unwrap();
         assert!(query.contains("__ggsql_cte_sales_"));
         assert!(query.ends_with(" WHERE year = 2024"));
@@ -2728,155 +3285,173 @@ mod tests {
 
     #[test]
     fn test_build_layer_query_without_cte() {
-        let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
         let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("some_table".to_string()));
 
+        // Build cast base query (simulating what prepare_data_with_executor would do)
+        let cast_base_query = "SELECT * FROM some_table";
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            cast_base_query,
             &empty_schema,
-            &materialized,
             false,
             0,
             None,
             &[],
-            &[],
+            &type_names,
             &mock_execute,
         );
 
-        // Should use table name directly
+        // Should wrap the cast base query
         assert_eq!(
             result.unwrap(),
-            Some("SELECT * FROM some_table".to_string())
+            Some("SELECT * FROM (SELECT * FROM some_table)".to_string())
         );
     }
 
     #[test]
     fn test_build_layer_query_table_with_filter() {
-        let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
         let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("some_table".to_string()));
         layer.filter = Some(SqlExpression::new("value > 100"));
 
+        // Build cast base query (simulating what prepare_data_with_executor would do)
+        let cast_base_query = "SELECT * FROM some_table";
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            cast_base_query,
             &empty_schema,
-            &materialized,
             false,
             0,
             None,
             &[],
-            &[],
+            &type_names,
             &mock_execute,
         );
 
         assert_eq!(
             result.unwrap(),
-            Some("SELECT * FROM some_table WHERE value > 100".to_string())
+            Some("SELECT * FROM (SELECT * FROM some_table) WHERE value > 100".to_string())
         );
     }
 
     #[test]
     fn test_build_layer_query_file_path() {
-        let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
         let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::FilePath("data/sales.csv".to_string()));
 
+        // For file paths, cast_base_query is not used (file paths are queried directly)
+        let cast_base_query = "";
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            cast_base_query,
             &empty_schema,
-            &materialized,
             false,
             0,
             None,
             &[],
-            &[],
+            &type_names,
             &mock_execute,
         );
 
         // File paths should be wrapped in single quotes
         assert_eq!(
             result.unwrap(),
-            Some("SELECT * FROM 'data/sales.csv'".to_string())
+            Some("SELECT * FROM (SELECT * FROM 'data/sales.csv')".to_string())
         );
     }
 
     #[test]
     fn test_build_layer_query_file_path_with_filter() {
-        let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
         let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::FilePath("data.parquet".to_string()));
         layer.filter = Some(SqlExpression::new("x > 10"));
 
+        // For file paths, cast_base_query is not used (file paths are queried directly)
+        let cast_base_query = "";
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            cast_base_query,
             &empty_schema,
-            &materialized,
             false,
             0,
             None,
             &[],
-            &[],
+            &type_names,
             &mock_execute,
         );
 
         assert_eq!(
             result.unwrap(),
-            Some("SELECT * FROM 'data.parquet' WHERE x > 10".to_string())
+            Some("SELECT * FROM (SELECT * FROM 'data.parquet') WHERE x > 10".to_string())
         );
     }
 
     #[test]
     fn test_build_layer_query_none_source_with_filter() {
-        let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
         let mut layer = Layer::new(Geom::point());
         layer.filter = Some(SqlExpression::new("category = 'A'"));
 
+        // Build cast base query (the cast global query)
+        let cast_base_query = format!("SELECT * FROM {}", naming::global_table());
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            &cast_base_query,
             &empty_schema,
-            &materialized,
             true,
             0,
             None,
             &[],
-            &[],
+            &type_names,
             &mock_execute,
         );
 
-        // Should query global table with session UUID and filter
+        // Should wrap the cast global query and add filter
         let query = result.unwrap().unwrap();
-        assert!(query.starts_with("SELECT * FROM __ggsql_global_"));
-        assert!(query.ends_with("__ WHERE category = 'A'"));
+        assert!(query.contains("FROM (SELECT * FROM __ggsql_global_"));
+        assert!(query.ends_with(") WHERE category = 'A'"));
         assert!(query.contains(naming::session_id()));
     }
 
     #[test]
     fn test_build_layer_query_none_source_no_filter() {
-        let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
         let mut layer = Layer::new(Geom::point());
 
+        // Cast base query (won't be used when returning None)
+        let cast_base_query = format!("SELECT * FROM {}", naming::global_table());
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            &cast_base_query,
             &empty_schema,
-            &materialized,
             true,
             0,
             None,
             &[],
-            &[],
+            &type_names,
             &mock_execute,
         );
 
@@ -2886,21 +3461,24 @@ mod tests {
 
     #[test]
     fn test_build_layer_query_filter_without_global_errors() {
-        let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
         let mut layer = Layer::new(Geom::point());
         layer.filter = Some(SqlExpression::new("x > 10"));
 
+        // Cast base query (won't be used due to error)
+        let cast_base_query = "";
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            cast_base_query,
             &empty_schema,
-            &materialized,
             false,
             2,
             None,
             &[],
-            &[],
+            &type_names,
             &mock_execute,
         );
 
@@ -2913,34 +3491,36 @@ mod tests {
 
     #[test]
     fn test_build_layer_query_with_order_by() {
-        let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
         let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("some_table".to_string()));
         layer.order_by = Some(SqlExpression::new("date ASC"));
 
+        // Build cast base query
+        let cast_base_query = "SELECT * FROM some_table";
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            cast_base_query,
             &empty_schema,
-            &materialized,
             false,
             0,
             None,
             &[],
-            &[],
+            &type_names,
             &mock_execute,
         );
 
         assert_eq!(
             result.unwrap(),
-            Some("SELECT * FROM some_table ORDER BY date ASC".to_string())
+            Some("SELECT * FROM (SELECT * FROM some_table) ORDER BY date ASC".to_string())
         );
     }
 
     #[test]
     fn test_build_layer_query_with_filter_and_order_by() {
-        let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
         let mut layer = Layer::new(Geom::point());
@@ -2948,22 +3528,26 @@ mod tests {
         layer.filter = Some(SqlExpression::new("year = 2024"));
         layer.order_by = Some(SqlExpression::new("date DESC, value ASC"));
 
+        // Build cast base query
+        let cast_base_query = "SELECT * FROM some_table";
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            cast_base_query,
             &empty_schema,
-            &materialized,
             false,
             0,
             None,
             &[],
-            &[],
+            &type_names,
             &mock_execute,
         );
 
         assert_eq!(
             result.unwrap(),
             Some(
-                "SELECT * FROM some_table WHERE year = 2024 ORDER BY date DESC, value ASC"
+                "SELECT * FROM (SELECT * FROM some_table) WHERE year = 2024 ORDER BY date DESC, value ASC"
                     .to_string()
             )
         );
@@ -2971,63 +3555,55 @@ mod tests {
 
     #[test]
     fn test_build_layer_query_none_source_with_order_by() {
-        let materialized = HashSet::new();
         let empty_schema: Schema = Vec::new();
 
         let mut layer = Layer::new(Geom::point());
         layer.order_by = Some(SqlExpression::new("x ASC"));
 
+        // Build cast base query (the cast global query)
+        let cast_base_query = format!("SELECT * FROM {}", naming::global_table());
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            &cast_base_query,
             &empty_schema,
-            &materialized,
             true,
             0,
             None,
             &[],
-            &[],
+            &type_names,
             &mock_execute,
         );
 
-        // Should query global table with session UUID and order_by
+        // Should wrap the cast global query and add order_by
         let query = result.unwrap().unwrap();
-        assert!(query.starts_with("SELECT * FROM __ggsql_global_"));
-        assert!(query.ends_with("__ ORDER BY x ASC"));
+        assert!(query.contains("FROM (SELECT * FROM __ggsql_global_"));
+        assert!(query.ends_with(") ORDER BY x ASC"));
         assert!(query.contains(naming::session_id()));
     }
 
     #[test]
-    fn test_build_layer_query_with_constants() {
+    fn test_build_base_layer_query_with_constants() {
         let materialized = HashSet::new();
-        let empty_schema: Schema = Vec::new();
-        let constants = vec![
-            (
-                "color".to_string(),
-                LiteralValue::String("value".to_string()),
-            ),
-            (
-                "size".to_string(),
-                LiteralValue::String("value2".to_string()),
-            ),
-        ];
 
         let mut layer = Layer::new(Geom::point());
         layer.source = Some(DataSource::Identifier("some_table".to_string()));
-
-        let result = build_layer_query(
-            &mut layer,
-            &empty_schema,
-            &materialized,
-            false,
-            0,
-            None,
-            &constants,
-            &[],
-            &mock_execute,
+        // Add literal mappings which become constants
+        layer.mappings.insert(
+            "color".to_string(),
+            AestheticValue::Literal(LiteralValue::String("value".to_string())),
+        );
+        layer.mappings.insert(
+            "size".to_string(),
+            AestheticValue::Literal(LiteralValue::String("value2".to_string())),
         );
 
+        // build_base_layer_query should include constants
+        let base_query = build_base_layer_query(&layer, &materialized, false);
+
         // Should inject constants as columns
-        let query = result.unwrap().unwrap();
+        let query = base_query.unwrap();
         assert!(query.contains("SELECT *"));
         assert!(query.contains("'value' AS __ggsql_const_color__"));
         assert!(query.contains("'value2' AS __ggsql_const_size__"));
@@ -3035,33 +3611,62 @@ mod tests {
     }
 
     #[test]
-    fn test_build_layer_query_constants_on_global() {
+    fn test_build_base_layer_query_constants_on_global() {
         let materialized = HashSet::new();
-        let empty_schema: Schema = Vec::new();
-        let constants = vec![(
-            "fill".to_string(),
-            LiteralValue::String("value".to_string()),
-        )];
 
-        // No source but has constants - should use global table with session UUID
+        // No source but has constants - should use global table
+        // Constants are NOT added here because they're injected into the global table
+        // with layer-indexed names (e.g., __ggsql_const_fill_0__)
         let mut layer = Layer::new(Geom::point());
+        layer.mappings.insert(
+            "fill".to_string(),
+            AestheticValue::Literal(LiteralValue::String("value".to_string())),
+        );
 
+        // build_base_layer_query should return simple query from global
+        // (constants are already in global table with layer-indexed names)
+        let base_query = build_base_layer_query(&layer, &materialized, true);
+
+        let query = base_query.unwrap();
+        assert!(query.contains("FROM __ggsql_global_"));
+        assert!(query.contains(naming::session_id()));
+        // Constants should NOT be in the base query - they're in the global table
+        assert!(!query.contains("__ggsql_const_fill__"));
+    }
+
+    #[test]
+    fn test_build_layer_query_with_constants_in_base() {
+        let empty_schema: Schema = Vec::new();
+
+        let mut layer = Layer::new(Geom::point());
+        layer.source = Some(DataSource::Identifier("some_table".to_string()));
+        // Add literal mappings which become constants
+        layer.mappings.insert(
+            "fill".to_string(),
+            AestheticValue::Literal(LiteralValue::String("blue".to_string())),
+        );
+
+        // Simulate what prepare_data_with_executor does: build base query with constants
+        let cast_base_query = "SELECT *, 'blue' AS __ggsql_const_fill__ FROM some_table";
+
+        let type_names = test_type_names();
         let result = build_layer_query(
             &mut layer,
+            cast_base_query,
             &empty_schema,
-            &materialized,
-            true,
+            false,
             0,
             None,
-            &constants,
             &[],
+            &type_names,
             &mock_execute,
         );
 
+        // build_layer_query wraps the cast_base_query (which already has constants)
         let query = result.unwrap().unwrap();
-        assert!(query.contains("FROM __ggsql_global_"));
-        assert!(query.contains(naming::session_id()));
-        assert!(query.contains("'value' AS __ggsql_const_fill__"));
+        assert!(query.contains("FROM (SELECT *"));
+        assert!(query.contains("__ggsql_const_fill__"));
+        assert!(query.contains("FROM some_table"));
     }
 
     // ========================================
@@ -5137,14 +5742,24 @@ mod tests {
     // Schema with min/max range tests
     // ==========================================================================
 
+    /// Helper function to fetch schema using the split approach (types + ranges)
+    #[cfg(feature = "duckdb")]
+    fn fetch_schema_for_test<F>(query: &str, execute_query: &F) -> Result<Schema>
+    where
+        F: Fn(&str) -> Result<DataFrame>,
+    {
+        let type_info = fetch_schema_types(query, execute_query)?;
+        complete_schema_ranges(query, &type_info, execute_query)
+    }
+
     #[cfg(feature = "duckdb")]
     #[test]
-    fn test_fetch_layer_schema_numeric_columns() {
+    fn test_fetch_schema_numeric_columns() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let execute_query = |sql: &str| reader.execute(sql);
         let query = "SELECT * FROM (VALUES (1, 10.5), (5, 20.0), (3, 15.5)) AS t(x, y)";
 
-        let schema = fetch_layer_schema(query, &execute_query).unwrap();
+        let schema = fetch_schema_for_test(query, &execute_query).unwrap();
 
         assert_eq!(schema.len(), 2);
 
@@ -5165,12 +5780,12 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
-    fn test_fetch_layer_schema_string_columns() {
+    fn test_fetch_schema_string_columns() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let execute_query = |sql: &str| reader.execute(sql);
         let query = "SELECT * FROM (VALUES ('apple'), ('cherry'), ('banana')) AS t(fruit)";
 
-        let schema = fetch_layer_schema(query, &execute_query).unwrap();
+        let schema = fetch_schema_for_test(query, &execute_query).unwrap();
 
         assert_eq!(schema.len(), 1);
 
@@ -5184,7 +5799,7 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
-    fn test_fetch_layer_schema_date_columns() {
+    fn test_fetch_schema_date_columns() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let execute_query = |sql: &str| reader.execute(sql);
         let query = "SELECT * FROM (VALUES
@@ -5193,7 +5808,7 @@ mod tests {
             ('2024-02-10'::DATE)
         ) AS t(date_col)";
 
-        let schema = fetch_layer_schema(query, &execute_query).unwrap();
+        let schema = fetch_schema_for_test(query, &execute_query).unwrap();
 
         assert_eq!(schema.len(), 1);
 
@@ -5214,13 +5829,13 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
-    fn test_fetch_layer_schema_empty_table() {
+    fn test_fetch_schema_empty_table() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let execute_query = |sql: &str| reader.execute(sql);
         // Empty result set (WHERE 1=0 filters out all rows)
         let query = "SELECT 1 as x, 2 as y WHERE 1=0";
 
-        let schema = fetch_layer_schema(query, &execute_query).unwrap();
+        let schema = fetch_schema_for_test(query, &execute_query).unwrap();
 
         assert_eq!(schema.len(), 2);
 
@@ -5238,7 +5853,7 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
-    fn test_fetch_layer_schema_mixed_column_types() {
+    fn test_fetch_schema_mixed_column_types() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let execute_query = |sql: &str| reader.execute(sql);
         let query = "SELECT * FROM (VALUES
@@ -5247,7 +5862,7 @@ mod tests {
             (3, 'B', true, '2024-06-15'::DATE)
         ) AS t(num, str_col, bool_col, date_col)";
 
-        let schema = fetch_layer_schema(query, &execute_query).unwrap();
+        let schema = fetch_schema_for_test(query, &execute_query).unwrap();
 
         assert_eq!(schema.len(), 4);
 
@@ -5288,7 +5903,7 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
-    fn test_fetch_layer_schema_with_nulls() {
+    fn test_fetch_schema_with_nulls() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let execute_query = |sql: &str| reader.execute(sql);
         let query = "SELECT * FROM (VALUES
@@ -5298,7 +5913,7 @@ mod tests {
             (3, 'C')
         ) AS t(num, str_col)";
 
-        let schema = fetch_layer_schema(query, &execute_query).unwrap();
+        let schema = fetch_schema_for_test(query, &execute_query).unwrap();
 
         assert_eq!(schema.len(), 2);
 
@@ -5313,6 +5928,90 @@ mod tests {
         assert_eq!(col_str.name, "str_col");
         assert_eq!(col_str.min, Some(ArrayElement::String("A".to_string())));
         assert_eq!(col_str.max, Some(ArrayElement::String("C".to_string())));
+    }
+
+    // =========================================================================
+    // Type Casting Tests
+    // =========================================================================
+
+    #[test]
+    fn test_apply_column_casting_empty() {
+        // Empty requirements should return query unchanged
+        let query = "SELECT * FROM some_table";
+        let requirements: Vec<TypeRequirement> = vec![];
+
+        let result = apply_column_casting(query, &requirements);
+        assert_eq!(result, query);
+    }
+
+    #[test]
+    fn test_apply_column_casting_single_column() {
+        use crate::plot::CastTargetType;
+
+        let query = "SELECT * FROM some_table";
+        let requirements = vec![TypeRequirement {
+            column: "date_col".to_string(),
+            target_type: CastTargetType::Date,
+            sql_type_name: "DATE".to_string(),
+        }];
+
+        let result = apply_column_casting(query, &requirements);
+        assert!(result.contains("EXCLUDE (\"date_col\")"));
+        assert!(result.contains("CAST(\"date_col\" AS DATE) AS \"date_col\""));
+        assert!(result.ends_with(" FROM (SELECT * FROM some_table)"));
+    }
+
+    #[test]
+    fn test_apply_column_casting_multiple_columns() {
+        use crate::plot::CastTargetType;
+
+        let query = "SELECT * FROM data";
+        let requirements = vec![
+            TypeRequirement {
+                column: "date_col".to_string(),
+                target_type: CastTargetType::Date,
+                sql_type_name: "DATE".to_string(),
+            },
+            TypeRequirement {
+                column: "value".to_string(),
+                target_type: CastTargetType::Number,
+                sql_type_name: "DOUBLE".to_string(),
+            },
+        ];
+
+        let result = apply_column_casting(query, &requirements);
+        assert!(result.contains("EXCLUDE (\"date_col\", \"value\")"));
+        assert!(result.contains("CAST(\"date_col\" AS DATE) AS \"date_col\""));
+        assert!(result.contains("CAST(\"value\" AS DOUBLE) AS \"value\""));
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_type_casting_integration_string_to_date() {
+        // Test that STRING column with DATE scale gets properly cast
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT * FROM (VALUES
+                ('2024-01-01', 100),
+                ('2024-01-15', 200),
+                ('2024-02-01', 150)
+            ) AS t(date_str, value)
+            VISUALISE
+            DRAW point MAPPING date_str AS x, value AS y
+            SCALE x VIA date
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Verify the data was prepared successfully
+        let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
+        assert_eq!(df.height(), 3);
+
+        // The scale should be properly resolved
+        let spec = &result.specs[0];
+        let x_scale = spec.scales.iter().find(|s| s.aesthetic == "x").unwrap();
+        assert!(x_scale.scale_type.is_some());
     }
 
     // =========================================================================

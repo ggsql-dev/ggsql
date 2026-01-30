@@ -530,8 +530,12 @@ mod integration_tests {
         "#;
 
         // Prepare data - this parses, injects constants into global data, and replaces literals with columns
-        let prepared =
-            execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
+        let prepared = execute::prepare_data_with_executor(
+            query,
+            |sql| reader.execute(sql),
+            &reader.sql_type_names(),
+        )
+        .unwrap();
 
         // Verify constants were injected into global data (not layer-specific data)
         // Both layers share __global__ data for faceting compatibility
@@ -638,8 +642,12 @@ mod integration_tests {
             FACET region BY category
         "#;
 
-        let prepared =
-            execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
+        let prepared = execute::prepare_data_with_executor(
+            query,
+            |sql| reader.execute(sql),
+            &reader.sql_type_names(),
+        )
+        .unwrap();
 
         // All layers should use global data for faceting to work
         assert!(
@@ -725,8 +733,12 @@ mod integration_tests {
             DRAW point SETTING size => 50
         "#;
 
-        let prepared =
-            execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
+        let prepared = execute::prepare_data_with_executor(
+            query,
+            |sql| reader.execute(sql),
+            &reader.sql_type_names(),
+        )
+        .unwrap();
 
         // Should have global data with the constant injected
         assert!(

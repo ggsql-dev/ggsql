@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use polars::prelude::{Column, DataType};
 
-use super::{ScaleTypeKind, ScaleTypeTrait};
+use super::{CastTargetType, ScaleTypeKind, ScaleTypeTrait};
 use crate::plot::{ArrayElement, ParameterValue};
 
 /// Identity scale type - delegates to inferred type
@@ -47,6 +47,15 @@ impl ScaleTypeTrait for Identity {
         _input_range: Option<&[ArrayElement]>,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
         Ok(None) // Identity scales use inferred defaults
+    }
+
+    /// Identity scales never require casting - they accept data as-is.
+    fn required_cast_type(
+        &self,
+        _column_dtype: &DataType,
+        _target_dtype: &DataType,
+    ) -> Option<CastTargetType> {
+        None
     }
 }
 

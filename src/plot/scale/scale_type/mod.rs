@@ -35,6 +35,7 @@ mod discrete;
 mod identity;
 
 // Re-export scale type structs for direct access if needed
+use crate::plot::types::{CastTargetType, SqlTypeNames};
 pub use binned::Binned;
 pub use continuous::Continuous;
 pub use discrete::Discrete;
@@ -710,6 +711,29 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     ) -> Option<String> {
         None
     }
+
+    /// Determine if a column needs casting to match the scale's target type.
+    ///
+    /// This is called early in the execution pipeline to determine what columns
+    /// need SQL-level casting before min/max extraction and scale resolution.
+    ///
+    /// # Arguments
+    ///
+    /// * `column_dtype` - The column's current data type
+    /// * `target_dtype` - The target data type determined by type coercion across layers
+    ///
+    /// # Returns
+    ///
+    /// Returns Some(CastTargetType) if the column needs casting, None otherwise.
+    ///
+    /// Default implementation uses the `needs_cast` helper function.
+    fn required_cast_type(
+        &self,
+        column_dtype: &DataType,
+        target_dtype: &DataType,
+    ) -> Option<CastTargetType> {
+        needs_cast(column_dtype, target_dtype)
+    }
 }
 
 /// Wrapper struct for scale type trait objects
@@ -924,6 +948,17 @@ impl ScaleType {
         self.0
             .pre_stat_transform_sql(column_name, column_dtype, scale, type_names)
     }
+
+    /// Determine if a column needs casting to match the scale's target type.
+    ///
+    /// Returns Some(CastTargetType) if casting is needed, None otherwise.
+    pub fn required_cast_type(
+        &self,
+        column_dtype: &DataType,
+        target_dtype: &DataType,
+    ) -> Option<CastTargetType> {
+        self.0.required_cast_type(column_dtype, target_dtype)
+    }
 }
 
 impl std::fmt::Debug for ScaleType {
@@ -1109,64 +1144,222 @@ pub(super) fn get_expand_factors(properties: &HashMap<String, ParameterValue>) -
 }
 
 // =============================================================================
-// SQL Type Names for Casting (used in binning)
+// Type Coercion (vctrs-style hierarchy)
 // =============================================================================
 
-/// Target type for binning operations.
+/// Type family for coercion purposes.
 ///
-/// When a column's data type doesn't match the transform's target type
-/// (e.g., STRING column with a DATE transform), the binning SQL needs
-/// to cast values to the correct type.
+/// Types within the same family can be coerced to a common type.
+/// Types in different families coerce to String (the most general type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CastTargetType {
-    /// Numeric type (DOUBLE, FLOAT, etc.)
-    Number,
-    /// Date type (DATE)
-    Date,
-    /// DateTime/Timestamp type (TIMESTAMP)
-    DateTime,
-    /// Time type (TIME)
-    Time,
+pub enum TypeFamily {
+    /// Boolean, Integer, Double - upcast to more general
+    Numeric,
+    /// Date, Datetime, Time - no auto-coercion between them
+    Temporal,
+    /// String - most general type
+    String,
 }
 
-/// SQL type names for casting in binning queries.
+/// Determine the type family for a Polars DataType.
+fn type_family(dtype: &DataType) -> TypeFamily {
+    match dtype {
+        DataType::Boolean
+        | DataType::Int8
+        | DataType::Int16
+        | DataType::Int32
+        | DataType::Int64
+        | DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
+        | DataType::UInt64
+        | DataType::Float32
+        | DataType::Float64 => TypeFamily::Numeric,
+        DataType::Date | DataType::Datetime(_, _) | DataType::Time => TypeFamily::Temporal,
+        DataType::String => TypeFamily::String,
+        _ => TypeFamily::String, // Unknown types treated as String
+    }
+}
+
+/// Numeric type rank for coercion (higher = more general).
+fn numeric_rank(dtype: &DataType) -> u8 {
+    match dtype {
+        DataType::Boolean => 0,
+        DataType::Int8 | DataType::UInt8 => 1,
+        DataType::Int16 | DataType::UInt16 => 2,
+        DataType::Int32 | DataType::UInt32 => 3,
+        DataType::Int64 | DataType::UInt64 => 4,
+        DataType::Float32 => 5,
+        DataType::Float64 => 6,
+        _ => 0,
+    }
+}
+
+/// Coerce multiple Polars DataTypes to a common type following vctrs-style hierarchy.
 ///
-/// These names are database-specific and provided by the Reader trait.
-/// When a binned scale has a type mismatch (e.g., STRING column with
-/// explicit DATE transform), the generated SQL needs to cast values.
-#[derive(Debug, Clone, Default)]
-pub struct SqlTypeNames {
-    /// SQL type name for numeric columns (e.g., "DOUBLE")
-    pub number: Option<String>,
-    /// SQL type name for DATE columns (e.g., "DATE")
-    pub date: Option<String>,
-    /// SQL type name for DATETIME columns (e.g., "TIMESTAMP")
-    pub datetime: Option<String>,
-    /// SQL type name for TIME columns (e.g., "TIME")
-    pub time: Option<String>,
-}
+/// # Type Families
+///
+/// 1. **Numeric family:** Boolean → Int8 → ... → Int64 → Float32 → Float64
+/// 2. **Temporal family:** Date, Datetime, Time (no auto-coercion between them)
+/// 3. **String family:** String (most general, can represent anything)
+///
+/// # Coercion Rules
+///
+/// - **Within numeric family:** Upcast to more general type (Boolean → Int64 → Float64)
+/// - **Within temporal family:** Error if mixing different temporal types
+/// - **Numeric + Temporal:** Coerce to String (incompatible families)
+/// - **Any + String:** Result is String (discrete scale)
+///
+/// # Returns
+///
+/// Returns Ok(DataType) with the common type, or Err if incompatible temporal types.
+pub fn coerce_dtypes(dtypes: &[DataType]) -> Result<DataType, String> {
+    if dtypes.is_empty() {
+        return Ok(DataType::String); // Default to String for empty
+    }
 
-impl SqlTypeNames {
-    /// Create SqlTypeNames with default DuckDB type names.
-    pub fn duckdb() -> Self {
-        Self {
-            number: Some("DOUBLE".to_string()),
-            date: Some("DATE".to_string()),
-            datetime: Some("TIMESTAMP".to_string()),
-            time: Some("TIME".to_string()),
+    if dtypes.len() == 1 {
+        return Ok(dtypes[0].clone());
+    }
+
+    // Determine families present
+    let families: Vec<TypeFamily> = dtypes.iter().map(type_family).collect();
+
+    // Check if any type is String - result is String
+    if families.contains(&TypeFamily::String) {
+        return Ok(DataType::String);
+    }
+
+    // Check for mixed families
+    let has_numeric = families.contains(&TypeFamily::Numeric);
+    let has_temporal = families.contains(&TypeFamily::Temporal);
+
+    if has_numeric && has_temporal {
+        // Incompatible families - coerce to String
+        return Ok(DataType::String);
+    }
+
+    // All numeric - find highest rank
+    if has_numeric && !has_temporal {
+        let max_rank = dtypes.iter().map(numeric_rank).max().unwrap_or(0);
+        return Ok(match max_rank {
+            0 => DataType::Boolean,
+            1 => DataType::Int8,
+            2 => DataType::Int16,
+            3 => DataType::Int32,
+            4 => DataType::Int64,
+            5 => DataType::Float32,
+            _ => DataType::Float64,
+        });
+    }
+
+    // All temporal - check they're all the same type
+    if has_temporal && !has_numeric {
+        let first = &dtypes[0];
+        let all_same = dtypes.iter().all(|d| {
+            matches!(
+                (first, d),
+                (DataType::Date, DataType::Date)
+                    | (DataType::Datetime(_, _), DataType::Datetime(_, _))
+                    | (DataType::Time, DataType::Time)
+            )
+        });
+
+        if all_same {
+            return Ok(first.clone());
+        } else {
+            // Mixed temporal types - error (requires explicit transform)
+            return Err(
+                "Cannot mix different temporal types (Date, Datetime, Time) without explicit transform. \
+                Use VIA date, VIA datetime, or VIA time to specify the target type.".to_string()
+            );
         }
     }
 
-    /// Get the SQL type name for a target type.
-    ///
-    /// Returns None if the type is not supported by the database.
-    pub fn for_target(&self, target: CastTargetType) -> Option<&str> {
-        match target {
-            CastTargetType::Number => self.number.as_deref(),
-            CastTargetType::Date => self.date.as_deref(),
-            CastTargetType::DateTime => self.datetime.as_deref(),
-            CastTargetType::Time => self.time.as_deref(),
+    // Fallback to String
+    Ok(DataType::String)
+}
+
+/// Convert a Polars DataType to the corresponding CastTargetType.
+///
+/// Returns None if no casting is needed (identity).
+pub fn dtype_to_cast_target(dtype: &DataType) -> CastTargetType {
+    match dtype {
+        DataType::Boolean => CastTargetType::Boolean,
+        DataType::Int8
+        | DataType::Int16
+        | DataType::Int32
+        | DataType::Int64
+        | DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
+        | DataType::UInt64
+        | DataType::Float32
+        | DataType::Float64 => CastTargetType::Number,
+        DataType::Date => CastTargetType::Date,
+        DataType::Datetime(_, _) => CastTargetType::DateTime,
+        DataType::Time => CastTargetType::Time,
+        DataType::String => CastTargetType::String,
+        _ => CastTargetType::String, // Unknown types treated as String
+    }
+}
+
+/// Check if a column dtype needs casting to match a target dtype.
+///
+/// Returns Some(CastTargetType) if casting is needed, None otherwise.
+pub fn needs_cast(column_dtype: &DataType, target_dtype: &DataType) -> Option<CastTargetType> {
+    // Same type family check
+    let column_family = type_family(column_dtype);
+    let target_family = type_family(target_dtype);
+
+    // Check if already the target type
+    let is_already_target = match (column_dtype, target_dtype) {
+        (DataType::Boolean, DataType::Boolean) => true,
+        (DataType::Date, DataType::Date) => true,
+        (DataType::Datetime(_, _), DataType::Datetime(_, _)) => true,
+        (DataType::Time, DataType::Time) => true,
+        (DataType::String, DataType::String) => true,
+        // For numeric, check if target is Float64 and column is any numeric
+        (
+            DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::UInt8
+            | DataType::UInt16
+            | DataType::UInt32
+            | DataType::UInt64
+            | DataType::Float32
+            | DataType::Float64,
+            DataType::Float64,
+        ) => {
+            // Numeric columns don't need SQL-level casting to Float64
+            // DuckDB handles implicit numeric conversions
+            true
         }
+        _ => false,
+    };
+
+    if is_already_target {
+        return None;
+    }
+
+    // If families differ, need to cast
+    if column_family != target_family {
+        return Some(dtype_to_cast_target(target_dtype));
+    }
+
+    // Within same family, check specific cases
+    match target_family {
+        TypeFamily::Numeric => {
+            // Numeric to numeric - DuckDB handles implicitly
+            None
+        }
+        TypeFamily::Temporal => {
+            // Different temporal types - need explicit cast
+            Some(dtype_to_cast_target(target_dtype))
+        }
+        TypeFamily::String => None, // Already string
     }
 }
 
@@ -2505,5 +2698,184 @@ mod tests {
     #[test]
     fn test_supports_breaks_identity_false() {
         assert!(!ScaleType::identity().supports_breaks());
+    }
+
+    // =========================================================================
+    // Type Coercion Tests
+    // =========================================================================
+
+    #[test]
+    fn test_coerce_dtypes_single_type() {
+        assert_eq!(coerce_dtypes(&[DataType::Int64]).unwrap(), DataType::Int64);
+        assert_eq!(
+            coerce_dtypes(&[DataType::String]).unwrap(),
+            DataType::String
+        );
+        assert_eq!(coerce_dtypes(&[DataType::Date]).unwrap(), DataType::Date);
+    }
+
+    #[test]
+    fn test_coerce_dtypes_numeric_family() {
+        // Boolean → Int → Float hierarchy
+        assert_eq!(
+            coerce_dtypes(&[DataType::Boolean, DataType::Int64]).unwrap(),
+            DataType::Int64
+        );
+        assert_eq!(
+            coerce_dtypes(&[DataType::Int32, DataType::Float64]).unwrap(),
+            DataType::Float64
+        );
+        assert_eq!(
+            coerce_dtypes(&[DataType::Boolean, DataType::Float64]).unwrap(),
+            DataType::Float64
+        );
+    }
+
+    #[test]
+    fn test_coerce_dtypes_string_absorbs_all() {
+        // String is most general
+        assert_eq!(
+            coerce_dtypes(&[DataType::String, DataType::Int64]).unwrap(),
+            DataType::String
+        );
+        assert_eq!(
+            coerce_dtypes(&[DataType::String, DataType::Date]).unwrap(),
+            DataType::String
+        );
+    }
+
+    #[test]
+    fn test_coerce_dtypes_incompatible_families_to_string() {
+        // Numeric + Temporal → String
+        assert_eq!(
+            coerce_dtypes(&[DataType::Int64, DataType::Date]).unwrap(),
+            DataType::String
+        );
+        assert_eq!(
+            coerce_dtypes(&[DataType::Float64, DataType::Time]).unwrap(),
+            DataType::String
+        );
+    }
+
+    #[test]
+    fn test_coerce_dtypes_temporal_same_type() {
+        use polars::prelude::TimeUnit;
+        // Same temporal types pass through
+        assert_eq!(
+            coerce_dtypes(&[DataType::Date, DataType::Date]).unwrap(),
+            DataType::Date
+        );
+        let dt = DataType::Datetime(TimeUnit::Microseconds, None);
+        assert!(coerce_dtypes(&[dt.clone(), dt.clone()]).is_ok());
+    }
+
+    #[test]
+    fn test_coerce_dtypes_temporal_mixed_error() {
+        use polars::prelude::TimeUnit;
+        // Mixed temporal types error
+        let result = coerce_dtypes(&[
+            DataType::Date,
+            DataType::Datetime(TimeUnit::Microseconds, None),
+        ]);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("Cannot mix different temporal types"));
+    }
+
+    #[test]
+    fn test_coerce_dtypes_empty() {
+        assert_eq!(coerce_dtypes(&[]).unwrap(), DataType::String);
+    }
+
+    // =========================================================================
+    // needs_cast Tests
+    // =========================================================================
+
+    #[test]
+    fn test_needs_cast_same_type() {
+        // Same types - no cast needed
+        assert!(needs_cast(&DataType::String, &DataType::String).is_none());
+        assert!(needs_cast(&DataType::Date, &DataType::Date).is_none());
+        assert!(needs_cast(&DataType::Boolean, &DataType::Boolean).is_none());
+    }
+
+    #[test]
+    fn test_needs_cast_numeric_to_float() {
+        // Numeric to Float64 - DuckDB handles implicitly
+        assert!(needs_cast(&DataType::Int64, &DataType::Float64).is_none());
+        assert!(needs_cast(&DataType::Int32, &DataType::Float64).is_none());
+        assert!(needs_cast(&DataType::Float32, &DataType::Float64).is_none());
+    }
+
+    #[test]
+    fn test_needs_cast_string_to_date() {
+        // String to Date - needs explicit cast
+        let result = needs_cast(&DataType::String, &DataType::Date);
+        assert_eq!(result, Some(CastTargetType::Date));
+    }
+
+    #[test]
+    fn test_needs_cast_int_to_string() {
+        // Int to String - needs explicit cast
+        let result = needs_cast(&DataType::Int64, &DataType::String);
+        assert_eq!(result, Some(CastTargetType::String));
+    }
+
+    #[test]
+    fn test_needs_cast_bool_to_string() {
+        // Bool to String - needs explicit cast
+        let result = needs_cast(&DataType::Boolean, &DataType::String);
+        assert_eq!(result, Some(CastTargetType::String));
+    }
+
+    // =========================================================================
+    // dtype_to_cast_target Tests
+    // =========================================================================
+
+    #[test]
+    fn test_dtype_to_cast_target() {
+        assert_eq!(
+            dtype_to_cast_target(&DataType::Int64),
+            CastTargetType::Number
+        );
+        assert_eq!(
+            dtype_to_cast_target(&DataType::Float64),
+            CastTargetType::Number
+        );
+        assert_eq!(dtype_to_cast_target(&DataType::Date), CastTargetType::Date);
+        assert_eq!(
+            dtype_to_cast_target(&DataType::String),
+            CastTargetType::String
+        );
+        assert_eq!(
+            dtype_to_cast_target(&DataType::Boolean),
+            CastTargetType::Boolean
+        );
+    }
+
+    // =========================================================================
+    // SqlTypeNames Tests
+    // =========================================================================
+
+    #[test]
+    fn test_sql_type_names_for_target() {
+        let names = SqlTypeNames {
+            number: Some("DOUBLE".to_string()),
+            date: Some("DATE".to_string()),
+            datetime: Some("TIMESTAMP".to_string()),
+            time: Some("TIME".to_string()),
+            string: Some("VARCHAR".to_string()),
+            boolean: Some("BOOLEAN".to_string()),
+        };
+        assert_eq!(names.for_target(CastTargetType::Number), Some("DOUBLE"));
+        assert_eq!(names.for_target(CastTargetType::Date), Some("DATE"));
+        assert_eq!(
+            names.for_target(CastTargetType::DateTime),
+            Some("TIMESTAMP")
+        );
+        assert_eq!(names.for_target(CastTargetType::Time), Some("TIME"));
+        assert_eq!(names.for_target(CastTargetType::String), Some("VARCHAR"));
+        assert_eq!(names.for_target(CastTargetType::Boolean), Some("BOOLEAN"));
     }
 }

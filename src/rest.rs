@@ -36,6 +36,8 @@ use ggsql::{parser, GgsqlError, VERSION};
 #[cfg(feature = "duckdb")]
 use ggsql::execute::prepare_data_with_executor;
 #[cfg(feature = "duckdb")]
+use ggsql::plot::SqlTypeNames;
+#[cfg(feature = "duckdb")]
 use ggsql::reader::{DuckDBReader, Reader};
 
 #[cfg(feature = "vegalite")]
@@ -442,6 +444,26 @@ async fn query_handler(
 
     #[cfg(feature = "duckdb")]
     if request.reader.starts_with("duckdb://") {
+        // Get type names from the reader - we need to access the reader to get db-specific type names
+        let type_names: SqlTypeNames =
+            if request.reader == "duckdb://memory" && state.reader.is_some() {
+                let reader_mutex = state.reader.as_ref().unwrap();
+                let reader = reader_mutex.lock().map_err(|e| {
+                    GgsqlError::InternalError(format!("Failed to lock reader: {}", e))
+                })?;
+                reader.sql_type_names()
+            } else {
+                // Use default DuckDB type names for new connections
+                SqlTypeNames {
+                    number: Some("DOUBLE".to_string()),
+                    date: Some("DATE".to_string()),
+                    datetime: Some("TIMESTAMP".to_string()),
+                    time: Some("TIME".to_string()),
+                    string: Some("VARCHAR".to_string()),
+                    boolean: Some("BOOLEAN".to_string()),
+                }
+            };
+
         // Create query executor that handles shared state vs new reader
         let execute_query = |sql: &str| -> Result<ggsql::DataFrame, GgsqlError> {
             if request.reader == "duckdb://memory" && state.reader.is_some() {
@@ -457,7 +479,7 @@ async fn query_handler(
         };
 
         // Prepare data using shared execution logic
-        let prepared = prepare_data_with_executor(&request.query, execute_query)?;
+        let prepared = prepare_data_with_executor(&request.query, execute_query, &type_names)?;
 
         // Get metadata from available data
         let (rows, columns) = if let Some(df) = prepared.data.get("__global__") {

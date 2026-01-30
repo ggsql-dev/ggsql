@@ -175,37 +175,23 @@ impl ScaleTypeTrait for Binned {
     /// - Boundary values are not lost (edge bins include endpoints)
     /// - Data is binned BEFORE any stat transforms are applied
     ///
-    /// # Type Casting for Mismatched Columns
+    /// # Column Casting
     ///
-    /// When the column's data type doesn't match the transform's target type,
-    /// the generated SQL includes CAST expressions:
+    /// Column type casting is handled earlier in the pipeline by `apply_column_casting()`.
+    /// This function assumes the column already has the correct type.
     ///
-    /// - **STRING column + DATE transform** (explicit `VIA date`):
-    ///   ```sql
-    ///   CASE WHEN CAST(date_col AS DATE) >= CAST('2024-01-01' AS DATE) ...
-    ///   ```
-    ///
-    /// - **STRING column + numeric binning** (no explicit transform):
-    ///   ```sql
-    ///   CASE WHEN CAST(value AS DOUBLE) >= 0 AND CAST(value AS DOUBLE) < 10 ...
-    ///   ```
-    ///
-    /// - **DATE column + DATE transform** (types match):
-    ///   ```sql
-    ///   CASE WHEN date_col >= 19724 AND date_col < 19755 ... -- efficient numeric comparison
-    ///   ```
-    ///
-    /// The transform must be **explicit** (user specified `VIA date`, etc.) for casting
-    /// to be applied. If no transform is specified, the column type is used as-is.
+    /// However, break literal values may still need casting for temporal types:
+    /// ```sql
+    /// CASE WHEN date_col >= CAST('2024-01-01' AS DATE) ...
+    /// ```
     fn pre_stat_transform_sql(
         &self,
         column_name: &str,
         column_dtype: &DataType,
         scale: &super::super::Scale,
-        type_names: &super::SqlTypeNames,
+        _type_names: &super::SqlTypeNames,
     ) -> Option<String> {
         use super::super::transform::TransformKind;
-        use super::CastTargetType;
 
         // Get breaks from scale properties (calculated in resolve)
         // breaks should be an Array after resolution
@@ -231,116 +217,13 @@ impl ScaleTypeTrait for Binned {
             _ => true, // default to left-closed
         };
 
-        // Determine if we need casting based on explicit transform and column type mismatch
-        // Only consider casting if the user explicitly specified a transform (scale.transform is Some
-        // and was set by the user, not inferred from dtype). We check if the transform was explicitly
-        // set by looking at scale.explicit_transform flag.
+        // Determine if break values need temporal formatting
+        // Column is already cast to correct type, but break literals may need formatting
         let transform = scale.transform.as_ref();
-        let explicit_transform = scale.explicit_transform;
-
-        // Determine target type and whether casting is needed
-        let (cast_info, use_iso_values) = if explicit_transform {
-            if let Some(t) = transform {
-                match t.transform_kind() {
-                    TransformKind::Date => {
-                        let needs_cast = !matches!(column_dtype, DataType::Date);
-                        if needs_cast {
-                            (
-                                type_names
-                                    .for_target(CastTargetType::Date)
-                                    .map(|name| (name, CastTargetType::Date)),
-                                true, // Use ISO strings for temporal casts
-                            )
-                        } else {
-                            (None, false)
-                        }
-                    }
-                    TransformKind::DateTime => {
-                        let needs_cast = !matches!(column_dtype, DataType::Datetime(..));
-                        if needs_cast {
-                            (
-                                type_names
-                                    .for_target(CastTargetType::DateTime)
-                                    .map(|name| (name, CastTargetType::DateTime)),
-                                true,
-                            )
-                        } else {
-                            (None, false)
-                        }
-                    }
-                    TransformKind::Time => {
-                        let needs_cast = !matches!(column_dtype, DataType::Time);
-                        if needs_cast {
-                            (
-                                type_names
-                                    .for_target(CastTargetType::Time)
-                                    .map(|name| (name, CastTargetType::Time)),
-                                true,
-                            )
-                        } else {
-                            (None, false)
-                        }
-                    }
-                    // For non-temporal transforms (Identity, Log, Sqrt, etc.), check if column is numeric
-                    _ => {
-                        let is_numeric = matches!(
-                            column_dtype,
-                            DataType::Int8
-                                | DataType::Int16
-                                | DataType::Int32
-                                | DataType::Int64
-                                | DataType::UInt8
-                                | DataType::UInt16
-                                | DataType::UInt32
-                                | DataType::UInt64
-                                | DataType::Float32
-                                | DataType::Float64
-                        );
-                        if !is_numeric {
-                            (
-                                type_names
-                                    .for_target(CastTargetType::Number)
-                                    .map(|name| (name, CastTargetType::Number)),
-                                false, // Numeric values, not ISO strings
-                            )
-                        } else {
-                            (None, false)
-                        }
-                    }
-                }
-            } else {
-                (None, false)
-            }
-        } else {
-            // No explicit transform - check if column is numeric for numeric binning
-            let is_numeric = matches!(
-                column_dtype,
-                DataType::Int8
-                    | DataType::Int16
-                    | DataType::Int32
-                    | DataType::Int64
-                    | DataType::UInt8
-                    | DataType::UInt16
-                    | DataType::UInt32
-                    | DataType::UInt64
-                    | DataType::Float32
-                    | DataType::Float64
-                    | DataType::Date
-                    | DataType::Datetime(..)
-                    | DataType::Time
-            );
-            if !is_numeric {
-                // String column without explicit transform - cast to number
-                (
-                    type_names
-                        .for_target(CastTargetType::Number)
-                        .map(|name| (name, CastTargetType::Number)),
-                    false,
-                )
-            } else {
-                (None, false)
-            }
-        };
+        let is_temporal = matches!(
+            column_dtype,
+            DataType::Date | DataType::Datetime(..) | DataType::Time
+        );
 
         // Build CASE WHEN clauses for each bin
         let num_bins = break_values.len() - 1;
@@ -354,46 +237,54 @@ impl ScaleTypeTrait for Binned {
             let is_first = i == 0;
             let is_last = i == num_bins - 1;
 
-            // Format column and values based on casting requirements
-            let (col_expr, lower_expr, upper_expr, center_expr) =
-                if let Some((type_name, _target_type)) = &cast_info {
-                    let cast_col = format!("CAST({} AS {})", column_name, type_name);
-                    if use_iso_values {
-                        // Temporal: cast both column AND values to the target type
-                        let t = transform.unwrap();
-                        let lower_iso = t
-                            .format_as_iso(lower)
-                            .unwrap_or_else(|| format!("{}", lower));
-                        let upper_iso = t
-                            .format_as_iso(upper)
-                            .unwrap_or_else(|| format!("{}", upper));
-                        let center_iso = t
-                            .format_as_iso(center)
-                            .unwrap_or_else(|| format!("{}", center));
-                        (
-                            cast_col,
-                            format!("CAST('{}' AS {})", lower_iso, type_name),
-                            format!("CAST('{}' AS {})", upper_iso, type_name),
-                            format!("CAST('{}' AS {})", center_iso, type_name),
-                        )
-                    } else {
-                        // Numeric: cast column only, values are already numeric
-                        (
-                            cast_col,
-                            format!("{}", lower),
-                            format!("{}", upper),
-                            format!("{}", center),
-                        )
-                    }
-                } else {
-                    // No casting needed - use raw values
+            // Format break values based on column type
+            // Column is already the correct type (casting handled earlier)
+            let (lower_expr, upper_expr, center_expr) = if is_temporal {
+                // For temporal columns, format break values as ISO strings with CAST
+                if let Some(t) = transform {
+                    let type_name = match t.transform_kind() {
+                        TransformKind::Date => "DATE",
+                        TransformKind::DateTime => "TIMESTAMP",
+                        TransformKind::Time => "TIME",
+                        _ => {
+                            // Non-temporal transform on temporal column - use raw values
+                            return Some(build_case_expression_numeric(
+                                column_name,
+                                &break_values,
+                                closed_left,
+                            ));
+                        }
+                    };
+                    let lower_iso = t
+                        .format_as_iso(lower)
+                        .unwrap_or_else(|| format!("{}", lower));
+                    let upper_iso = t
+                        .format_as_iso(upper)
+                        .unwrap_or_else(|| format!("{}", upper));
+                    let center_iso = t
+                        .format_as_iso(center)
+                        .unwrap_or_else(|| format!("{}", center));
                     (
-                        column_name.to_string(),
+                        format!("CAST('{}' AS {})", lower_iso, type_name),
+                        format!("CAST('{}' AS {})", upper_iso, type_name),
+                        format!("CAST('{}' AS {})", center_iso, type_name),
+                    )
+                } else {
+                    // No transform - use raw numeric values (days/µs/ns since epoch)
+                    (
                         format!("{}", lower),
                         format!("{}", upper),
                         format!("{}", center),
                     )
-                };
+                }
+            } else {
+                // Numeric column - use raw values
+                (
+                    format!("{}", lower),
+                    format!("{}", upper),
+                    format!("{}", center),
+                )
+            };
 
             // Build the condition based on closed side
             // closed="left": [lower, upper) except last bin which is [lower, upper]
@@ -403,13 +294,13 @@ impl ScaleTypeTrait for Binned {
                     // Last bin: [lower, upper] (inclusive on both ends)
                     format!(
                         "{} >= {} AND {} <= {}",
-                        col_expr, lower_expr, col_expr, upper_expr
+                        column_name, lower_expr, column_name, upper_expr
                     )
                 } else {
                     // Normal bin: [lower, upper)
                     format!(
                         "{} >= {} AND {} < {}",
-                        col_expr, lower_expr, col_expr, upper_expr
+                        column_name, lower_expr, column_name, upper_expr
                     )
                 }
             } else {
@@ -418,13 +309,13 @@ impl ScaleTypeTrait for Binned {
                     // First bin: [lower, upper] (inclusive on both ends)
                     format!(
                         "{} >= {} AND {} <= {}",
-                        col_expr, lower_expr, col_expr, upper_expr
+                        column_name, lower_expr, column_name, upper_expr
                     )
                 } else {
                     // Normal bin: (lower, upper]
                     format!(
                         "{} > {} AND {} <= {}",
-                        col_expr, lower_expr, col_expr, upper_expr
+                        column_name, lower_expr, column_name, upper_expr
                     )
                 }
             };
@@ -435,6 +326,53 @@ impl ScaleTypeTrait for Binned {
         // Build final CASE expression
         Some(format!("(CASE {} ELSE NULL END)", cases.join(" ")))
     }
+}
+
+/// Build a CASE expression for numeric binning (helper for non-temporal cases).
+fn build_case_expression_numeric(
+    column_name: &str,
+    break_values: &[f64],
+    closed_left: bool,
+) -> String {
+    let num_bins = break_values.len() - 1;
+    let mut cases = Vec::with_capacity(num_bins);
+
+    for i in 0..num_bins {
+        let lower = break_values[i];
+        let upper = break_values[i + 1];
+        let center = (lower + upper) / 2.0;
+
+        let is_first = i == 0;
+        let is_last = i == num_bins - 1;
+
+        let condition = if closed_left {
+            if is_last {
+                format!(
+                    "{} >= {} AND {} <= {}",
+                    column_name, lower, column_name, upper
+                )
+            } else {
+                format!(
+                    "{} >= {} AND {} < {}",
+                    column_name, lower, column_name, upper
+                )
+            }
+        } else if is_first {
+            format!(
+                "{} >= {} AND {} <= {}",
+                column_name, lower, column_name, upper
+            )
+        } else {
+            format!(
+                "{} > {} AND {} <= {}",
+                column_name, lower, column_name, upper
+            )
+        };
+
+        cases.push(format!("WHEN {} THEN {}", condition, center));
+    }
+
+    format!("(CASE {} ELSE NULL END)", cases.join(" "))
 }
 
 /// Compute numeric input range as [min, max] from Columns.
@@ -475,7 +413,14 @@ mod tests {
 
     /// Helper to create default type names for tests
     fn test_type_names() -> SqlTypeNames {
-        SqlTypeNames::duckdb()
+        SqlTypeNames {
+            number: Some("DOUBLE".to_string()),
+            date: Some("DATE".to_string()),
+            datetime: Some("TIMESTAMP".to_string()),
+            time: Some("TIME".to_string()),
+            string: Some("VARCHAR".to_string()),
+            boolean: Some("BOOLEAN".to_string()),
+        }
     }
 
     #[test]
@@ -747,23 +692,29 @@ mod tests {
     }
 
     // ==========================================================================
-    // Type Casting Tests
+    // Type Casting Tests (Updated for Unified Casting)
     // ==========================================================================
+    //
+    // With the unified casting approach, column casting is done earlier in the
+    // pipeline (by apply_column_casting). The binned scale's pre_stat_transform_sql
+    // now assumes columns already have the correct type.
+    //
+    // These tests verify that:
+    // 1. Temporal columns use temporal literal formatting (ISO dates with CAST)
+    // 2. Numeric columns use raw numeric values
+    // 3. No column casting (only break literal casting for temporal types)
 
     #[test]
-    fn test_string_column_with_explicit_date_transform_casts() {
-        // STRING column + explicit date transform → type mismatch → CAST
+    fn test_date_column_with_date_transform_uses_temporal_literals() {
+        // DATE column + date transform → temporal literals with CAST
+        // (Column already has correct type; break values need formatting)
         use crate::plot::scale::transform::Transform;
 
         let binned = Binned;
         let mut scale = Scale::new("x");
         scale.transform = Some(Transform::date());
-        scale.explicit_transform = true; // User specified VIA date
+        scale.explicit_transform = true;
 
-        // Date breaks: 2024-01-02 to 2024-03-02 (days since epoch)
-        // 19724 days from 1970-01-01 = 2024-01-02
-        // 19755 days from 1970-01-01 = 2024-02-02
-        // 19784 days from 1970-01-01 = 2024-03-02
         scale.properties.insert(
             "breaks".to_string(),
             ParameterValue::Array(vec![
@@ -773,67 +724,34 @@ mod tests {
             ]),
         );
 
-        // String column - needs casting
+        // Date column - no column casting, but break values are formatted as ISO dates
         let sql = binned
-            .pre_stat_transform_sql("date_col", &DataType::String, &scale, &test_type_names())
+            .pre_stat_transform_sql("date_col", &DataType::Date, &scale, &test_type_names())
             .unwrap();
 
-        // Should contain CAST expressions
+        // Should NOT contain column CAST (column is already DATE)
         assert!(
-            sql.contains("CAST(date_col AS DATE)"),
-            "SQL should cast column to DATE. Got: {}",
+            !sql.contains("CAST(date_col AS"),
+            "SQL should not cast column when type matches. Got: {}",
             sql
         );
         // Break values should be cast as ISO date strings
         assert!(
             sql.contains("CAST('2024-01-02' AS DATE)"),
-            "SQL should cast break value to DATE. Got: {}",
+            "SQL should format break values as ISO dates. Got: {}",
             sql
         );
         assert!(
             sql.contains("CAST('2024-02-02' AS DATE)"),
-            "SQL should cast break value to DATE. Got: {}",
+            "SQL should format break values as ISO dates. Got: {}",
             sql
         );
     }
 
     #[test]
-    fn test_date_column_with_date_transform_no_cast() {
-        // DATE column + date transform → types match → no cast needed
-        use crate::plot::scale::transform::Transform;
-
-        let binned = Binned;
-        let mut scale = Scale::new("x");
-        scale.transform = Some(Transform::date());
-        scale.explicit_transform = true; // User specified VIA date
-
-        scale.properties.insert(
-            "breaks".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::Date(19724), // 2024-01-01
-                ArrayElement::Date(19755), // 2024-02-01
-            ]),
-        );
-
-        // Date column - no casting needed
-        let sql = binned
-            .pre_stat_transform_sql("date_col", &DataType::Date, &scale, &test_type_names())
-            .unwrap();
-
-        // Should NOT contain CAST expressions (efficient numeric comparison)
-        assert!(
-            !sql.contains("CAST("),
-            "SQL should not contain CAST when types match"
-        );
-        assert!(
-            sql.contains("date_col >= 19724"),
-            "SQL should use raw numeric values"
-        );
-    }
-
-    #[test]
-    fn test_string_column_without_explicit_transform_casts_to_number() {
-        // STRING column + no explicit transform → cast to DOUBLE
+    fn test_numeric_column_no_transform_uses_raw_values() {
+        // Numeric column + no explicit transform → raw numeric values
+        // (Column is already numeric; break values are plain numbers)
         let binned = Binned;
         let mut scale = Scale::new("x");
         // No explicit transform set
@@ -847,25 +765,31 @@ mod tests {
             ]),
         );
 
-        // String column - needs casting to DOUBLE
+        // Float64 column - no casting needed
         let sql = binned
-            .pre_stat_transform_sql("value", &DataType::String, &scale, &test_type_names())
+            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names())
             .unwrap();
 
-        // Should contain CAST to DOUBLE
+        // Should NOT contain any CAST expressions
         assert!(
-            sql.contains("CAST(value AS DOUBLE)"),
-            "SQL should cast string column to DOUBLE"
+            !sql.contains("CAST("),
+            "SQL should not contain CAST when column is numeric. Got: {}",
+            sql
         );
-        // Values should NOT be cast (they're already numeric)
         assert!(
-            sql.contains(">= 0 AND"),
-            "SQL should use raw numeric values for comparison"
+            sql.contains("value >= 0"),
+            "SQL should use raw column name. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("THEN 5"),
+            "SQL should use raw numeric center values. Got: {}",
+            sql
         );
     }
 
     #[test]
-    fn test_numeric_column_no_cast() {
+    fn test_int_column_no_cast() {
         // INT64 column + no explicit transform → no cast needed
         let binned = Binned;
         let mut scale = Scale::new("x");
@@ -890,5 +814,48 @@ mod tests {
             "SQL should not contain CAST when column is numeric"
         );
         assert!(sql.contains("value >= 0"), "SQL should use raw column name");
+    }
+
+    #[test]
+    fn test_datetime_column_with_datetime_transform() {
+        // DATETIME column + datetime transform → temporal literals
+        use crate::plot::scale::transform::Transform;
+        use polars::prelude::TimeUnit;
+
+        let binned = Binned;
+        let mut scale = Scale::new("x");
+        scale.transform = Some(Transform::datetime());
+        scale.explicit_transform = true;
+
+        // Use DateTime variants (microseconds since epoch)
+        let dt1: i64 = 1_704_067_200_000_000; // 2024-01-01 00:00:00 UTC
+        let dt2: i64 = 1_706_745_600_000_000; // 2024-02-01 00:00:00 UTC
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::DateTime(dt1),
+                ArrayElement::DateTime(dt2),
+            ]),
+        );
+
+        let sql = binned
+            .pre_stat_transform_sql(
+                "datetime_col",
+                &DataType::Datetime(TimeUnit::Microseconds, None),
+                &scale,
+                &test_type_names(),
+            )
+            .unwrap();
+
+        // Should contain CAST for break values but not column
+        assert!(
+            !sql.contains("CAST(datetime_col AS"),
+            "SQL should not cast column when type matches"
+        );
+        assert!(
+            sql.contains("CAST('2024-01-01") && sql.contains("AS TIMESTAMP"),
+            "SQL should format break values as ISO datetime with CAST. Got: {}",
+            sql
+        );
     }
 }

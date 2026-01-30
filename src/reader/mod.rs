@@ -19,6 +19,7 @@
 //! let df = reader.execute("SELECT * FROM table")?;
 //! ```
 
+use crate::plot::SqlTypeNames;
 use crate::{DataFrame, Result};
 
 #[cfg(feature = "duckdb")]
@@ -103,5 +104,36 @@ pub trait Reader {
     /// Returns None if the database doesn't support this type.
     fn time_type_name(&self) -> Option<&str> {
         Some("TIME")
+    }
+
+    /// SQL type name for VARCHAR/TEXT columns
+    ///
+    /// Used for casting columns to string type.
+    /// Returns None if the database doesn't support this cast.
+    fn string_type_name(&self) -> Option<&str> {
+        Some("VARCHAR")
+    }
+
+    /// SQL type name for BOOLEAN columns
+    ///
+    /// Used for casting columns to boolean type.
+    /// Returns None if the database doesn't support this cast.
+    fn boolean_type_name(&self) -> Option<&str> {
+        Some("BOOLEAN")
+    }
+
+    /// Get SQL type names for this reader.
+    ///
+    /// Returns a SqlTypeNames struct populated from the individual type name methods.
+    /// This is useful for passing to functions that need all type names at once.
+    fn sql_type_names(&self) -> SqlTypeNames {
+        SqlTypeNames {
+            number: self.number_type_name().map(String::from),
+            date: self.date_type_name().map(String::from),
+            datetime: self.datetime_type_name().map(String::from),
+            time: self.time_type_name().map(String::from),
+            string: self.string_type_name().map(String::from),
+            boolean: self.boolean_type_name().map(String::from),
+        }
     }
 }
