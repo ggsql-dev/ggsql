@@ -669,6 +669,8 @@ pub struct SqlExpression(pub String);
 pub enum CastTargetType {
     /// Numeric type (DOUBLE, FLOAT, etc.)
     Number,
+    /// Integer type (BIGINT, INTEGER)
+    Integer,
     /// Date type (DATE)
     Date,
     /// DateTime/Timestamp type (TIMESTAMP)
@@ -690,6 +692,8 @@ pub enum CastTargetType {
 pub struct SqlTypeNames {
     /// SQL type name for numeric columns (e.g., "DOUBLE")
     pub number: Option<String>,
+    /// SQL type name for integer columns (e.g., "BIGINT")
+    pub integer: Option<String>,
     /// SQL type name for DATE columns (e.g., "DATE")
     pub date: Option<String>,
     /// SQL type name for DATETIME columns (e.g., "TIMESTAMP")
@@ -709,6 +713,7 @@ impl SqlTypeNames {
     pub fn for_target(&self, target: CastTargetType) -> Option<&str> {
         match target {
             CastTargetType::Number => self.number.as_deref(),
+            CastTargetType::Integer => self.integer.as_deref(),
             CastTargetType::Date => self.date.as_deref(),
             CastTargetType::DateTime => self.datetime.as_deref(),
             CastTargetType::Time => self.time.as_deref(),

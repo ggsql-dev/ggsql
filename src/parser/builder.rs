@@ -3335,6 +3335,55 @@ mod tests {
         assert_eq!(scales[0].transform.as_ref().unwrap().name(), "date");
     }
 
+    #[test]
+    fn test_scale_via_integer_transform() {
+        // Explicit integer transform via VIA clause
+        let query = r#"
+            VISUALISE val AS x, count AS y
+            DRAW point
+            SCALE x VIA integer
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "x");
+        assert!(scales[0].transform.is_some());
+        assert_eq!(scales[0].transform.as_ref().unwrap().name(), "integer");
+    }
+
+    #[test]
+    fn test_scale_via_int_alias() {
+        // Integer transform using 'int' alias
+        let query = r#"
+            VISUALISE val AS x, count AS y
+            DRAW point
+            SCALE x VIA int
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert!(scales[0].transform.is_some());
+        assert_eq!(scales[0].transform.as_ref().unwrap().name(), "integer");
+    }
+
+    #[test]
+    fn test_scale_via_bigint_alias() {
+        // Integer transform using 'bigint' alias
+        let query = r#"
+            VISUALISE val AS x, count AS y
+            DRAW point
+            SCALE x VIA bigint
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert!(scales[0].transform.is_some());
+        assert_eq!(scales[0].transform.as_ref().unwrap().name(), "integer");
+    }
+
     // ========================================
     // RENAMING clause tests
     // ========================================

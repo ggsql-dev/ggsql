@@ -122,6 +122,14 @@ pub trait Reader {
         Some("BOOLEAN")
     }
 
+    /// SQL type name for INTEGER columns (e.g., "BIGINT", "INTEGER")
+    ///
+    /// Used for casting columns to integer type.
+    /// Returns None if the database doesn't support this cast.
+    fn integer_type_name(&self) -> Option<&str> {
+        Some("BIGINT")
+    }
+
     /// Get SQL type names for this reader.
     ///
     /// Returns a SqlTypeNames struct populated from the individual type name methods.
@@ -129,6 +137,7 @@ pub trait Reader {
     fn sql_type_names(&self) -> SqlTypeNames {
         SqlTypeNames {
             number: self.number_type_name().map(String::from),
+            integer: self.integer_type_name().map(String::from),
             date: self.date_type_name().map(String::from),
             datetime: self.datetime_type_name().map(String::from),
             time: self.time_type_name().map(String::from),

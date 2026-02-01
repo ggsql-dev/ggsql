@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use polars::prelude::{Column, DataType};
 
+use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait};
 use crate::plot::{ArrayElement, ParameterValue};
 
@@ -39,10 +40,71 @@ impl ScaleTypeTrait for Discrete {
     }
 
     fn allows_data_type(&self, dtype: &DataType) -> bool {
+        // Discrete scales accept string, boolean, categorical data
+        // With String/Bool transforms, they can also accept other types that will be cast
         matches!(
             dtype,
             DataType::String | DataType::Boolean | DataType::Categorical(_, _)
         )
+    }
+
+    fn allowed_transforms(&self) -> &'static [TransformKind] {
+        &[
+            TransformKind::Identity,
+            TransformKind::String,
+            TransformKind::Bool,
+        ]
+    }
+
+    fn default_transform(&self, _aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
+        // Infer transform from column dtype
+        if let Some(dtype) = column_dtype {
+            match dtype {
+                DataType::Boolean => return TransformKind::Bool,
+                DataType::String | DataType::Categorical(_, _) => return TransformKind::String,
+                _ => {}
+            }
+        }
+        // Default to Identity for unknown/no column info
+        TransformKind::Identity
+    }
+
+    fn resolve_transform(
+        &self,
+        aesthetic: &str,
+        user_transform: Option<&Transform>,
+        column_dtype: Option<&DataType>,
+        input_range: Option<&[ArrayElement]>,
+    ) -> Result<Transform, String> {
+        // If user specified a transform, validate and use it
+        if let Some(t) = user_transform {
+            if self.allowed_transforms().contains(&t.transform_kind()) {
+                return Ok(t.clone());
+            } else {
+                return Err(format!(
+                    "Transform '{}' not supported for {} scale. Allowed: {}",
+                    t.name(),
+                    self.name(),
+                    self.allowed_transforms()
+                        .iter()
+                        .map(|k| k.name())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+        }
+
+        // Priority 1: Infer from input range (FROM clause) if provided
+        if let Some(range) = input_range {
+            if let Some(kind) = infer_transform_from_input_range(range) {
+                return Ok(Transform::from_kind(kind));
+            }
+        }
+
+        // Priority 2: Infer from column dtype
+        Ok(Transform::from_kind(
+            self.default_transform(aesthetic, column_dtype),
+        ))
     }
 
     fn resolve_input_range(
@@ -173,8 +235,202 @@ fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     }
 }
 
+/// Infer a transform kind from input range values.
+///
+/// If the input range contains values of a specific type, infer the corresponding transform:
+/// - String values → String transform
+/// - Boolean values → Bool transform
+/// - Other/mixed → None (use default)
+pub fn infer_transform_from_input_range(range: &[ArrayElement]) -> Option<TransformKind> {
+    if range.is_empty() {
+        return None;
+    }
+
+    // Check first element to determine type
+    match &range[0] {
+        ArrayElement::String(_) => Some(TransformKind::String),
+        ArrayElement::Boolean(_) => Some(TransformKind::Bool),
+        _ => None,
+    }
+}
+
 impl std::fmt::Display for Discrete {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_discrete_allowed_transforms() {
+        let discrete = Discrete;
+        let allowed = discrete.allowed_transforms();
+        assert!(allowed.contains(&TransformKind::Identity));
+        assert!(allowed.contains(&TransformKind::String));
+        assert!(allowed.contains(&TransformKind::Bool));
+        assert!(!allowed.contains(&TransformKind::Log10));
+    }
+
+    #[test]
+    fn test_discrete_default_transform_from_dtype() {
+        let discrete = Discrete;
+
+        // Boolean column → Bool transform
+        assert_eq!(
+            discrete.default_transform("color", Some(&DataType::Boolean)),
+            TransformKind::Bool
+        );
+
+        // String column → String transform
+        assert_eq!(
+            discrete.default_transform("color", Some(&DataType::String)),
+            TransformKind::String
+        );
+
+        // No column info → Identity
+        assert_eq!(
+            discrete.default_transform("color", None),
+            TransformKind::Identity
+        );
+    }
+
+    #[test]
+    fn test_infer_transform_from_input_range_string() {
+        let range = vec![
+            ArrayElement::String("A".to_string()),
+            ArrayElement::String("B".to_string()),
+        ];
+        assert_eq!(
+            infer_transform_from_input_range(&range),
+            Some(TransformKind::String)
+        );
+    }
+
+    #[test]
+    fn test_infer_transform_from_input_range_boolean() {
+        let range = vec![
+            ArrayElement::Boolean(false),
+            ArrayElement::Boolean(true),
+        ];
+        assert_eq!(
+            infer_transform_from_input_range(&range),
+            Some(TransformKind::Bool)
+        );
+    }
+
+    #[test]
+    fn test_infer_transform_from_input_range_empty() {
+        let range: Vec<ArrayElement> = vec![];
+        assert_eq!(infer_transform_from_input_range(&range), None);
+    }
+
+    #[test]
+    fn test_infer_transform_from_input_range_numeric() {
+        // Numeric values don't map to discrete transforms
+        let range = vec![
+            ArrayElement::Number(1.0),
+            ArrayElement::Number(2.0),
+        ];
+        assert_eq!(infer_transform_from_input_range(&range), None);
+    }
+
+    #[test]
+    fn test_resolve_transform_explicit_string() {
+        let discrete = Discrete;
+        let string_transform = Transform::string();
+
+        let result = discrete.resolve_transform("color", Some(&string_transform), None, None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::String);
+    }
+
+    #[test]
+    fn test_resolve_transform_explicit_bool() {
+        let discrete = Discrete;
+        let bool_transform = Transform::bool();
+
+        let result = discrete.resolve_transform("color", Some(&bool_transform), None, None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::Bool);
+    }
+
+    #[test]
+    fn test_resolve_transform_input_range_priority_over_dtype() {
+        let discrete = Discrete;
+
+        // Bool input range should take priority over String column dtype
+        let bool_range = vec![
+            ArrayElement::Boolean(true),
+            ArrayElement::Boolean(false),
+        ];
+        let result = discrete.resolve_transform(
+            "color",
+            None,
+            Some(&DataType::String), // String column
+            Some(&bool_range),       // But bool input range
+        );
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::Bool);
+
+        // String input range should take priority over Boolean column dtype
+        let string_range = vec![
+            ArrayElement::String("A".to_string()),
+            ArrayElement::String("B".to_string()),
+        ];
+        let result = discrete.resolve_transform(
+            "color",
+            None,
+            Some(&DataType::Boolean), // Boolean column
+            Some(&string_range),      // But string input range
+        );
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::String);
+    }
+
+    #[test]
+    fn test_resolve_transform_falls_back_to_dtype_when_no_input_range() {
+        let discrete = Discrete;
+
+        // No input range - should infer from column dtype
+        let result = discrete.resolve_transform("color", None, Some(&DataType::Boolean), None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::Bool);
+
+        let result = discrete.resolve_transform("color", None, Some(&DataType::String), None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::String);
+    }
+
+    #[test]
+    fn test_resolve_transform_numeric_input_range_falls_back_to_dtype() {
+        let discrete = Discrete;
+
+        // Numeric input range doesn't map to a discrete transform, so falls back to dtype
+        let numeric_range = vec![
+            ArrayElement::Number(1.0),
+            ArrayElement::Number(2.0),
+        ];
+        let result = discrete.resolve_transform(
+            "color",
+            None,
+            Some(&DataType::Boolean),
+            Some(&numeric_range),
+        );
+        assert!(result.is_ok());
+        // Falls back to Boolean dtype inference
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::Bool);
+    }
+
+    #[test]
+    fn test_resolve_transform_disallowed() {
+        let discrete = Discrete;
+        let log_transform = Transform::log();
+
+        let result = discrete.resolve_transform("color", Some(&log_transform), None, None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not supported for discrete scale"));
     }
 }

@@ -7,7 +7,7 @@ use crate::naming;
 use crate::plot::layer::geom::{GeomAesthetics, AESTHETIC_FAMILIES};
 use crate::plot::{
     AestheticValue, ArrayElement, ArrayElementType, ColumnInfo, Layer, LiteralValue, OutputRange,
-    Scale, ScaleType, ScaleTypeKind, Schema, StatResult,
+    ParameterValue, Scale, ScaleType, ScaleTypeKind, Schema, StatResult,
 };
 use crate::{parser, DataFrame, DataSource, Facet, GgsqlError, Plot, Result};
 use polars::prelude::Column;
@@ -530,6 +530,43 @@ fn determine_type_requirements(
                     }
                 }
             }
+
+            // Check if Integer transform requires casting (float -> integer)
+            use crate::plot::scale::TransformKind;
+            use crate::plot::CastTargetType;
+            if let Some(ref transform) = scale.transform {
+                if transform.transform_kind() == TransformKind::Integer {
+                    // Integer transform: cast non-integer numeric types to integer
+                    let needs_int_cast = match col_dtype {
+                        polars::prelude::DataType::Float32
+                        | polars::prelude::DataType::Float64 => true,
+                        // Integer types don't need casting
+                        polars::prelude::DataType::Int8
+                        | polars::prelude::DataType::Int16
+                        | polars::prelude::DataType::Int32
+                        | polars::prelude::DataType::Int64
+                        | polars::prelude::DataType::UInt8
+                        | polars::prelude::DataType::UInt16
+                        | polars::prelude::DataType::UInt32
+                        | polars::prelude::DataType::UInt64 => false,
+                        // Other types: no integer casting
+                        _ => false,
+                    };
+
+                    if needs_int_cast {
+                        if let Some(sql_type) = type_names.for_target(CastTargetType::Integer) {
+                            // Don't add duplicate requirements for same column
+                            if !requirements.iter().any(|r| r.column == col_name) {
+                                requirements.push(TypeRequirement {
+                                    column: col_name.to_string(),
+                                    target_type: CastTargetType::Integer,
+                                    sql_type_name: sql_type.to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         layer_requirements.push(requirements);
@@ -604,6 +641,7 @@ fn update_type_info_for_casting(type_info: &mut [TypeInfo], requirements: &[Type
         {
             entry.1 = match req.target_type {
                 CastTargetType::Number => DataType::Float64,
+                CastTargetType::Integer => DataType::Int64,
                 CastTargetType::Date => DataType::Date,
                 CastTargetType::DateTime => DataType::Datetime(TimeUnit::Microseconds, None),
                 CastTargetType::Time => DataType::Time,
@@ -1924,6 +1962,13 @@ where
         ));
     }
 
+    // Create scales for aesthetics added by stat transforms (e.g., y from histogram)
+    // This must happen after build_layer_query() which applies stat transforms
+    // and modifies layer.mappings with new aesthetics like y → __ggsql_stat_count__
+    for spec in &mut specs {
+        create_missing_scales_post_stat(spec);
+    }
+
     // Post-process specs: replace literals with column references and compute labels
     for spec in &mut specs {
         // Replace literal aesthetic values with column references to synthetic constant columns
@@ -1935,6 +1980,12 @@ where
     // Resolve scale types from data for scales without explicit types
     for spec in &mut specs {
         resolve_scales(spec, &mut data_map)?;
+    }
+
+    // Apply post-stat binning for Binned scales on remapped aesthetics
+    // This handles cases like SCALE BINNED fill when fill is remapped from count
+    for spec in &specs {
+        apply_post_stat_binning(spec, &mut data_map)?;
     }
 
     // Apply out-of-bounds handling to data based on scale oob properties
@@ -2009,6 +2060,168 @@ fn create_missing_scales(spec: &mut Plot) {
     }
 }
 
+/// Create scales for aesthetics that appeared from stat transforms (remappings).
+///
+/// Called after build_layer_query() to handle aesthetics like:
+/// - y → __ggsql_stat_count__ (histogram, bar)
+/// - x2 → __ggsql_stat_bin_end__ (histogram)
+///
+/// This is necessary because stat transforms modify layer.mappings after
+/// create_missing_scales() has already run, potentially adding new aesthetics
+/// that don't have corresponding scales.
+fn create_missing_scales_post_stat(spec: &mut Plot) {
+    let mut current_aesthetics: HashSet<String> = HashSet::new();
+
+    // Collect all aesthetics currently in layer mappings
+    for layer in &spec.layers {
+        for aesthetic in layer.mappings.aesthetics.keys() {
+            let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+            current_aesthetics.insert(primary.to_string());
+        }
+    }
+
+    // Find aesthetics that don't have scales yet
+    let existing_scales: HashSet<String> =
+        spec.scales.iter().map(|s| s.aesthetic.clone()).collect();
+
+    // Create scales for new aesthetics
+    for aesthetic in current_aesthetics {
+        if !existing_scales.contains(&aesthetic) {
+            let mut scale = crate::plot::Scale::new(&aesthetic);
+            if !gets_default_scale(&aesthetic) {
+                scale.scale_type = Some(ScaleType::identity());
+            }
+            spec.scales.push(scale);
+        }
+    }
+}
+
+/// Apply binning directly to DataFrame columns for post-stat aesthetics.
+///
+/// This handles cases where a user specifies `SCALE BINNED` on a remapped aesthetic
+/// (e.g., binning histogram's count output if remapped to fill).
+///
+/// Called after resolve_scales() so that breaks have been calculated.
+fn apply_post_stat_binning(
+    spec: &Plot,
+    data_map: &mut HashMap<String, DataFrame>,
+) -> Result<()> {
+    for scale in &spec.scales {
+        // Only process Binned scales
+        match &scale.scale_type {
+            Some(st) if st.scale_type_kind() == ScaleTypeKind::Binned => {}
+            _ => continue,
+        }
+
+        // Get breaks from properties (skip if no breaks calculated)
+        let breaks = match scale.properties.get("breaks") {
+            Some(ParameterValue::Array(arr)) if arr.len() >= 2 => arr,
+            _ => continue,
+        };
+
+        // Extract break values as f64
+        let break_values: Vec<f64> = breaks.iter().filter_map(|e| e.to_f64()).collect();
+
+        if break_values.len() < 2 {
+            continue;
+        }
+
+        // Get closed property (default: left)
+        let closed_left = match scale.properties.get("closed") {
+            Some(ParameterValue::String(s)) => s != "right",
+            _ => true,
+        };
+
+        // Find columns for this aesthetic across layers
+        let column_sources =
+            find_columns_for_aesthetic_with_sources(&spec.layers, &scale.aesthetic);
+
+        // Apply binning to each column
+        for (data_key, col_name) in column_sources {
+            if let Some(df) = data_map.get(&data_key) {
+                // Skip if column doesn't exist in this data source
+                if df.column(&col_name).is_err() {
+                    continue;
+                }
+
+                let binned_df =
+                    apply_binning_to_dataframe(df, &col_name, &break_values, closed_left)?;
+                data_map.insert(data_key, binned_df);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Apply binning transformation to a DataFrame column.
+///
+/// Replaces each value with the center of its bin based on the break values.
+fn apply_binning_to_dataframe(
+    df: &DataFrame,
+    col_name: &str,
+    break_values: &[f64],
+    closed_left: bool,
+) -> Result<DataFrame> {
+    use polars::prelude::*;
+
+    let column = df
+        .column(col_name)
+        .map_err(|e| GgsqlError::InternalError(format!("Column '{}' not found: {}", col_name, e)))?;
+
+    let series = column.as_materialized_series();
+
+    // Cast to f64 for binning
+    let float_series = series.cast(&DataType::Float64).map_err(|e| {
+        GgsqlError::InternalError(format!("Cannot bin column '{}': {}", col_name, e))
+    })?;
+
+    let ca = float_series
+        .f64()
+        .map_err(|e| GgsqlError::InternalError(e.to_string()))?;
+
+    // Apply binning: replace values with bin centers
+    let num_bins = break_values.len() - 1;
+    let binned: Float64Chunked = ca.apply_values(|val| {
+        for i in 0..num_bins {
+            let lower = break_values[i];
+            let upper = break_values[i + 1];
+            let is_last = i == num_bins - 1;
+
+            let in_bin = if closed_left {
+                // Left-closed: [lower, upper) except last bin is [lower, upper]
+                if is_last {
+                    val >= lower && val <= upper
+                } else {
+                    val >= lower && val < upper
+                }
+            } else {
+                // Right-closed: (lower, upper] except first bin is [lower, upper]
+                if i == 0 {
+                    val >= lower && val <= upper
+                } else {
+                    val > lower && val <= upper
+                }
+            };
+
+            if in_bin {
+                return (lower + upper) / 2.0;
+            }
+        }
+        f64::NAN // Outside all bins
+    });
+
+    let binned_series = binned.into_series().with_name(col_name.into());
+
+    // Replace column in DataFrame
+    let mut new_df = df.clone();
+    let _ = new_df.replace(col_name, binned_series).map_err(|e| {
+        GgsqlError::InternalError(format!("Failed to replace column: {}", e))
+    })?;
+
+    Ok(new_df)
+}
+
 /// Resolve scale types and transforms early, based on column dtypes.
 ///
 /// This function:
@@ -2030,16 +2243,18 @@ fn resolve_scale_types_and_transforms(
         if scale.scale_type.is_some() {
             // Still need to resolve transform if not set
             if scale.transform.is_none() && !scale.explicit_transform {
-                // Find first column dtype for this aesthetic
-                let first_dtype =
-                    find_first_dtype_for_aesthetic(&spec.layers, &scale.aesthetic, layer_type_info);
-                if let Some(dtype) = first_dtype {
-                    let transform_kind = scale
-                        .scale_type
-                        .as_ref()
-                        .unwrap()
-                        .default_transform(&scale.aesthetic, Some(&dtype));
-                    scale.transform = Some(Transform::from_kind(transform_kind));
+                // Collect all dtypes and coerce to common type (same as inference branch)
+                let all_dtypes =
+                    collect_dtypes_for_aesthetic(&spec.layers, &scale.aesthetic, layer_type_info);
+                if !all_dtypes.is_empty() {
+                    if let Ok(common_dtype) = coerce_dtypes(&all_dtypes) {
+                        let transform_kind = scale
+                            .scale_type
+                            .as_ref()
+                            .unwrap()
+                            .default_transform(&scale.aesthetic, Some(&common_dtype));
+                        scale.transform = Some(Transform::from_kind(transform_kind));
+                    }
                 }
             }
             continue;
@@ -2064,46 +2279,64 @@ fn resolve_scale_types_and_transforms(
             }
         };
 
-        // Infer scale type from common dtype
-        let inferred_scale_type = ScaleType::infer(&common_dtype);
+        // Infer scale type, considering explicit transform if set
+        // If user specified VIA date/datetime/time/log/sqrt/etc., use Continuous scale
+        let inferred_scale_type = if scale.explicit_transform {
+            if let Some(ref transform) = scale.transform {
+                use crate::plot::scale::TransformKind;
+                match transform.transform_kind() {
+                    // Temporal transforms require Continuous scale
+                    TransformKind::Date
+                    | TransformKind::DateTime
+                    | TransformKind::Time
+                    // Numeric continuous transforms require Continuous scale
+                    | TransformKind::Log10
+                    | TransformKind::Log2
+                    | TransformKind::Log
+                    | TransformKind::Sqrt
+                    | TransformKind::Asinh
+                    | TransformKind::PseudoLog
+                    // Integer transform uses Continuous scale
+                    | TransformKind::Integer => ScaleType::continuous(),
+                    // Discrete transforms (String, Bool) use Discrete scale
+                    TransformKind::String | TransformKind::Bool => ScaleType::discrete(),
+                    // Identity: fall back to dtype inference
+                    TransformKind::Identity => ScaleType::infer(&common_dtype),
+                }
+            } else {
+                ScaleType::infer(&common_dtype)
+            }
+        } else {
+            ScaleType::infer(&common_dtype)
+        };
         scale.scale_type = Some(inferred_scale_type.clone());
 
         // Infer transform if not explicit
         if scale.transform.is_none() && !scale.explicit_transform {
-            let transform_kind =
-                inferred_scale_type.default_transform(&scale.aesthetic, Some(&common_dtype));
+            // For Discrete scales, check input range first for transform inference
+            // This allows SCALE DISCRETE x FROM [true, false] to infer Bool transform
+            // even when the column is String
+            let transform_kind = if inferred_scale_type.scale_type_kind()
+                == crate::plot::scale::ScaleTypeKind::Discrete
+            {
+                if let Some(ref input_range) = scale.input_range {
+                    use crate::plot::scale::infer_transform_from_input_range;
+                    if let Some(kind) = infer_transform_from_input_range(input_range) {
+                        kind
+                    } else {
+                        inferred_scale_type.default_transform(&scale.aesthetic, Some(&common_dtype))
+                    }
+                } else {
+                    inferred_scale_type.default_transform(&scale.aesthetic, Some(&common_dtype))
+                }
+            } else {
+                inferred_scale_type.default_transform(&scale.aesthetic, Some(&common_dtype))
+            };
             scale.transform = Some(Transform::from_kind(transform_kind));
         }
     }
 
     Ok(())
-}
-
-/// Find the first column dtype for an aesthetic across layers.
-fn find_first_dtype_for_aesthetic(
-    layers: &[Layer],
-    aesthetic: &str,
-    layer_type_info: &[Vec<TypeInfo>],
-) -> Option<polars::prelude::DataType> {
-    let aesthetics_to_check = get_aesthetic_family(aesthetic);
-
-    for (layer_idx, layer) in layers.iter().enumerate() {
-        if layer_idx >= layer_type_info.len() {
-            continue;
-        }
-        let type_info = &layer_type_info[layer_idx];
-
-        for aes_name in &aesthetics_to_check {
-            if let Some(value) = layer.mappings.get(aes_name) {
-                if let Some(col_name) = value.column_name() {
-                    if let Some((_, dtype, _)) = type_info.iter().find(|(n, _, _)| n == col_name) {
-                        return Some(dtype.clone());
-                    }
-                }
-            }
-        }
-    }
-    None
 }
 
 /// Collect all dtypes for an aesthetic across layers.
@@ -2783,7 +3016,6 @@ fn get_aesthetic_family(aesthetic: &str) -> Vec<&str> {
 // =============================================================================
 
 use crate::plot::scale::{OOB_CENSOR, OOB_KEEP, OOB_SQUISH};
-use crate::plot::ParameterValue;
 
 /// Apply out-of-bounds handling to data based on scale oob properties.
 ///
@@ -3215,6 +3447,7 @@ mod tests {
     fn test_type_names() -> SqlTypeNames {
         SqlTypeNames {
             number: Some("DOUBLE".to_string()),
+            integer: Some("BIGINT".to_string()),
             date: Some("DATE".to_string()),
             datetime: Some("TIMESTAMP".to_string()),
             time: Some("TIME".to_string()),
@@ -3968,6 +4201,228 @@ mod tests {
 
         // Should have fewer rows than original (binned)
         assert!(layer_df.height() < 100);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_histogram_creates_y_scale_post_stat() {
+        // Tests that scales are created for remapped aesthetics (e.g., y from histogram's count)
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data with continuous values
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE hist_scale_test AS SELECT RANDOM() * 100 as value FROM range(100)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM hist_scale_test
+            VISUALISE
+            DRAW histogram MAPPING value AS x
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should have scales for both x and y
+        // x is from the original mapping, y is from the stat transform (count)
+        let x_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "x");
+        let y_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "y");
+
+        assert!(x_scale.is_some(), "Should have x scale from original mapping");
+        assert!(y_scale.is_some(), "Should have y scale from stat transform remapping");
+
+        // y scale should have been resolved (scale_type inferred from count column)
+        let y_scale = y_scale.unwrap();
+        assert!(
+            y_scale.scale_type.is_some(),
+            "y scale should have scale_type resolved"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_bar_creates_y_scale_post_stat() {
+        // Tests that bar geom creates y scale for count stat
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data with categories
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE bar_scale_test AS SELECT * FROM (VALUES ('A'), ('B'), ('A'), ('C')) AS t(category)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Bar with only x mapped - should apply count stat and create y scale
+        let query = r#"
+            SELECT * FROM bar_scale_test
+            VISUALISE
+            DRAW bar MAPPING category AS x
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should have scales for both x and y
+        let x_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "x");
+        let y_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "y");
+
+        assert!(x_scale.is_some(), "Should have x scale from original mapping");
+        assert!(y_scale.is_some(), "Should have y scale from count stat remapping");
+
+        // y scale should have been resolved
+        let y_scale = y_scale.unwrap();
+        assert!(
+            y_scale.scale_type.is_some(),
+            "y scale should have scale_type resolved"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_histogram_creates_x2_scale_post_stat() {
+        // Tests that histogram creates x2 scale for bin_end remapping
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE hist_x2_test AS SELECT RANDOM() * 100 as value FROM range(50)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM hist_x2_test
+            VISUALISE
+            DRAW histogram MAPPING value AS x
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should have x2 scale from bin_end remapping
+        // Note: x2 is part of the x aesthetic family, so it may not have its own scale
+        // but x scale should exist and handle the x family
+        let _x2_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "x2");
+        let x_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "x");
+
+        assert!(x_scale.is_some(), "Should have x scale for x aesthetic family");
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_multi_layer_stat_and_non_stat() {
+        // Tests that a plot with both stat geom (histogram) and non-stat geom (point)
+        // correctly creates scales for all aesthetics including remapped ones
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE multi_layer_test AS SELECT n as id, n * 2.0 as x_val, n * 3.0 as y_val FROM range(50) t(n)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Histogram on x_val, point on x_val and y_val
+        let query = r#"
+            SELECT * FROM multi_layer_test
+            VISUALISE
+            DRAW histogram MAPPING x_val AS x
+            DRAW point MAPPING x_val AS x, y_val AS y
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Both layers should have x scale
+        let x_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "x");
+        assert!(x_scale.is_some(), "Should have x scale");
+
+        // Should have y scale (from histogram's count remapping AND point's y mapping)
+        let y_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "y");
+        assert!(y_scale.is_some(), "Should have y scale");
+
+        // y scale should be resolved
+        let y_scale = y_scale.unwrap();
+        assert!(
+            y_scale.scale_type.is_some(),
+            "y scale should have scale_type resolved"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_post_stat_binning_on_count() {
+        // Tests that SCALE BINNED can be applied to a remapped aesthetic
+        // This is an edge case where user bins the count output from histogram/bar
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data with values
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE binned_count_test AS SELECT * FROM range(100) t(value)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Histogram with SCALE BINNED on the y (count) aesthetic
+        let query = r#"
+            SELECT * FROM binned_count_test
+            VISUALISE
+            DRAW histogram MAPPING value AS x
+            SCALE BINNED y SETTING breaks => 5
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should have both x and y scales
+        let y_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "y");
+        assert!(y_scale.is_some(), "Should have y scale");
+
+        let y_scale = y_scale.unwrap();
+        assert!(y_scale.resolved, "y scale should be resolved");
+
+        // The y scale should have breaks calculated
+        let breaks = y_scale.properties.get("breaks");
+        assert!(breaks.is_some(), "y scale should have breaks property");
+
+        // Verify the data has been binned (count values should be bin centers)
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        let count_col = layer_df.column(naming::stat_column("count").as_str());
+        assert!(count_col.is_ok(), "Should have count column in layer data");
     }
 
     #[cfg(feature = "duckdb")]

@@ -38,7 +38,7 @@ mod identity;
 use crate::plot::types::{CastTargetType, SqlTypeNames};
 pub use binned::Binned;
 pub use continuous::Continuous;
-pub use discrete::Discrete;
+pub use discrete::{infer_transform_from_input_range, Discrete};
 pub use identity::Identity;
 
 // =============================================================================
@@ -400,13 +400,19 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     }
 
     /// Resolve and validate the transform.
-    /// If user_transform is None, returns default_transform(aesthetic, column_dtype).
+    ///
     /// If user_transform is Some, validates it's in allowed_transforms().
+    /// If user_transform is None, infers the transform in priority order:
+    /// 1. Input range type (FROM clause) - if provided
+    /// 2. Column data type - if available
+    /// 3. Aesthetic defaults (e.g., size → sqrt)
+    /// 4. Identity (fallback)
     fn resolve_transform(
         &self,
         aesthetic: &str,
         user_transform: Option<&Transform>,
         column_dtype: Option<&DataType>,
+        input_range: Option<&[ArrayElement]>,
     ) -> Result<Transform, String> {
         match user_transform {
             None => Ok(Transform::from_kind(
@@ -595,8 +601,14 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         // 1. Resolve properties (fills in defaults, validates)
         scale.properties = self.resolve_properties(aesthetic, &scale.properties)?;
 
-        // 2. Resolve transform from context dtype and aesthetic
-        let resolved_transform = self.resolve_transform(aesthetic, None, context.dtype.as_ref())?;
+        // 2. Resolve transform from user input, input range (FROM clause), and context dtype
+        // Priority: user transform > input range inference > column dtype inference > aesthetic default
+        let resolved_transform = self.resolve_transform(
+            aesthetic,
+            scale.transform.as_ref(),
+            context.dtype.as_ref(),
+            scale.input_range.as_deref(),
+        )?;
         scale.transform = Some(resolved_transform.clone());
 
         // 3. Resolve input range
@@ -879,16 +891,21 @@ impl ScaleType {
 
     /// Resolve and validate the transform.
     ///
-    /// If user_transform is None, returns default_transform(aesthetic, column_dtype).
     /// If user_transform is Some, validates it's in allowed_transforms().
+    /// If user_transform is None, infers the transform in priority order:
+    /// 1. Input range type (FROM clause) - if provided
+    /// 2. Column data type - if available
+    /// 3. Aesthetic defaults (e.g., size → sqrt)
+    /// 4. Identity (fallback)
     pub fn resolve_transform(
         &self,
         aesthetic: &str,
         user_transform: Option<&Transform>,
         column_dtype: Option<&DataType>,
+        input_range: Option<&[ArrayElement]>,
     ) -> Result<Transform, String> {
         self.0
-            .resolve_transform(aesthetic, user_transform, column_dtype)
+            .resolve_transform(aesthetic, user_transform, column_dtype, input_range)
     }
 
     /// Resolve break positions for this scale.
@@ -2299,20 +2316,43 @@ mod tests {
     }
 
     #[test]
-    fn test_discrete_only_allows_identity_transform() {
+    fn test_discrete_allows_identity_string_bool_transforms() {
         let transforms = ScaleType::discrete().allowed_transforms();
-        assert_eq!(transforms, &[TransformKind::Identity]);
+        assert_eq!(
+            transforms,
+            &[
+                TransformKind::Identity,
+                TransformKind::String,
+                TransformKind::Bool
+            ]
+        );
     }
 
     #[test]
     fn test_discrete_rejects_log_transform() {
         let log = Transform::log();
-        let result = ScaleType::discrete().resolve_transform("color", Some(&log), None);
+        let result = ScaleType::discrete().resolve_transform("color", Some(&log), None, None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("log"));
         assert!(err.contains("not supported"));
         assert!(err.contains("discrete"));
+    }
+
+    #[test]
+    fn test_discrete_accepts_string_transform() {
+        let string = Transform::string();
+        let result = ScaleType::discrete().resolve_transform("color", Some(&string), None, None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::String);
+    }
+
+    #[test]
+    fn test_discrete_accepts_bool_transform() {
+        let bool_t = Transform::bool();
+        let result = ScaleType::discrete().resolve_transform("color", Some(&bool_t), None, None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::Bool);
     }
 
     #[test]
@@ -2324,10 +2364,10 @@ mod tests {
     #[test]
     fn test_resolve_transform_fills_default() {
         // Without user input, fills in default
-        let result = ScaleType::continuous().resolve_transform("x", None, None);
+        let result = ScaleType::continuous().resolve_transform("x", None, None, None);
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Identity);
 
-        let result = ScaleType::continuous().resolve_transform("size", None, None);
+        let result = ScaleType::continuous().resolve_transform("size", None, None, None);
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Sqrt);
     }
 
@@ -2335,7 +2375,7 @@ mod tests {
     fn test_resolve_transform_validates_user_input() {
         // Valid user input is accepted
         let log = Transform::log();
-        let result = ScaleType::continuous().resolve_transform("y", Some(&log), None);
+        let result = ScaleType::continuous().resolve_transform("y", Some(&log), None, None);
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Log10);
 
         // Invalid user input is rejected (we can't easily test this anymore since
@@ -2352,12 +2392,14 @@ mod tests {
             TransformKind::Sqrt,
             TransformKind::Asinh,
             TransformKind::PseudoLog,
+            TransformKind::Integer,
             TransformKind::Date,
             TransformKind::DateTime,
             TransformKind::Time,
         ] {
             let transform = Transform::from_kind(*kind);
-            let result = ScaleType::continuous().resolve_transform("y", Some(&transform), None);
+            let result =
+                ScaleType::continuous().resolve_transform("y", Some(&transform), None, None);
             assert!(
                 result.is_ok(),
                 "Expected transform '{:?}' to be valid for continuous scale",
@@ -2365,6 +2407,42 @@ mod tests {
             );
             assert_eq!(result.unwrap().transform_kind(), *kind);
         }
+    }
+
+    #[test]
+    fn test_discrete_infers_transform_from_input_range() {
+        // Bool input range -> Bool transform
+        let bool_range = vec![ArrayElement::Boolean(true), ArrayElement::Boolean(false)];
+        let result =
+            ScaleType::discrete().resolve_transform("fill", None, None, Some(&bool_range));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::Bool);
+
+        // String input range -> String transform
+        let string_range = vec![
+            ArrayElement::String("A".to_string()),
+            ArrayElement::String("B".to_string()),
+        ];
+        let result =
+            ScaleType::discrete().resolve_transform("fill", None, None, Some(&string_range));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::String);
+    }
+
+    #[test]
+    fn test_discrete_input_range_overrides_column_dtype() {
+        use polars::prelude::DataType;
+
+        // Bool input range should override String column dtype
+        let bool_range = vec![ArrayElement::Boolean(true), ArrayElement::Boolean(false)];
+        let result = ScaleType::discrete().resolve_transform(
+            "fill",
+            None,
+            Some(&DataType::String), // Column is String
+            Some(&bool_range),       // But input range is Bool
+        );
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::Bool);
     }
 
     // =========================================================================
@@ -2862,6 +2940,7 @@ mod tests {
     fn test_sql_type_names_for_target() {
         let names = SqlTypeNames {
             number: Some("DOUBLE".to_string()),
+            integer: Some("BIGINT".to_string()),
             date: Some("DATE".to_string()),
             datetime: Some("TIMESTAMP".to_string()),
             time: Some("TIME".to_string()),
@@ -2869,6 +2948,7 @@ mod tests {
             boolean: Some("BOOLEAN".to_string()),
         };
         assert_eq!(names.for_target(CastTargetType::Number), Some("DOUBLE"));
+        assert_eq!(names.for_target(CastTargetType::Integer), Some("BIGINT"));
         assert_eq!(names.for_target(CastTargetType::Date), Some("DATE"));
         assert_eq!(
             names.for_target(CastTargetType::DateTime),

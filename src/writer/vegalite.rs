@@ -615,6 +615,11 @@ impl VegaLiteWriter {
                             // the field type ("temporal") is set based on the transform kind
                             TransformKind::Date | TransformKind::DateTime | TransformKind::Time => {
                             }
+                            // Discrete transforms (String, Bool) don't affect Vega-Lite scale type;
+                            // the data casting happens at the SQL level before reaching the writer
+                            TransformKind::String | TransformKind::Bool => {}
+                            // Integer transform is linear scale; casting happens at SQL level
+                            TransformKind::Integer => {}
                         }
                     }
 

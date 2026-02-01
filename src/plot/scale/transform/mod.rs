@@ -39,21 +39,27 @@ use std::sync::Arc;
 use crate::plot::ArrayElement;
 
 mod asinh;
+mod bool;
 mod date;
 mod datetime;
 mod identity;
+mod integer;
 mod log;
 mod pseudo_log;
 mod sqrt;
+mod string;
 mod time;
 
 pub use self::asinh::Asinh;
+pub use self::bool::Bool;
 pub use self::date::Date;
 pub use self::datetime::DateTime;
 pub use self::identity::Identity;
+pub use self::integer::Integer;
 pub use self::log::Log;
 pub use self::pseudo_log::PseudoLog;
 pub use self::sqrt::Sqrt;
+pub use self::string::String as StringTransform;
 pub use self::time::Time;
 
 /// Enum of all transform types for pattern matching and serialization
@@ -80,6 +86,12 @@ pub enum TransformKind {
     DateTime,
     /// Time transform (nanoseconds since midnight)
     Time,
+    /// String transform (for discrete scales)
+    String,
+    /// Boolean transform (for discrete scales)
+    Bool,
+    /// Integer transform (linear with integer casting)
+    Integer,
 }
 
 impl TransformKind {
@@ -96,6 +108,9 @@ impl TransformKind {
             TransformKind::Date => "date",
             TransformKind::DateTime => "datetime",
             TransformKind::Time => "time",
+            TransformKind::String => "string",
+            TransformKind::Bool => "bool",
+            TransformKind::Integer => "integer",
         }
     }
 
@@ -280,6 +295,21 @@ impl Transform {
         Self(Arc::new(Time))
     }
 
+    /// Create a String transform (for discrete scales - casts to string)
+    pub fn string() -> Self {
+        Self(Arc::new(StringTransform))
+    }
+
+    /// Create a Bool transform (for discrete scales - casts to boolean)
+    pub fn bool() -> Self {
+        Self(Arc::new(Bool))
+    }
+
+    /// Create an Integer transform (linear with integer casting)
+    pub fn integer() -> Self {
+        Self(Arc::new(Integer))
+    }
+
     /// Create a Transform from a string name
     ///
     /// Returns None if the name is not recognized.
@@ -308,6 +338,9 @@ impl Transform {
             "date" => Some(Self::date()),
             "datetime" => Some(Self::datetime()),
             "time" => Some(Self::time()),
+            "string" | "str" | "varchar" => Some(Self::string()),
+            "bool" | "boolean" => Some(Self::bool()),
+            "integer" | "int" | "bigint" => Some(Self::integer()),
             _ => None,
         }
     }
@@ -325,6 +358,9 @@ impl Transform {
             TransformKind::Date => Self::date(),
             TransformKind::DateTime => Self::datetime(),
             TransformKind::Time => Self::time(),
+            TransformKind::String => Self::string(),
+            TransformKind::Bool => Self::bool(),
+            TransformKind::Integer => Self::integer(),
         }
     }
 
@@ -400,15 +436,18 @@ impl Transform {
 
     /// Return the target ArrayElementType for this transform.
     ///
-    /// Used by continuous/binned scales to determine the coercion target
-    /// based on the transform. Temporal transforms target their respective
-    /// temporal types; all other transforms target Number.
+    /// Used by scales to determine the coercion target based on the transform.
+    /// Temporal transforms target their respective temporal types;
+    /// String/Bool transforms target their respective discrete types;
+    /// all other transforms target Number.
     pub fn target_type(&self) -> crate::plot::ArrayElementType {
         use crate::plot::ArrayElementType;
         match self.transform_kind() {
             TransformKind::Date => ArrayElementType::Date,
             TransformKind::DateTime => ArrayElementType::DateTime,
             TransformKind::Time => ArrayElementType::Time,
+            TransformKind::String => ArrayElementType::String,
+            TransformKind::Bool => ArrayElementType::Boolean,
             // All other transforms (Identity, Log, Sqrt, etc.) work on numbers
             _ => ArrayElementType::Number,
         }
@@ -520,6 +559,14 @@ pub const ALL_TRANSFORM_NAMES: &[&str] = &[
     "date",
     "datetime",
     "time",
+    "string",
+    "str",     // alias for string
+    "varchar", // alias for string
+    "bool",
+    "boolean", // alias for bool
+    "integer",
+    "int",    // alias for integer
+    "bigint", // alias for integer
 ];
 
 #[cfg(test)]
@@ -660,6 +707,114 @@ mod tests {
         assert_eq!(Transform::asinh().target_type(), ArrayElementType::Number);
         assert_eq!(
             Transform::pseudo_log().target_type(),
+            ArrayElementType::Number
+        );
+
+        // Discrete transforms target their respective types
+        assert_eq!(Transform::string().target_type(), ArrayElementType::String);
+        assert_eq!(Transform::bool().target_type(), ArrayElementType::Boolean);
+    }
+
+    #[test]
+    fn test_transform_string_creation() {
+        let string = Transform::string();
+        assert_eq!(string.transform_kind(), TransformKind::String);
+        assert_eq!(string.name(), "string");
+    }
+
+    #[test]
+    fn test_transform_bool_creation() {
+        let bool_t = Transform::bool();
+        assert_eq!(bool_t.transform_kind(), TransformKind::Bool);
+        assert_eq!(bool_t.name(), "bool");
+    }
+
+    #[test]
+    fn test_transform_from_name_string_aliases() {
+        // All aliases should produce a String transform
+        assert_eq!(
+            Transform::from_name("string").unwrap().transform_kind(),
+            TransformKind::String
+        );
+        assert_eq!(
+            Transform::from_name("str").unwrap().transform_kind(),
+            TransformKind::String
+        );
+        assert_eq!(
+            Transform::from_name("varchar").unwrap().transform_kind(),
+            TransformKind::String
+        );
+    }
+
+    #[test]
+    fn test_transform_from_name_bool_aliases() {
+        // All aliases should produce a Bool transform
+        assert_eq!(
+            Transform::from_name("bool").unwrap().transform_kind(),
+            TransformKind::Bool
+        );
+        assert_eq!(
+            Transform::from_name("boolean").unwrap().transform_kind(),
+            TransformKind::Bool
+        );
+    }
+
+    #[test]
+    fn test_transform_from_kind_string_bool() {
+        let string = Transform::from_kind(TransformKind::String);
+        assert_eq!(string.transform_kind(), TransformKind::String);
+
+        let bool_t = Transform::from_kind(TransformKind::Bool);
+        assert_eq!(bool_t.transform_kind(), TransformKind::Bool);
+    }
+
+    #[test]
+    fn test_transform_kind_display_string_bool() {
+        assert_eq!(format!("{}", TransformKind::String), "string");
+        assert_eq!(format!("{}", TransformKind::Bool), "bool");
+    }
+
+    #[test]
+    fn test_transform_integer_creation() {
+        let integer = Transform::integer();
+        assert_eq!(integer.transform_kind(), TransformKind::Integer);
+        assert_eq!(integer.name(), "integer");
+    }
+
+    #[test]
+    fn test_transform_from_name_integer_aliases() {
+        // All aliases should produce an Integer transform
+        assert_eq!(
+            Transform::from_name("integer").unwrap().transform_kind(),
+            TransformKind::Integer
+        );
+        assert_eq!(
+            Transform::from_name("int").unwrap().transform_kind(),
+            TransformKind::Integer
+        );
+        assert_eq!(
+            Transform::from_name("bigint").unwrap().transform_kind(),
+            TransformKind::Integer
+        );
+    }
+
+    #[test]
+    fn test_transform_from_kind_integer() {
+        let integer = Transform::from_kind(TransformKind::Integer);
+        assert_eq!(integer.transform_kind(), TransformKind::Integer);
+    }
+
+    #[test]
+    fn test_transform_kind_display_integer() {
+        assert_eq!(format!("{}", TransformKind::Integer), "integer");
+    }
+
+    #[test]
+    fn test_transform_integer_target_type() {
+        use crate::plot::ArrayElementType;
+        // Integer transform targets Number (integers are numeric)
+        assert_eq!(
+            Transform::integer().target_type(),
             ArrayElementType::Number
         );
     }

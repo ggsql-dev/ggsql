@@ -29,6 +29,8 @@ impl ScaleTypeTrait for Continuous {
             TransformKind::Sqrt,
             TransformKind::Asinh,
             TransformKind::PseudoLog,
+            // Integer transform for integer casting
+            TransformKind::Integer,
             // Temporal transforms for date/datetime/time data
             TransformKind::Date,
             TransformKind::DateTime,

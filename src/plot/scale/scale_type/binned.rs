@@ -415,6 +415,7 @@ mod tests {
     fn test_type_names() -> SqlTypeNames {
         SqlTypeNames {
             number: Some("DOUBLE".to_string()),
+            integer: Some("BIGINT".to_string()),
             date: Some("DATE".to_string()),
             datetime: Some("TIMESTAMP".to_string()),
             time: Some("TIME".to_string()),
