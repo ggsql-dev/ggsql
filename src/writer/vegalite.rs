@@ -347,8 +347,9 @@ impl VegaLiteWriter {
     }
 
     /// Map ggsql Geom to Vega-Lite mark type
-    fn geom_to_mark(&self, geom: &Geom) -> String {
-        match geom.geom_type() {
+    /// Always includes `clip: true` to ensure marks don't render outside plot bounds
+    fn geom_to_mark(&self, geom: &Geom) -> Value {
+        let mark_type = match geom.geom_type() {
             GeomType::Point => "point",
             GeomType::Line => "line",
             GeomType::Path => "line",
@@ -362,8 +363,11 @@ impl VegaLiteWriter {
             GeomType::Text => "text",
             GeomType::Label => "text",
             _ => "point", // Default fallback
-        }
-        .to_string()
+        };
+        json!({
+            "type": mark_type,
+            "clip": true
+        })
     }
 
     /// Check if a string column contains numeric values
@@ -1068,6 +1072,7 @@ impl VegaLiteWriter {
     }
 
     /// Convert a mark type to its polar equivalent
+    /// Preserves `clip: true` to ensure marks don't render outside plot bounds
     fn convert_mark_to_polar(&self, mark: &Value, _spec: &Plot) -> Result<Value> {
         let mark_str = if mark.is_string() {
             mark.as_str().unwrap()
@@ -1078,29 +1083,34 @@ impl VegaLiteWriter {
         };
 
         // Convert geom types to polar equivalents
-        match mark_str {
+        let polar_mark = match mark_str {
             "bar" | "col" => {
                 // Bar/col in polar becomes arc (pie/donut slices)
-                Ok(json!("arc"))
+                "arc"
             }
             "point" => {
                 // Points in polar can stay as points or become arcs with radius
                 // For now, keep as points (they'll plot at radius based on value)
-                Ok(json!("point"))
+                "point"
             }
             "line" => {
                 // Lines in polar become circular/spiral lines
-                Ok(json!("line"))
+                "line"
             }
             "area" => {
                 // Area in polar becomes arc with radius
-                Ok(json!("arc"))
+                "arc"
             }
             _ => {
                 // Other geoms: keep as-is or convert to arc
-                Ok(json!("arc"))
+                "arc"
             }
-        }
+        };
+
+        Ok(json!({
+            "type": polar_mark,
+            "clip": true
+        }))
     }
 
     /// Update encoding channels for polar coordinates
@@ -1406,7 +1416,8 @@ impl Writer for VegaLiteWriter {
                     .unwrap_or(0.9);
                 layer_spec["mark"] = json!({
                     "type": "bar",
-                    "width": {"band": width}
+                    "width": {"band": width},
+                    "clip": true
                 });
             }
 
@@ -1624,11 +1635,27 @@ mod tests {
     #[test]
     fn test_geom_to_mark_mapping() {
         let writer = VegaLiteWriter::new();
-        assert_eq!(writer.geom_to_mark(&Geom::point()), "point");
-        assert_eq!(writer.geom_to_mark(&Geom::line()), "line");
-        assert_eq!(writer.geom_to_mark(&Geom::bar()), "bar");
-        assert_eq!(writer.geom_to_mark(&Geom::area()), "area");
-        assert_eq!(writer.geom_to_mark(&Geom::tile()), "rect");
+        // All marks should be objects with type and clip: true
+        assert_eq!(
+            writer.geom_to_mark(&Geom::point()),
+            json!({"type": "point", "clip": true})
+        );
+        assert_eq!(
+            writer.geom_to_mark(&Geom::line()),
+            json!({"type": "line", "clip": true})
+        );
+        assert_eq!(
+            writer.geom_to_mark(&Geom::bar()),
+            json!({"type": "bar", "clip": true})
+        );
+        assert_eq!(
+            writer.geom_to_mark(&Geom::area()),
+            json!({"type": "area", "clip": true})
+        );
+        assert_eq!(
+            writer.geom_to_mark(&Geom::tile()),
+            json!({"type": "rect", "clip": true})
+        );
     }
 
     #[test]
@@ -1687,7 +1714,8 @@ mod tests {
         // Verify structure (now uses layer array and datasets)
         assert_eq!(vl_spec["$schema"], writer.schema);
         assert!(vl_spec["layer"].is_array());
-        assert_eq!(vl_spec["layer"][0]["mark"], "point");
+        assert_eq!(vl_spec["layer"][0]["mark"]["type"], "point");
+        assert_eq!(vl_spec["layer"][0]["mark"]["clip"], true);
         assert!(vl_spec["datasets"][naming::GLOBAL_DATA_KEY].is_array());
         assert_eq!(
             vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
@@ -1734,7 +1762,8 @@ mod tests {
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         assert_eq!(vl_spec["title"], "My Chart");
-        assert_eq!(vl_spec["layer"][0]["mark"], "line");
+        assert_eq!(vl_spec["layer"][0]["mark"]["type"], "line");
+        assert_eq!(vl_spec["layer"][0]["mark"]["clip"], true);
     }
 
     #[test]
@@ -1937,7 +1966,11 @@ mod tests {
             let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-            assert_eq!(vl_spec["layer"][0]["mark"].as_str().unwrap(), expected_mark);
+            assert_eq!(
+                vl_spec["layer"][0]["mark"]["type"].as_str().unwrap(),
+                expected_mark
+            );
+            assert_eq!(vl_spec["layer"][0]["mark"]["clip"], true);
         }
     }
 
@@ -1967,7 +2000,8 @@ mod tests {
             let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-            assert_eq!(vl_spec["layer"][0]["mark"].as_str().unwrap(), "text");
+            assert_eq!(vl_spec["layer"][0]["mark"]["type"].as_str().unwrap(), "text");
+            assert_eq!(vl_spec["layer"][0]["mark"]["clip"], true);
         }
     }
 
@@ -2243,12 +2277,14 @@ mod tests {
         assert_eq!(layers.len(), 2);
 
         // Check first layer
-        assert_eq!(layers[0]["mark"], "line");
+        assert_eq!(layers[0]["mark"]["type"], "line");
+        assert_eq!(layers[0]["mark"]["clip"], true);
         assert_eq!(layers[0]["encoding"]["x"]["field"], "x");
         assert_eq!(layers[0]["encoding"]["y"]["field"], "y");
 
         // Check second layer
-        assert_eq!(layers[1]["mark"], "point");
+        assert_eq!(layers[1]["mark"]["type"], "point");
+        assert_eq!(layers[1]["mark"]["clip"], true);
         assert_eq!(layers[1]["encoding"]["color"]["value"], "red");
     }
 
@@ -2308,9 +2344,12 @@ mod tests {
 
         let layers = vl_spec["layer"].as_array().unwrap();
         assert_eq!(layers.len(), 3);
-        assert_eq!(layers[0]["mark"], "area");
-        assert_eq!(layers[1]["mark"], "line");
-        assert_eq!(layers[2]["mark"], "point");
+        assert_eq!(layers[0]["mark"]["type"], "area");
+        assert_eq!(layers[0]["mark"]["clip"], true);
+        assert_eq!(layers[1]["mark"]["type"], "line");
+        assert_eq!(layers[1]["mark"]["clip"], true);
+        assert_eq!(layers[2]["mark"]["type"], "point");
+        assert_eq!(layers[2]["mark"]["clip"], true);
     }
 
     #[test]
@@ -3548,7 +3587,8 @@ mod tests {
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Bar in polar should become arc
-        assert_eq!(vl_spec["layer"][0]["mark"], "arc");
+        assert_eq!(vl_spec["layer"][0]["mark"]["type"], "arc");
+        assert_eq!(vl_spec["layer"][0]["mark"]["clip"], true);
 
         // y should be mapped to theta
         assert!(vl_spec["layer"][0]["encoding"]["theta"].is_object());
@@ -3607,7 +3647,8 @@ mod tests {
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Should produce same result as default
-        assert_eq!(vl_spec["layer"][0]["mark"], "arc");
+        assert_eq!(vl_spec["layer"][0]["mark"]["type"], "arc");
+        assert_eq!(vl_spec["layer"][0]["mark"]["clip"], true);
         assert_eq!(vl_spec["layer"][0]["encoding"]["theta"]["field"], "value");
     }
 
