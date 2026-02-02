@@ -130,11 +130,12 @@ impl ScaleTypeTrait for Discrete {
     fn default_output_range(
         &self,
         aesthetic: &str,
-        input_range: Option<&[ArrayElement]>,
+        scale: &super::super::Scale,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
         use super::super::palettes;
 
-        let count = input_range.map(|r| r.len()).unwrap_or(0);
+        // Get count from input_range length (discrete scales use unique values)
+        let count = scale.input_range.as_ref().map(|r| r.len()).unwrap_or(0);
         if count == 0 {
             return Ok(None);
         }

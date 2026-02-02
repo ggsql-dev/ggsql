@@ -2919,7 +2919,7 @@ fn resolve_output_range(scale: &mut crate::plot::Scale, aesthetic: &str) -> Resu
     if scale.output_range.is_none() {
         if let Some(ref st) = scale.scale_type {
             if let Some(default_range) = st
-                .default_output_range(aesthetic, scale.input_range.as_deref())
+                .default_output_range(aesthetic, scale)
                 .map_err(GgsqlError::ValidationError)?
             {
                 scale.output_range = Some(OutputRange::Array(default_range));

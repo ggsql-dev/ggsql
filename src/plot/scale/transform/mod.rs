@@ -546,6 +546,7 @@ impl Default for Transform {
 /// List of all valid transform names
 pub const ALL_TRANSFORM_NAMES: &[&str] = &[
     "identity",
+    "linear", // alias for identity
     "log",
     "log10", // alias for log
     "log2",

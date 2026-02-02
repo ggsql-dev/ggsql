@@ -338,14 +338,16 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// - size + continuous → [min_size, max_size] range
     /// - opacity + continuous → [0.2, 1.0] range
     ///
-    /// The input_range is provided so discrete scales can size the output appropriately.
+    /// The scale reference is provided so implementations can access:
+    /// - `scale.input_range` for sizing discrete palettes
+    /// - `scale.properties["breaks"]` for binned scales to determine bin count
     ///
     /// Returns Ok(None) if no default is appropriate (e.g., x/y position aesthetics).
     /// Returns Err if the palette doesn't have enough colors for the input range.
     fn default_output_range(
         &self,
         _aesthetic: &str,
-        _input_range: Option<&[ArrayElement]>,
+        _scale: &super::Scale,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
         Ok(None) // Default implementation: no default range
     }
@@ -412,7 +414,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         aesthetic: &str,
         user_transform: Option<&Transform>,
         column_dtype: Option<&DataType>,
-        input_range: Option<&[ArrayElement]>,
+        _input_range: Option<&[ArrayElement]>,
     ) -> Result<Transform, String> {
         match user_transform {
             None => Ok(Transform::from_kind(
@@ -858,9 +860,9 @@ impl ScaleType {
     pub fn default_output_range(
         &self,
         aesthetic: &str,
-        input_range: Option<&[ArrayElement]>,
+        scale: &super::Scale,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
-        self.0.default_output_range(aesthetic, input_range)
+        self.0.default_output_range(aesthetic, scale)
     }
 
     /// Resolve and validate properties.

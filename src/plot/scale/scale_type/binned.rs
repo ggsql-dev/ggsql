@@ -132,21 +132,29 @@ impl ScaleTypeTrait for Binned {
     fn default_output_range(
         &self,
         aesthetic: &str,
-        _input_range: Option<&[ArrayElement]>,
+        scale: &super::super::Scale,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
+        use super::super::colour::{interpolate_colors, ColorSpace};
         use super::super::palettes;
+
+        // Get bin count from resolved breaks
+        let bin_count = match scale.properties.get("breaks") {
+            Some(ParameterValue::Array(breaks)) if breaks.len() >= 2 => breaks.len() - 1,
+            _ => return Ok(None), // No breaks resolved yet
+        };
 
         match aesthetic {
             // Note: "color"/"colour" already split to fill/stroke before scale resolution
             "stroke" | "fill" => {
+                // Get sequential palette and interpolate to get bin_count evenly-spaced colors
                 let palette = palettes::get_color_palette("sequential")
-                    .ok_or_else(|| "Default color palette 'ggsql' not found".to_string())?;
-                Ok(Some(
-                    palette
-                        .iter()
-                        .map(|col: &&str| ArrayElement::String(col.to_string()))
-                        .collect(),
-                ))
+                    .ok_or_else(|| "Default color palette 'sequential' not found".to_string())?;
+
+                // Convert &[&str] to Vec<&str> for interpolate_colors
+                let palette_vec: Vec<&str> = palette.to_vec();
+                let colors = interpolate_colors(&palette_vec, bin_count, ColorSpace::Oklab)?;
+
+                Ok(Some(colors.into_iter().map(ArrayElement::String).collect()))
             }
             "size" | "linewidth" => Ok(Some(vec![
                 ArrayElement::Number(1.0),
@@ -156,6 +164,16 @@ impl ScaleTypeTrait for Binned {
                 ArrayElement::Number(0.1),
                 ArrayElement::Number(1.0),
             ])),
+            "shape" => {
+                let palette = palettes::get_shape_palette("default")
+                    .ok_or_else(|| "Default shape palette not found".to_string())?;
+                palettes::expand_palette(palette, bin_count, "default").map(Some)
+            }
+            "linetype" => {
+                let palette = palettes::get_linetype_palette("default")
+                    .ok_or_else(|| "Default linetype palette not found".to_string())?;
+                palettes::expand_palette(palette, bin_count, "default").map(Some)
+            }
             _ => Ok(None),
         }
     }

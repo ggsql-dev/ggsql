@@ -44,7 +44,7 @@ impl ScaleTypeTrait for Identity {
     fn default_output_range(
         &self,
         _aesthetic: &str,
-        _input_range: Option<&[ArrayElement]>,
+        _scale: &super::super::Scale,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
         Ok(None) // Identity scales use inferred defaults
     }
