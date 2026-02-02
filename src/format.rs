@@ -8,7 +8,7 @@
 //! - `{:time %fmt}` - DateTime strftime format (e.g., `{:time %b %Y}` -> "Jan 2024")
 //! - `{:num %fmt}` - Number printf format (e.g., `{:num %.2f}` -> "25.50")
 
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -118,6 +118,13 @@ fn format_datetime(value: &str, fmt: &str) -> String {
     }
     // Try parsing as NaiveDate
     if let Ok(d) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
+        return d.format(fmt).to_string();
+    }
+    // Try parsing as NaiveTime
+    if let Ok(d) = NaiveTime::parse_from_str(value, "%H:%M:%S") {
+        return d.format(fmt).to_string();
+    }
+    if let Ok(d) = NaiveTime::parse_from_str(value, "%H:%M:%S%.f") {
         return d.format(fmt).to_string();
     }
     // Fallback: return original value if parsing fails
