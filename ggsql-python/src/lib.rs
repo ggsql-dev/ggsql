@@ -6,10 +6,10 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList};
 use std::io::Cursor;
 
-use ggsql::validate::{validate as rust_validate, ValidationWarning};
 use ggsql::reader::Spec;
 use ggsql::reader::{DuckDBReader as RustDuckDBReader, Reader};
-use ggsql::writer::VegaLiteWriter as RustVegaLiteWriter;
+use ggsql::validate::{validate as rust_validate, ValidationWarning};
+use ggsql::writer::{VegaLiteWriter as RustVegaLiteWriter, Writer as RustWriter};
 use ggsql::GgsqlError;
 
 use polars::prelude::{DataFrame, IpcReader, IpcWriter, SerReader, SerWriter};
@@ -308,7 +308,8 @@ impl PyDuckDBReader {
     /// --------
     /// >>> reader = DuckDBReader("duckdb://memory")
     /// >>> spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
-    /// >>> json_output = spec.render(VegaLiteWriter())
+    /// >>> writer = VegaLiteWriter()
+    /// >>> json_output = writer.render(spec)
     fn execute(&self, query: &str) -> PyResult<PySpec> {
         self.inner
             .execute(query)
@@ -329,7 +330,7 @@ impl PyDuckDBReader {
 /// --------
 /// >>> writer = VegaLiteWriter()
 /// >>> spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
-/// >>> json_output = spec.render(writer)
+/// >>> json_output = writer.render(spec)
 #[pyclass(name = "VegaLiteWriter")]
 struct PyVegaLiteWriter {
     inner: RustVegaLiteWriter,
@@ -348,6 +349,35 @@ impl PyVegaLiteWriter {
         Self {
             inner: RustVegaLiteWriter::new(),
         }
+    }
+
+    /// Render a Spec to Vega-Lite JSON output
+    ///
+    /// Parameters
+    /// ----------
+    /// spec : Spec
+    ///     The visualization specification from reader.execute().
+    ///
+    /// Returns
+    /// -------
+    /// str
+    ///     The output (i.e., Vega-Lite JSON string).
+    ///
+    /// Raises
+    /// ------
+    /// ValueError
+    ///     If rendering fails.
+    ///
+    /// Examples
+    /// --------
+    /// >>> reader = DuckDBReader("duckdb://memory")
+    /// >>> spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
+    /// >>> writer = VegaLiteWriter()
+    /// >>> json_output = writer.render(spec)
+    fn render(&self, spec: &PySpec) -> PyResult<String> {
+        self.inner
+            .render(&spec.inner)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     }
 }
 
@@ -439,13 +469,14 @@ impl PyValidated {
 /// Result of reader.execute(), ready for rendering.
 ///
 /// Contains the resolved plot specification, data, and metadata.
-/// Use render() to generate Vega-Lite JSON output.
+/// Use writer.render(spec) to generate output.
 ///
 /// Examples
 /// --------
 /// >>> spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
 /// >>> print(f"Rows: {spec.metadata()['rows']}")
-/// >>> json_output = spec.render(VegaLiteWriter())
+/// >>> writer = VegaLiteWriter()
+/// >>> json_output = writer.render(spec)
 #[pyclass(name = "Spec")]
 struct PySpec {
     inner: Spec,
@@ -453,28 +484,6 @@ struct PySpec {
 
 #[pymethods]
 impl PySpec {
-    /// Render to output format (Vega-Lite JSON).
-    ///
-    /// Parameters
-    /// ----------
-    /// writer : VegaLiteWriter
-    ///     The writer to use for rendering.
-    ///
-    /// Returns
-    /// -------
-    /// str
-    ///     The Vega-Lite JSON specification as a string.
-    ///
-    /// Raises
-    /// ------
-    /// ValueError
-    ///     If rendering fails.
-    fn render(&self, writer: &PyVegaLiteWriter) -> PyResult<String> {
-        self.inner
-            .render(&writer.inner)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
-    }
-
     /// Get visualization metadata.
     ///
     /// Returns
@@ -688,8 +697,9 @@ fn validate(query: &str) -> PyResult<PyValidated> {
 /// --------
 /// >>> # Using native reader (prefer reader.execute() instead)
 /// >>> reader = DuckDBReader("duckdb://memory")
-/// >>> spec = execute("SELECT 1 AS x, 2 AS Y VISUALISE x, y DRAW point", reader)
-/// >>> json_output = spec.render(VegaLiteWriter())
+/// >>> spec = execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point", reader)
+/// >>> writer = VegaLiteWriter()
+/// >>> json_output = writer.render(spec)
 ///
 /// >>> # Using custom Python reader
 /// >>> class MyReader:

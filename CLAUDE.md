@@ -165,16 +165,16 @@ let spec = reader.execute(
 
 // Render to Vega-Lite JSON
 let writer = VegaLiteWriter::new();
-let json = spec.render(&writer)?;
+let json = writer.render(&spec)?;
 ```
 
 ### Core Functions
 
-| Function                 | Purpose                                                |
-| ------------------------ | ------------------------------------------------------ |
-| `reader.execute(query)`  | Main entry point: parse, execute SQL, resolve mappings |
-| `spec.render(writer)`    | Generate output (Vega-Lite JSON) from Spec             |
-| `validate(query)`        | Validate syntax + semantics, inspect query structure   |
+| Function                | Purpose                                                |
+| ----------------------- | ------------------------------------------------------ |
+| `reader.execute(query)` | Main entry point: parse, execute SQL, resolve mappings |
+| `writer.render(spec)`   | Generate output from a Spec                            |
+| `validate(query)`       | Validate syntax + semantics, inspect query structure   |
 
 ### Key Types
 
@@ -909,7 +909,7 @@ print(f"SQL: {spec.sql()}")
 
 # Render to Vega-Lite JSON
 writer = ggsql.VegaLiteWriter()
-json_output = spec.render(writer)
+json_output = writer.render(spec)
 ```
 
 **Convenience Function** (`render_altair`):
@@ -942,21 +942,21 @@ print(f"Errors: {validated.errors()}")
 
 **Classes**:
 
-| Class                      | Description                                      |
-| -------------------------- | ------------------------------------------------ |
-| `DuckDBReader(connection)` | Database reader with DataFrame registration      |
-| `VegaLiteWriter()`         | Vega-Lite JSON output writer                     |
-| `Validated`                | Result of `validate()` with query inspection     |
+| Class                      | Description                                       |
+| -------------------------- | ------------------------------------------------- |
+| `DuckDBReader(connection)` | Database reader with DataFrame registration       |
+| `VegaLiteWriter()`         | Vega-Lite JSON output writer                      |
+| `Validated`                | Result of `validate()` with query inspection      |
 | `Spec`                     | Result of `reader.execute()`, ready for rendering |
 
 **Functions**:
 
-| Function                   | Description                                       |
-| -------------------------- | ------------------------------------------------- |
-| `validate(query)`          | Syntax/semantic validation with query inspection  |
-| `reader.execute(query)`    | Execute ggsql query, return Spec                  |
-| `execute(query, reader)`   | Execute with custom reader (bridge path)          |
-| `render_altair(df, viz)`   | Convenience: render DataFrame to Altair chart     |
+| Function                 | Description                                      |
+| ------------------------ | ------------------------------------------------ |
+| `validate(query)`        | Syntax/semantic validation with query inspection |
+| `reader.execute(query)`  | Execute ggsql query, return Spec                 |
+| `execute(query, reader)` | Execute with custom reader (bridge path)         |
+| `render_altair(df, viz)` | Convenience: render DataFrame to Altair chart    |
 
 **Spec Methods**:
 

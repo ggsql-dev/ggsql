@@ -106,7 +106,7 @@ print(spec.data())  # Returns polars DataFrame
 
 # 6. Render to Vega-Lite JSON
 writer = ggsql.VegaLiteWriter()
-vegalite_json = spec.render(writer)
+vegalite_json = writer.render(spec)
 print(vegalite_json)
 ```
 
@@ -135,7 +135,7 @@ Writer that generates Vega-Lite v6 JSON specifications.
 
 ```python
 writer = ggsql.VegaLiteWriter()
-json_output = spec.render(writer)
+json_output = writer.render(spec)
 ```
 
 #### `Validated`
@@ -259,7 +259,7 @@ spec = ggsql.execute(
     reader
 )
 writer = ggsql.VegaLiteWriter()
-json_output = spec.render(writer)
+json_output = writer.render(spec)
 ```
 
 **Optional methods** for custom readers:

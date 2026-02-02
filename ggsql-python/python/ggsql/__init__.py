@@ -84,7 +84,7 @@ def render_altair(
     # Execute and render
     spec = reader.execute(query)
     writer = VegaLiteWriter()
-    vegalite_json = spec.render(writer)
+    vegalite_json = writer.render(spec)
 
     # Parse to determine the correct Altair class
     spec = json.loads(vegalite_json)

@@ -15,7 +15,7 @@
 //!
 //! ```rust,ignore
 //! use ggsql::reader::{Reader, DuckDBReader};
-//! use ggsql::writer::VegaLiteWriter;
+//! use ggsql::writer::{Writer, VegaLiteWriter};
 //!
 //! // Execute a ggsql query
 //! let reader = DuckDBReader::from_connection_string("duckdb://memory")?;
@@ -23,7 +23,7 @@
 //!
 //! // Render to Vega-Lite JSON
 //! let writer = VegaLiteWriter::new();
-//! let json = spec.render(&writer)?;
+//! let json = writer.render(&spec)?;
 //!
 //! // With DataFrame registration
 //! let mut reader = DuckDBReader::from_connection_string("duckdb://memory")?;
@@ -33,9 +33,9 @@
 
 use std::collections::HashMap;
 
-use crate::validate::{validate, ValidationWarning};
 use crate::execute::prepare_data_with_executor;
 use crate::plot::Plot;
+use crate::validate::{validate, ValidationWarning};
 use crate::{DataFrame, GgsqlError, Result};
 
 #[cfg(feature = "duckdb")]
@@ -180,13 +180,13 @@ pub trait Reader {
     ///
     /// ```rust,ignore
     /// use ggsql::reader::{Reader, DuckDBReader};
-    /// use ggsql::writer::VegaLiteWriter;
+    /// use ggsql::writer::{Writer, VegaLiteWriter};
     ///
     /// let reader = DuckDBReader::from_connection_string("duckdb://memory")?;
     /// let spec = reader.execute("SELECT 1 as x, 2 as y VISUALISE x, y DRAW point")?;
     ///
     /// let writer = VegaLiteWriter::new();
-    /// let json = spec.render(&writer)?;
+    /// let json = writer.render(&spec)?;
     /// ```
     #[cfg(feature = "duckdb")]
     fn execute(&self, query: &str) -> Result<Spec> {
@@ -213,7 +213,7 @@ pub trait Reader {
 #[cfg(all(feature = "duckdb", feature = "vegalite"))]
 mod tests {
     use super::*;
-    use crate::writer::VegaLiteWriter;
+    use crate::writer::{VegaLiteWriter, Writer};
 
     #[test]
     fn test_execute_and_render() {
@@ -227,7 +227,7 @@ mod tests {
         assert!(spec.data().is_some());
 
         let writer = VegaLiteWriter::new();
-        let result = spec.render(&writer).unwrap();
+        let result = writer.render(&spec).unwrap();
         assert!(result.contains("point"));
     }
 
@@ -279,7 +279,7 @@ mod tests {
 
         let spec = reader.execute(query).unwrap();
         let writer = VegaLiteWriter::new();
-        let result = spec.render(&writer).unwrap();
+        let result = writer.render(&spec).unwrap();
 
         assert!(result.contains("layer"));
     }
@@ -305,7 +305,7 @@ mod tests {
         assert!(spec.metadata().columns.contains(&"x".to_string()));
 
         let writer = VegaLiteWriter::new();
-        let result = spec.render(&writer).unwrap();
+        let result = writer.render(&spec).unwrap();
         assert!(result.contains("point"));
     }
 

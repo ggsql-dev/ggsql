@@ -37,7 +37,7 @@ use ggsql::{parser, validate, GgsqlError, VERSION};
 use ggsql::reader::{DuckDBReader, Reader};
 
 #[cfg(feature = "vegalite")]
-use ggsql::writer::VegaLiteWriter;
+use ggsql::writer::{VegaLiteWriter, Writer};
 
 /// CLI arguments for the REST API server
 #[derive(Parser)]
@@ -459,7 +459,7 @@ async fn query_handler(
         #[cfg(feature = "vegalite")]
         if request.writer == "vegalite" {
             let writer = VegaLiteWriter::new();
-            let json_output = spec.render(&writer)?;
+            let json_output = writer.render(&spec)?;
             let spec_value: serde_json::Value = serde_json::from_str(&json_output)
                 .map_err(|e| GgsqlError::WriterError(format!("Failed to parse JSON: {}", e)))?;
 

@@ -98,9 +98,7 @@ class TestExecute:
 
     def test_execute_simple_query(self):
         reader = ggsql.DuckDBReader("duckdb://memory")
-        spec = reader.execute(
-            "SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point"
-        )
+        spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
         assert spec is not None
         assert spec.layer_count() == 1
 
@@ -127,23 +125,17 @@ class TestExecute:
 
     def test_execute_sql_accessor(self):
         reader = ggsql.DuckDBReader("duckdb://memory")
-        spec = reader.execute(
-            "SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point"
-        )
+        spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
         assert "SELECT" in spec.sql()
 
     def test_execute_visual_accessor(self):
         reader = ggsql.DuckDBReader("duckdb://memory")
-        spec = reader.execute(
-            "SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point"
-        )
+        spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
         assert "VISUALISE" in spec.visual()
 
     def test_execute_data_accessor(self):
         reader = ggsql.DuckDBReader("duckdb://memory")
-        spec = reader.execute(
-            "SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point"
-        )
+        spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
         data = spec.data()
         assert isinstance(data, pl.DataFrame)
         assert data.shape == (1, 2)
@@ -154,17 +146,15 @@ class TestExecute:
             reader.execute("SELECT 1 AS x, 2 AS y")
 
 
-class TestSpecRender:
-    """Tests for Spec.render() method."""
+class TestWriterRender:
+    """Tests for VegaLiteWriter.render() method."""
 
     def test_render_to_vegalite(self):
         reader = ggsql.DuckDBReader("duckdb://memory")
-        spec = reader.execute(
-            "SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point"
-        )
+        spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
         writer = ggsql.VegaLiteWriter()
 
-        result = spec.render(writer)
+        result = writer.render(spec)
         assert isinstance(result, str)
 
         spec_dict = json.loads(result)
@@ -179,7 +169,7 @@ class TestSpecRender:
         spec = reader.execute("SELECT * FROM data VISUALISE x, y DRAW point")
         writer = ggsql.VegaLiteWriter()
 
-        result = spec.render(writer)
+        result = writer.render(spec)
         spec_dict = json.loads(result)
         # Data should be in the spec (either inline or in datasets)
         assert "data" in spec_dict or "datasets" in spec_dict
@@ -194,7 +184,7 @@ class TestSpecRender:
         )
         writer = ggsql.VegaLiteWriter()
 
-        result = spec.render(writer)
+        result = writer.render(spec)
         spec_dict = json.loads(result)
         assert "layer" in spec_dict
 
@@ -367,7 +357,7 @@ class TestTwoStageAPIIntegration:
 
         # Render to Vega-Lite
         writer = ggsql.VegaLiteWriter()
-        result = spec.render(writer)
+        result = writer.render(spec)
 
         # Verify output
         spec_dict = json.loads(result)
@@ -377,9 +367,7 @@ class TestTwoStageAPIIntegration:
     def test_can_introspect_spec(self):
         """Test all introspection methods on Spec."""
         reader = ggsql.DuckDBReader("duckdb://memory")
-        spec = reader.execute(
-            "SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point"
-        )
+        spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
 
         # All these should work without error
         assert spec.sql() is not None
@@ -430,9 +418,7 @@ class TestCustomReader:
                 self.tables[name] = df
 
         reader = RegisterReader()
-        spec = ggsql.execute(
-            "SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point", reader
-        )
+        spec = ggsql.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point", reader)
         assert spec is not None
 
     def test_custom_reader_error_handling(self):
@@ -460,9 +446,7 @@ class TestCustomReader:
     def test_native_reader_fast_path(self):
         """Native DuckDBReader still works (fast path)."""
         reader = ggsql.DuckDBReader("duckdb://memory")
-        spec = reader.execute(
-            "SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point"
-        )
+        spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
         assert spec.metadata()["rows"] == 1
 
     def test_custom_reader_can_render(self):
@@ -485,7 +469,7 @@ class TestCustomReader:
         )
 
         writer = ggsql.VegaLiteWriter()
-        result = spec.render(writer)
+        result = writer.render(spec)
 
         spec_dict = json.loads(result)
         assert "$schema" in spec_dict

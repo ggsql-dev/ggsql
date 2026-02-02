@@ -15,7 +15,7 @@ use ggsql::reader::{DuckDBReader, Reader};
 use ggsql::validate;
 
 #[cfg(feature = "vegalite")]
-use ggsql::writer::VegaLiteWriter;
+use ggsql::writer::{VegaLiteWriter, Writer};
 
 #[derive(Parser)]
 #[command(name = "ggsql")]
@@ -222,7 +222,7 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
 
     // Render
     let vl_writer = VegaLiteWriter::new();
-    let json_output = match spec.render(&vl_writer) {
+    let json_output = match vl_writer.render(&spec) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Failed to generate Vega-Lite output: {}", e);

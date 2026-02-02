@@ -327,13 +327,10 @@ chart.display()
 reader = ggsql.DuckDBReader("duckdb://memory")
 reader.register("data", df)
 
-prepared = ggsql.prepare(
-    "SELECT * FROM data VISUALISE x, y DRAW point",
-    reader
-)
+spec = reader.execute("SELECT * FROM data VISUALISE x, y DRAW point")
 
 writer = ggsql.VegaLiteWriter()
-json_output = prepared.render(writer)
+json_output = writer.render(spec)
 ```
 
 See the [ggsql-python README](ggsql-python/README.md) for complete API documentation.

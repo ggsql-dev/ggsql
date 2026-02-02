@@ -2,11 +2,10 @@
 
 use std::collections::HashMap;
 
-use crate::validate::ValidationWarning;
 use crate::naming;
 use crate::plot::Plot;
-use crate::writer::Writer;
-use crate::{DataFrame, Result};
+use crate::validate::ValidationWarning;
+use crate::DataFrame;
 
 use super::{Metadata, Spec};
 
@@ -57,11 +56,6 @@ impl Spec {
             stat_sql,
             warnings,
         }
-    }
-
-    /// Render to output format (e.g., Vega-Lite JSON).
-    pub fn render(&self, writer: &dyn Writer) -> Result<String> {
-        writer.write(&self.plot, &self.data)
     }
 
     /// Get the resolved plot specification.

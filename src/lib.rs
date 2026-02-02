@@ -779,5 +779,4 @@ mod integration_tests {
         assert_eq!(data["__ggsql_const_stroke_0__"], "value");
         assert_eq!(data["__ggsql_const_stroke_1__"], "value");
     }
-
 }

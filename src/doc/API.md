@@ -5,14 +5,14 @@ This document provides a comprehensive reference for the ggsql public API.
 ## Overview
 
 - **Stage 1: `reader.execute()`** - Parse query, execute SQL, resolve mappings, create Spec
-- **Stage 2: `spec.render()`** - Generate output (Vega-Lite JSON, etc.)
+- **Stage 2: `writer.render()`** - Generate output (Vega-Lite JSON, etc.)
 
 ### API Functions
 
 | Function           | Use Case                                             |
 | ------------------ | ---------------------------------------------------- |
 | `reader.execute()` | Main entry point - full visualization pipeline       |
-| `spec.render()`    | Generate output from Spec                            |
+| `writer.render()`  | Generate output from Spec                            |
 | `validate()`       | Validate syntax + semantics, inspect query structure |
 
 ---
@@ -50,7 +50,7 @@ Execute a ggsql query for visualization. This is the main entry point - a defaul
 
 ```rust
 use ggsql::reader::{DuckDBReader, Reader};
-use ggsql::writer::VegaLiteWriter;
+use ggsql::writer::{VegaLiteWriter, Writer};
 
 let reader = DuckDBReader::from_connection_string("duckdb://memory")?;
 let spec = reader.execute(
@@ -63,7 +63,7 @@ println!("Columns: {:?}", spec.metadata().columns);
 
 // Render to Vega-Lite
 let writer = VegaLiteWriter::new();
-let result = spec.render(&writer)?;
+let result = writer.render(&spec)?;
 ```
 
 **Error Conditions:**
@@ -187,17 +187,15 @@ if let Some(tree) = validated.tree() {
 
 Result of executing a ggsql query, ready for rendering.
 
-#### Rendering Methods
+#### Rendering
 
-| Method   | Signature                                                 | Description             |
-| -------- | --------------------------------------------------------- | ----------------------- |
-| `render` | `fn render(&self, writer: &dyn Writer) -> Result<String>` | Render to output format |
+Use `writer.render(&spec)` to generate output.
 
 **Example:**
 
 ```rust
 let writer = VegaLiteWriter::new();
-let json = spec.render(&writer)?;
+let json = writer.render(&spec)?;
 println!("{}", json);
 ```
 
@@ -308,7 +306,8 @@ if !spec.warnings().is_empty() {
 }
 
 // Continue with rendering
-let json = spec.render(&writer)?;
+let writer = VegaLiteWriter::new();
+let json = writer.render(&spec)?;
 ```
 
 ---

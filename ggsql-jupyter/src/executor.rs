@@ -7,7 +7,7 @@ use anyhow::Result;
 use ggsql::{
     reader::{DuckDBReader, Reader},
     validate,
-    writer::VegaLiteWriter,
+    writer::{VegaLiteWriter, Writer},
 };
 use polars::frame::DataFrame;
 
@@ -77,8 +77,8 @@ impl QueryExecutor {
             spec.metadata().layer_count
         );
 
-        // 4. Render to Vega-Lite
-        let vega_json = spec.render(&self.writer)?;
+        // 4. Render to output format
+        let vega_json = self.writer.render(&spec)?;
 
         tracing::debug!("Generated Vega-Lite spec: {} chars", vega_json.len());
 
