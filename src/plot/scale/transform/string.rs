@@ -113,6 +113,8 @@ mod tests {
         let t = String;
         // String transform doesn't calculate breaks
         assert!(t.calculate_breaks(0.0, 100.0, 5, true).is_empty());
-        assert!(t.calculate_minor_breaks(&[0.0, 50.0, 100.0], 1, None).is_empty());
+        assert!(t
+            .calculate_minor_breaks(&[0.0, 50.0, 100.0], 1, None)
+            .is_empty());
     }
 }

@@ -56,7 +56,11 @@ impl ScaleTypeTrait for Discrete {
         ]
     }
 
-    fn default_transform(&self, _aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
+    fn default_transform(
+        &self,
+        _aesthetic: &str,
+        column_dtype: Option<&DataType>,
+    ) -> TransformKind {
         // Infer transform from column dtype
         if let Some(dtype) = column_dtype {
             match dtype {
@@ -311,10 +315,7 @@ mod tests {
 
     #[test]
     fn test_infer_transform_from_input_range_boolean() {
-        let range = vec![
-            ArrayElement::Boolean(false),
-            ArrayElement::Boolean(true),
-        ];
+        let range = vec![ArrayElement::Boolean(false), ArrayElement::Boolean(true)];
         assert_eq!(
             infer_transform_from_input_range(&range),
             Some(TransformKind::Bool)
@@ -330,10 +331,7 @@ mod tests {
     #[test]
     fn test_infer_transform_from_input_range_numeric() {
         // Numeric values don't map to discrete transforms
-        let range = vec![
-            ArrayElement::Number(1.0),
-            ArrayElement::Number(2.0),
-        ];
+        let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(2.0)];
         assert_eq!(infer_transform_from_input_range(&range), None);
     }
 
@@ -362,10 +360,7 @@ mod tests {
         let discrete = Discrete;
 
         // Bool input range should take priority over String column dtype
-        let bool_range = vec![
-            ArrayElement::Boolean(true),
-            ArrayElement::Boolean(false),
-        ];
+        let bool_range = vec![ArrayElement::Boolean(true), ArrayElement::Boolean(false)];
         let result = discrete.resolve_transform(
             "color",
             None,
@@ -409,10 +404,7 @@ mod tests {
         let discrete = Discrete;
 
         // Numeric input range doesn't map to a discrete transform, so falls back to dtype
-        let numeric_range = vec![
-            ArrayElement::Number(1.0),
-            ArrayElement::Number(2.0),
-        ];
+        let numeric_range = vec![ArrayElement::Number(1.0), ArrayElement::Number(2.0)];
         let result = discrete.resolve_transform(
             "color",
             None,
@@ -431,6 +423,8 @@ mod tests {
 
         let result = discrete.resolve_transform("color", Some(&log_transform), None, None);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not supported for discrete scale"));
+        assert!(result
+            .unwrap_err()
+            .contains("not supported for discrete scale"));
     }
 }

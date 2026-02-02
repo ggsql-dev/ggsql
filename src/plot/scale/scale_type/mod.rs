@@ -2413,8 +2413,7 @@ mod tests {
     fn test_discrete_infers_transform_from_input_range() {
         // Bool input range -> Bool transform
         let bool_range = vec![ArrayElement::Boolean(true), ArrayElement::Boolean(false)];
-        let result =
-            ScaleType::discrete().resolve_transform("fill", None, None, Some(&bool_range));
+        let result = ScaleType::discrete().resolve_transform("fill", None, None, Some(&bool_range));
         assert!(result.is_ok());
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Bool);
 

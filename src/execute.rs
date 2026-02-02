@@ -538,8 +538,9 @@ fn determine_type_requirements(
                 if transform.transform_kind() == TransformKind::Integer {
                     // Integer transform: cast non-integer numeric types to integer
                     let needs_int_cast = match col_dtype {
-                        polars::prelude::DataType::Float32
-                        | polars::prelude::DataType::Float64 => true,
+                        polars::prelude::DataType::Float32 | polars::prelude::DataType::Float64 => {
+                            true
+                        }
                         // Integer types don't need casting
                         polars::prelude::DataType::Int8
                         | polars::prelude::DataType::Int16
@@ -666,15 +667,14 @@ fn collect_requirements_for_global(
 
     for (layer_idx, layer) in spec.layers.iter().enumerate() {
         // Only include requirements from layers that use global data
-        if layer.source.is_none()
-            && layer_idx < layer_requirements.len() {
-                for req in &layer_requirements[layer_idx] {
-                    // Don't add duplicates
-                    if !global_reqs.iter().any(|r| r.column == req.column) {
-                        global_reqs.push(req.clone());
-                    }
+        if layer.source.is_none() && layer_idx < layer_requirements.len() {
+            for req in &layer_requirements[layer_idx] {
+                // Don't add duplicates
+                if !global_reqs.iter().any(|r| r.column == req.column) {
+                    global_reqs.push(req.clone());
                 }
             }
+        }
     }
 
     global_reqs
@@ -1900,7 +1900,8 @@ where
     for (idx, layer) in specs[0].layers.iter_mut().enumerate() {
         // Get the cast base query for this layer (or use global)
         // Constants are now included in cast_layer_queries via build_base_layer_query
-        let cast_base = cast_layer_queries[idx].as_deref()
+        let cast_base = cast_layer_queries[idx]
+            .as_deref()
             .unwrap_or(&cast_global_query);
 
         // Get mutable reference to layer for stat transform to update aesthetics
@@ -2102,10 +2103,7 @@ fn create_missing_scales_post_stat(spec: &mut Plot) {
 /// (e.g., binning histogram's count output if remapped to fill).
 ///
 /// Called after resolve_scales() so that breaks have been calculated.
-fn apply_post_stat_binning(
-    spec: &Plot,
-    data_map: &mut HashMap<String, DataFrame>,
-) -> Result<()> {
+fn apply_post_stat_binning(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Result<()> {
     for scale in &spec.scales {
         // Only process Binned scales
         match &scale.scale_type {
@@ -2165,9 +2163,9 @@ fn apply_binning_to_dataframe(
 ) -> Result<DataFrame> {
     use polars::prelude::*;
 
-    let column = df
-        .column(col_name)
-        .map_err(|e| GgsqlError::InternalError(format!("Column '{}' not found: {}", col_name, e)))?;
+    let column = df.column(col_name).map_err(|e| {
+        GgsqlError::InternalError(format!("Column '{}' not found: {}", col_name, e))
+    })?;
 
     let series = column.as_materialized_series();
 
@@ -2215,9 +2213,9 @@ fn apply_binning_to_dataframe(
 
     // Replace column in DataFrame
     let mut new_df = df.clone();
-    let _ = new_df.replace(col_name, binned_series).map_err(|e| {
-        GgsqlError::InternalError(format!("Failed to replace column: {}", e))
-    })?;
+    let _ = new_df
+        .replace(col_name, binned_series)
+        .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))?;
 
     Ok(new_df)
 }
@@ -4228,17 +4226,17 @@ mod tests {
 
         // Should have scales for both x and y
         // x is from the original mapping, y is from the stat transform (count)
-        let x_scale = result.specs[0]
-            .scales
-            .iter()
-            .find(|s| s.aesthetic == "x");
-        let y_scale = result.specs[0]
-            .scales
-            .iter()
-            .find(|s| s.aesthetic == "y");
+        let x_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x");
+        let y_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "y");
 
-        assert!(x_scale.is_some(), "Should have x scale from original mapping");
-        assert!(y_scale.is_some(), "Should have y scale from stat transform remapping");
+        assert!(
+            x_scale.is_some(),
+            "Should have x scale from original mapping"
+        );
+        assert!(
+            y_scale.is_some(),
+            "Should have y scale from stat transform remapping"
+        );
 
         // y scale should have been resolved (scale_type inferred from count column)
         let y_scale = y_scale.unwrap();
@@ -4273,17 +4271,17 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should have scales for both x and y
-        let x_scale = result.specs[0]
-            .scales
-            .iter()
-            .find(|s| s.aesthetic == "x");
-        let y_scale = result.specs[0]
-            .scales
-            .iter()
-            .find(|s| s.aesthetic == "y");
+        let x_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x");
+        let y_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "y");
 
-        assert!(x_scale.is_some(), "Should have x scale from original mapping");
-        assert!(y_scale.is_some(), "Should have y scale from count stat remapping");
+        assert!(
+            x_scale.is_some(),
+            "Should have x scale from original mapping"
+        );
+        assert!(
+            y_scale.is_some(),
+            "Should have y scale from count stat remapping"
+        );
 
         // y scale should have been resolved
         let y_scale = y_scale.unwrap();
@@ -4319,16 +4317,13 @@ mod tests {
         // Should have x2 scale from bin_end remapping
         // Note: x2 is part of the x aesthetic family, so it may not have its own scale
         // but x scale should exist and handle the x family
-        let _x2_scale = result.specs[0]
-            .scales
-            .iter()
-            .find(|s| s.aesthetic == "x2");
-        let x_scale = result.specs[0]
-            .scales
-            .iter()
-            .find(|s| s.aesthetic == "x");
+        let _x2_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x2");
+        let x_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x");
 
-        assert!(x_scale.is_some(), "Should have x scale for x aesthetic family");
+        assert!(
+            x_scale.is_some(),
+            "Should have x scale for x aesthetic family"
+        );
     }
 
     #[cfg(feature = "duckdb")]
@@ -4358,17 +4353,11 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Both layers should have x scale
-        let x_scale = result.specs[0]
-            .scales
-            .iter()
-            .find(|s| s.aesthetic == "x");
+        let x_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x");
         assert!(x_scale.is_some(), "Should have x scale");
 
         // Should have y scale (from histogram's count remapping AND point's y mapping)
-        let y_scale = result.specs[0]
-            .scales
-            .iter()
-            .find(|s| s.aesthetic == "y");
+        let y_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "y");
         assert!(y_scale.is_some(), "Should have y scale");
 
         // y scale should be resolved
@@ -4406,10 +4395,7 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Should have both x and y scales
-        let y_scale = result.specs[0]
-            .scales
-            .iter()
-            .find(|s| s.aesthetic == "y");
+        let y_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "y");
         assert!(y_scale.is_some(), "Should have y scale");
 
         let y_scale = y_scale.unwrap();

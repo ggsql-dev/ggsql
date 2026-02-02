@@ -813,9 +813,6 @@ mod tests {
     fn test_transform_integer_target_type() {
         use crate::plot::ArrayElementType;
         // Integer transform targets Number (integers are numeric)
-        assert_eq!(
-            Transform::integer().target_type(),
-            ArrayElementType::Number
-        );
+        assert_eq!(Transform::integer().target_type(), ArrayElementType::Number);
     }
 }
