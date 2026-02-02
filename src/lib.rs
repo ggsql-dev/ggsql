@@ -27,7 +27,7 @@ ggsql splits queries at the `VISUALISE` boundary:
 
 ## Core Components
 
-- [`api`] - High-level API (validate, Spec)
+- [`api`] - Validation API (validate, Validated)
 - [`parser`] - Query parsing and AST generation
 - [`reader`] - Data source abstraction layer
 - [`writer`] - Output format abstraction layer
@@ -54,9 +54,10 @@ pub use plot::{
 };
 
 // Re-export API types and functions
-pub use api::{
-    validate, Location, Metadata, Spec, Validated, ValidationError, ValidationWarning,
-};
+pub use api::{validate, Location, Validated, ValidationError, ValidationWarning};
+
+// Re-export reader types
+pub use reader::{Metadata, Spec};
 
 // DataFrame abstraction (wraps Polars)
 pub use polars::prelude::DataFrame;

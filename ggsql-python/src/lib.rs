@@ -6,7 +6,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList};
 use std::io::Cursor;
 
-use ggsql::api::{validate as rust_validate, Spec, ValidationWarning};
+use ggsql::api::{validate as rust_validate, ValidationWarning};
+use ggsql::reader::Spec;
 use ggsql::reader::{DuckDBReader as RustDuckDBReader, Reader};
 use ggsql::writer::VegaLiteWriter as RustVegaLiteWriter;
 use ggsql::GgsqlError;

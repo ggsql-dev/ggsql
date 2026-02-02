@@ -31,22 +31,58 @@
 //! let spec = reader.execute("SELECT * FROM my_table VISUALISE x, y DRAW point")?;
 //! ```
 
-use crate::{DataFrame, GgsqlError, Result};
+use std::collections::HashMap;
 
-#[cfg(feature = "duckdb")]
-use crate::api::{validate, Spec, ValidationWarning};
-#[cfg(feature = "duckdb")]
+use crate::api::{validate, ValidationWarning};
 use crate::execute::prepare_data_with_executor;
+use crate::plot::Plot;
+use crate::{DataFrame, GgsqlError, Result};
 
 #[cfg(feature = "duckdb")]
 pub mod duckdb;
 
 pub mod connection;
-
 pub mod data;
+mod spec;
 
 #[cfg(feature = "duckdb")]
 pub use duckdb::DuckDBReader;
+
+// ============================================================================
+// Spec - Result of reader.execute()
+// ============================================================================
+
+/// Result of executing a ggsql query, ready for rendering.
+pub struct Spec {
+    /// Single resolved plot specification
+    pub(crate) plot: Plot,
+    /// Internal data map (global + layer-specific DataFrames)
+    pub(crate) data: HashMap<String, DataFrame>,
+    /// Cached metadata about the prepared visualization
+    pub(crate) metadata: Metadata,
+    /// The main SQL query that was executed
+    pub(crate) sql: String,
+    /// The raw VISUALISE portion text
+    pub(crate) visual: String,
+    /// Per-layer filter/source queries (None = uses global data directly)
+    pub(crate) layer_sql: Vec<Option<String>>,
+    /// Per-layer stat transform queries (None = no stat transform)
+    pub(crate) stat_sql: Vec<Option<String>>,
+    /// Validation warnings from preparation
+    pub(crate) warnings: Vec<ValidationWarning>,
+}
+
+/// Metadata about the prepared visualization.
+#[derive(Debug, Clone)]
+pub struct Metadata {
+    pub rows: usize,
+    pub columns: Vec<String>,
+    pub layer_count: usize,
+}
+
+// ============================================================================
+// Reader Trait
+// ============================================================================
 
 /// Trait for data source readers
 ///
