@@ -619,6 +619,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     let mut aesthetic = String::new();
     let mut scale_type: Option<ScaleType> = None;
     let mut input_range: Option<Vec<ArrayElement>> = None;
+    let mut explicit_input_range = false;
     let mut output_range: Option<OutputRange> = None;
     let mut transform: Option<Transform> = None;
     let mut explicit_transform = false;
@@ -641,6 +642,8 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
             "scale_from_clause" => {
                 // Parse FROM [array] -> input_range
                 input_range = parse_scale_from_clause(&child, source)?;
+                // Mark as explicit input range (user specified FROM clause)
+                explicit_input_range = input_range.is_some();
             }
             "scale_to_clause" => {
                 // Parse TO [array | identifier] -> output_range
@@ -696,6 +699,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
         aesthetic,
         scale_type,
         input_range,
+        explicit_input_range,
         output_range,
         transform,
         explicit_transform,

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use polars::prelude::{ChunkAgg, Column, DataType};
 
-use super::{ScaleTypeKind, ScaleTypeTrait, TransformKind};
+use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames, TransformKind, OOB_CENSOR, OOB_SQUISH};
 use crate::plot::{ArrayElement, ParameterValue};
 
 /// Continuous scale type - for continuous numeric data
@@ -160,6 +160,61 @@ impl ScaleTypeTrait for Continuous {
             _ => Ok(None),
         }
     }
+
+    /// Pre-stat SQL transformation for continuous scales.
+    ///
+    /// Supports OOB modes:
+    /// - "censor": CASE WHEN col >= min AND col <= max THEN col ELSE NULL END
+    /// - "squish": GREATEST(min, LEAST(col, max))
+    /// - "keep": No transformation (returns None)
+    ///
+    /// Only applies when input_range is explicitly specified via FROM clause.
+    fn pre_stat_transform_sql(
+        &self,
+        column_name: &str,
+        _column_dtype: &DataType,
+        scale: &super::super::Scale,
+        _type_names: &SqlTypeNames,
+    ) -> Option<String> {
+        // Only apply if input_range is explicitly specified by user
+        // (not inferred from data)
+        if !scale.explicit_input_range {
+            return None;
+        }
+
+        let input_range = scale.input_range.as_ref()?;
+        if input_range.len() < 2 {
+            return None;
+        }
+
+        // Get min/max from input range
+        let (min, max) = match (&input_range[0], &input_range[input_range.len() - 1]) {
+            (ArrayElement::Number(min), ArrayElement::Number(max)) => (*min, *max),
+            _ => return None,
+        };
+
+        // Get OOB mode from properties (default is aesthetic-dependent, set in resolve_properties)
+        let oob = scale
+            .properties
+            .get("oob")
+            .and_then(|p| match p {
+                ParameterValue::String(s) => Some(s.as_str()),
+                _ => None,
+            })
+            .unwrap_or(super::default_oob(&scale.aesthetic));
+
+        match oob {
+            OOB_CENSOR => Some(format!(
+                "(CASE WHEN {} >= {} AND {} <= {} THEN {} ELSE NULL END)",
+                column_name, min, column_name, max, column_name
+            )),
+            OOB_SQUISH => Some(format!(
+                "GREATEST({}, LEAST({}, {}))",
+                min, max, column_name
+            )),
+            _ => None, // "keep" = no transformation
+        }
+    }
 }
 
 /// Compute numeric input range as [min, max] from Columns.
@@ -190,5 +245,138 @@ fn compute_numeric_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
 impl std::fmt::Display for Continuous {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plot::scale::Scale;
+
+    /// Helper to create default type names for tests
+    fn test_type_names() -> SqlTypeNames {
+        SqlTypeNames::default()
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_censor() {
+        let continuous = Continuous;
+        let mut scale = Scale::new("y");
+        scale.input_range = Some(vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(100.0),
+        ]);
+        scale.explicit_input_range = true;
+        scale.properties.insert(
+            "oob".to_string(),
+            ParameterValue::String("censor".to_string()),
+        );
+
+        let sql = continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names());
+
+        assert!(sql.is_some());
+        let sql = sql.unwrap();
+        // Should generate CASE WHEN for censor
+        assert!(sql.contains("CASE WHEN"));
+        assert!(sql.contains("value >= 0"));
+        assert!(sql.contains("value <= 100"));
+        assert!(sql.contains("ELSE NULL"));
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_squish() {
+        let continuous = Continuous;
+        let mut scale = Scale::new("y");
+        scale.input_range = Some(vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(100.0),
+        ]);
+        scale.explicit_input_range = true;
+        scale.properties.insert(
+            "oob".to_string(),
+            ParameterValue::String("squish".to_string()),
+        );
+
+        let sql = continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names());
+
+        assert!(sql.is_some());
+        let sql = sql.unwrap();
+        // Should generate GREATEST/LEAST for squish
+        assert!(sql.contains("GREATEST"));
+        assert!(sql.contains("LEAST"));
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_keep() {
+        let continuous = Continuous;
+        let mut scale = Scale::new("x"); // positional aesthetic defaults to keep
+        scale.input_range = Some(vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(100.0),
+        ]);
+        scale.explicit_input_range = true;
+        scale.properties.insert(
+            "oob".to_string(),
+            ParameterValue::String("keep".to_string()),
+        );
+
+        let sql = continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names());
+
+        // Should return None for keep (no transformation)
+        assert!(sql.is_none());
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_no_explicit_range() {
+        let continuous = Continuous;
+        let mut scale = Scale::new("y");
+        scale.input_range = Some(vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(100.0),
+        ]);
+        // explicit_input_range = false (inferred from data)
+        scale.explicit_input_range = false;
+
+        let sql = continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names());
+
+        // Should return None (no OOB handling for inferred ranges)
+        assert!(sql.is_none());
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_default_oob_for_positional() {
+        let continuous = Continuous;
+        let mut scale = Scale::new("x"); // positional aesthetic
+        scale.input_range = Some(vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(100.0),
+        ]);
+        scale.explicit_input_range = true;
+        // No oob property - should use default (keep for positional)
+
+        let sql = continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names());
+
+        // Should return None since default for positional is "keep"
+        assert!(sql.is_none());
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_default_oob_for_non_positional() {
+        let continuous = Continuous;
+        let mut scale = Scale::new("color"); // non-positional aesthetic
+        scale.input_range = Some(vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(100.0),
+        ]);
+        scale.explicit_input_range = true;
+        // No oob property - should use default (censor for non-positional)
+
+        let sql = continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names());
+
+        // Should generate censor SQL since default for non-positional is "censor"
+        assert!(sql.is_some());
+        let sql = sql.unwrap();
+        assert!(sql.contains("CASE WHEN"));
+        assert!(sql.contains("ELSE NULL"));
     }
 }

@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use polars::prelude::{Column, DataType};
 
 use super::super::transform::{Transform, TransformKind};
-use super::{ScaleTypeKind, ScaleTypeTrait};
+use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames};
 use crate::plot::{ArrayElement, ParameterValue};
 
 /// Ordinal scale type - for ordered categorical data with interpolated output
@@ -85,13 +85,12 @@ impl ScaleTypeTrait for Ordinal {
     }
 
     fn allowed_properties(&self, _aesthetic: &str) -> &'static [&'static str] {
-        // Same as Discrete
-        &["oob", "reverse"]
+        // Ordinal scales always censor OOB values (no OOB setting needed)
+        &["reverse"]
     }
 
     fn get_property_default(&self, _aesthetic: &str, name: &str) -> Option<ParameterValue> {
         match name {
-            "oob" => Some(ParameterValue::String(super::OOB_CENSOR.to_string())),
             "reverse" => Some(ParameterValue::Boolean(false)),
             _ => None,
         }
@@ -269,6 +268,54 @@ impl ScaleTypeTrait for Ordinal {
 
     fn supports_breaks(&self) -> bool {
         false // No breaks for ordinal (unlike binned)
+    }
+
+    /// Pre-stat SQL transformation for ordinal scales.
+    ///
+    /// Ordinal scales always censor values outside the explicit input range
+    /// (values not in the FROM clause have no output mapping).
+    ///
+    /// Only applies when input_range is explicitly specified via FROM clause.
+    /// Returns CASE WHEN col IN (allowed_values) THEN col ELSE NULL END.
+    fn pre_stat_transform_sql(
+        &self,
+        column_name: &str,
+        _column_dtype: &DataType,
+        scale: &super::super::Scale,
+        _type_names: &SqlTypeNames,
+    ) -> Option<String> {
+        // Only apply if input_range is explicitly specified by user
+        // (not inferred from data)
+        if !scale.explicit_input_range {
+            return None;
+        }
+
+        let input_range = scale.input_range.as_ref()?;
+        if input_range.is_empty() {
+            return None;
+        }
+
+        // Build IN clause values (excluding null - SQL IN doesn't match NULL)
+        let allowed_values: Vec<String> = input_range
+            .iter()
+            .filter_map(|e| match e {
+                ArrayElement::String(s) => Some(format!("'{}'", s.replace('\'', "''"))),
+                ArrayElement::Boolean(b) => Some(if *b { "true".into() } else { "false".into() }),
+                _ => None,
+            })
+            .collect();
+
+        if allowed_values.is_empty() {
+            return None;
+        }
+
+        // Always censor - ordinal scales have no other valid OOB behavior
+        Some(format!(
+            "(CASE WHEN {} IN ({}) THEN {} ELSE NULL END)",
+            column_name,
+            allowed_values.join(", "),
+            column_name
+        ))
     }
 }
 

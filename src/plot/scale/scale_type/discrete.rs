@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use polars::prelude::{Column, DataType};
 
 use super::super::transform::{Transform, TransformKind};
-use super::{ScaleTypeKind, ScaleTypeTrait};
+use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames};
 use crate::plot::{ArrayElement, ParameterValue};
 
 /// Discrete scale type - for categorical/discrete data
@@ -26,14 +26,12 @@ impl ScaleTypeTrait for Discrete {
     }
 
     fn allowed_properties(&self, _aesthetic: &str) -> &'static [&'static str] {
-        // Discrete scales support oob (censor or keep, not squish) and reverse
-        &["oob", "reverse"]
+        // Discrete scales always censor OOB values (no OOB setting needed)
+        &["reverse"]
     }
 
     fn get_property_default(&self, _aesthetic: &str, name: &str) -> Option<ParameterValue> {
         match name {
-            // Discrete scales only support "censor" - always default to it
-            "oob" => Some(ParameterValue::String(super::OOB_CENSOR.to_string())),
             "reverse" => Some(ParameterValue::Boolean(false)),
             _ => None,
         }
@@ -230,12 +228,62 @@ impl ScaleTypeTrait for Discrete {
 
         Ok(())
     }
+
+    /// Pre-stat SQL transformation for discrete scales.
+    ///
+    /// Discrete scales always censor values outside the explicit input range
+    /// (values not in the FROM clause have no output mapping).
+    ///
+    /// Only applies when input_range is explicitly specified via FROM clause.
+    /// Returns CASE WHEN col IN (allowed_values) THEN col ELSE NULL END.
+    fn pre_stat_transform_sql(
+        &self,
+        column_name: &str,
+        _column_dtype: &DataType,
+        scale: &super::super::Scale,
+        _type_names: &SqlTypeNames,
+    ) -> Option<String> {
+        // Only apply if input_range is explicitly specified by user
+        // (not inferred from data)
+        if !scale.explicit_input_range {
+            return None;
+        }
+
+        let input_range = scale.input_range.as_ref()?;
+        if input_range.is_empty() {
+            return None;
+        }
+
+        // Build IN clause values (excluding null - SQL IN doesn't match NULL)
+        let allowed_values: Vec<String> = input_range
+            .iter()
+            .filter_map(|e| match e {
+                ArrayElement::String(s) => Some(format!("'{}'", s.replace('\'', "''"))),
+                ArrayElement::Boolean(b) => Some(if *b { "true".into() } else { "false".into() }),
+                _ => None,
+            })
+            .collect();
+
+        if allowed_values.is_empty() {
+            return None;
+        }
+
+        // Always censor - discrete scales have no other valid OOB behavior
+        Some(format!(
+            "(CASE WHEN {} IN ({}) THEN {} ELSE NULL END)",
+            column_name,
+            allowed_values.join(", "),
+            column_name
+        ))
+    }
 }
 
 /// Compute discrete input range as unique sorted values from Columns.
 ///
-/// For boolean columns, returns `ArrayElement::Boolean` values in logical order `[false, true]`.
-/// For other column types, returns `ArrayElement::String` values sorted alphabetically.
+/// For boolean columns, returns `ArrayElement::Boolean` values in logical order `[false, true]`,
+/// with `ArrayElement::Null` appended if null values exist in the data.
+/// For other column types, returns `ArrayElement::String` values sorted alphabetically,
+/// with `ArrayElement::Null` appended if null values exist in the data.
 fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     if column_refs.is_empty() {
         return None;
@@ -246,17 +294,18 @@ fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
 
     if all_boolean {
         // For boolean columns, return ArrayElement::Boolean values
-        // Order: [false, true] for consistency (logical order)
+        // Order: [false, true, null] for consistency (logical order, null at end)
         let mut has_false = false;
         let mut has_true = false;
+        let mut has_null = false;
 
         for column in column_refs {
             if let Ok(ca) = column.as_materialized_series().bool() {
-                for val in ca.into_iter().flatten() {
-                    if val {
-                        has_true = true;
-                    } else {
-                        has_false = true;
+                for val in ca.into_iter() {
+                    match val {
+                        Some(true) => has_true = true,
+                        Some(false) => has_false = true,
+                        None => has_null = true,
                     }
                 }
             }
@@ -269,6 +318,9 @@ fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
         if has_true {
             result.push(ArrayElement::Boolean(true));
         }
+        if has_null {
+            result.push(ArrayElement::Null);
+        }
 
         if result.is_empty() {
             None
@@ -278,14 +330,17 @@ fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     } else {
         // String-based logic for other types (categorical, string)
         let mut unique_values: Vec<String> = Vec::new();
+        let mut has_null = false;
 
         for column in column_refs {
             let series = column.as_materialized_series();
             if let Ok(unique) = series.unique() {
                 for i in 0..unique.len() {
                     if let Ok(val) = unique.get(i) {
-                        let s = val.to_string();
-                        if s != "null" {
+                        if val.is_null() {
+                            has_null = true;
+                        } else {
+                            let s = val.to_string();
                             let clean = s.trim_matches('"').to_string();
                             if !unique_values.contains(&clean) {
                                 unique_values.push(clean);
@@ -296,16 +351,19 @@ fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
             }
         }
 
-        if unique_values.is_empty() {
+        if unique_values.is_empty() && !has_null {
             None
         } else {
             unique_values.sort();
-            Some(
-                unique_values
-                    .into_iter()
-                    .map(ArrayElement::String)
-                    .collect(),
-            )
+            let mut result: Vec<ArrayElement> = unique_values
+                .into_iter()
+                .map(ArrayElement::String)
+                .collect();
+            // Null at end of inferred range
+            if has_null {
+                result.push(ArrayElement::Null);
+            }
+            Some(result)
         }
     }
 }
@@ -497,5 +555,172 @@ mod tests {
         assert!(result
             .unwrap_err()
             .contains("not supported for discrete scale"));
+    }
+
+    #[test]
+    fn test_compute_unique_values_includes_null_for_strings() {
+        use polars::prelude::*;
+
+        // Create a column with some null values
+        let series = Series::new("cat".into(), &[Some("A"), Some("B"), None, Some("C")]);
+        let column = series.into_column();
+        let columns = vec![&column];
+
+        let result = compute_unique_values(&columns);
+        assert!(result.is_some());
+        let values = result.unwrap();
+
+        // Should have A, B, C sorted, plus Null at the end
+        assert_eq!(values.len(), 4);
+        assert_eq!(values[0], ArrayElement::String("A".to_string()));
+        assert_eq!(values[1], ArrayElement::String("B".to_string()));
+        assert_eq!(values[2], ArrayElement::String("C".to_string()));
+        assert_eq!(values[3], ArrayElement::Null);
+    }
+
+    #[test]
+    fn test_compute_unique_values_includes_null_for_booleans() {
+        use polars::prelude::*;
+
+        // Create a boolean column with null
+        let series = Series::new("flag".into(), &[Some(true), Some(false), None]);
+        let column = series.into_column();
+        let columns = vec![&column];
+
+        let result = compute_unique_values(&columns);
+        assert!(result.is_some());
+        let values = result.unwrap();
+
+        // Should have false, true, null (logical order)
+        assert_eq!(values.len(), 3);
+        assert_eq!(values[0], ArrayElement::Boolean(false));
+        assert_eq!(values[1], ArrayElement::Boolean(true));
+        assert_eq!(values[2], ArrayElement::Null);
+    }
+
+    #[test]
+    fn test_compute_unique_values_no_null_when_none_present() {
+        use polars::prelude::*;
+
+        // Create a column without nulls
+        let series = Series::new("cat".into(), vec!["A", "B", "C"]);
+        let column = series.into_column();
+        let columns = vec![&column];
+
+        let result = compute_unique_values(&columns);
+        assert!(result.is_some());
+        let values = result.unwrap();
+
+        // Should have A, B, C sorted, no Null
+        assert_eq!(values.len(), 3);
+        assert_eq!(values[0], ArrayElement::String("A".to_string()));
+        assert_eq!(values[1], ArrayElement::String("B".to_string()));
+        assert_eq!(values[2], ArrayElement::String("C".to_string()));
+    }
+
+    // =========================================================================
+    // Pre-Stat Transform SQL Tests
+    // =========================================================================
+
+    #[test]
+    fn test_pre_stat_transform_sql_with_explicit_input_range() {
+        use crate::plot::scale::Scale;
+
+        let discrete = Discrete;
+        let mut scale = Scale::new("color");
+        scale.input_range = Some(vec![
+            ArrayElement::String("A".to_string()),
+            ArrayElement::String("B".to_string()),
+        ]);
+        scale.explicit_input_range = true;
+
+        let type_names = super::SqlTypeNames::default();
+        let sql = discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
+
+        assert!(sql.is_some());
+        let sql = sql.unwrap();
+        // Should generate CASE WHEN with IN clause
+        assert!(sql.contains("CASE WHEN"));
+        assert!(sql.contains("IN ('A', 'B')"));
+        assert!(sql.contains("ELSE NULL"));
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_no_explicit_range() {
+        use crate::plot::scale::Scale;
+
+        let discrete = Discrete;
+        let mut scale = Scale::new("color");
+        scale.input_range = Some(vec![
+            ArrayElement::String("A".to_string()),
+            ArrayElement::String("B".to_string()),
+        ]);
+        // explicit_input_range = false (inferred from data)
+        scale.explicit_input_range = false;
+
+        let type_names = super::SqlTypeNames::default();
+        let sql = discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
+
+        // Should return None (no OOB handling for inferred ranges)
+        assert!(sql.is_none());
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_boolean_input_range() {
+        use crate::plot::scale::Scale;
+
+        let discrete = Discrete;
+        let mut scale = Scale::new("color");
+        scale.input_range = Some(vec![
+            ArrayElement::Boolean(true),
+            ArrayElement::Boolean(false),
+        ]);
+        scale.explicit_input_range = true;
+
+        let type_names = super::SqlTypeNames::default();
+        let sql = discrete.pre_stat_transform_sql("flag", &DataType::Boolean, &scale, &type_names);
+
+        assert!(sql.is_some());
+        let sql = sql.unwrap();
+        // Should generate CASE WHEN with IN clause for booleans
+        assert!(sql.contains("CASE WHEN"));
+        assert!(sql.contains("IN (true, false)"));
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_escapes_quotes() {
+        use crate::plot::scale::Scale;
+
+        let discrete = Discrete;
+        let mut scale = Scale::new("color");
+        scale.input_range = Some(vec![
+            ArrayElement::String("it's".to_string()),
+            ArrayElement::String("fine".to_string()),
+        ]);
+        scale.explicit_input_range = true;
+
+        let type_names = super::SqlTypeNames::default();
+        let sql = discrete.pre_stat_transform_sql("text", &DataType::String, &scale, &type_names);
+
+        assert!(sql.is_some());
+        let sql = sql.unwrap();
+        // Should escape single quotes
+        assert!(sql.contains("'it''s'"));
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_empty_range() {
+        use crate::plot::scale::Scale;
+
+        let discrete = Discrete;
+        let mut scale = Scale::new("color");
+        scale.input_range = Some(vec![]);
+        scale.explicit_input_range = true;
+
+        let type_names = super::SqlTypeNames::default();
+        let sql = discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
+
+        // Should return None for empty range
+        assert!(sql.is_none());
     }
 }

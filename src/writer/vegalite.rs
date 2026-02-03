@@ -691,6 +691,37 @@ impl VegaLiteWriter {
                     use crate::plot::ParameterValue;
                     if let Some(ParameterValue::Boolean(true)) = scale.properties.get("reverse") {
                         scale_obj.insert("reverse".to_string(), json!(true));
+
+                        // For discrete/ordinal scales with legends, also reverse the legend order
+                        // Vega-Lite's scale.reverse only reverses the visual mapping, not the legend
+                        if let Some(ref scale_type) = scale.scale_type {
+                            let kind = scale_type.scale_type_kind();
+                            if matches!(kind, ScaleTypeKind::Discrete | ScaleTypeKind::Ordinal) {
+                                // Only for non-positional aesthetics (those with legends)
+                                if !matches!(
+                                    aesthetic,
+                                    "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
+                                ) {
+                                    // Use the input_range (domain) if available
+                                    if let Some(ref domain) = scale.input_range {
+                                        let reversed_domain: Vec<Value> =
+                                            domain.iter().rev().map(|e| e.to_json()).collect();
+                                        // Set legend.values with reversed order
+                                        if !encoding.get("legend").is_some_and(|v| v.is_null()) {
+                                            let legend = encoding
+                                                .get_mut("legend")
+                                                .and_then(|v| v.as_object_mut());
+                                            if let Some(legend_map) = legend {
+                                                legend_map
+                                                    .insert("values".to_string(), json!(reversed_domain));
+                                            } else {
+                                                encoding["legend"] = json!({"values": reversed_domain});
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Handle resolved breaks -> axis.values or legend.values

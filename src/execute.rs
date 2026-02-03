@@ -1118,10 +1118,13 @@ fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> Optio
 
 /// Apply pre-stat transformations for scales that require data modification before stats.
 ///
-/// Currently handles Binned scales: wraps the query with a SELECT that replaces
-/// columns with bin centers based on resolved breaks.
+/// Handles multiple scale types:
+/// - **Binned**: Wraps columns with bin centers based on resolved breaks
+/// - **Discrete/Ordinal**: Censors values outside explicit input_range (FROM clause)
+/// - **Continuous**: Applies OOB handling (censor/squish) when input_range is explicit
 ///
 /// This must happen BEFORE stat transforms so that data is transformed first.
+/// For example, censoring species='Gentoo' before COUNT(*) ensures Gentoo isn't counted.
 ///
 /// # Arguments
 ///
@@ -1137,7 +1140,6 @@ fn apply_pre_stat_transform(
     scales: &[crate::plot::Scale],
     type_names: &SqlTypeNames,
 ) -> String {
-    use crate::plot::scale::ScaleTypeKind;
     use polars::prelude::DataType;
 
     let mut transform_exprs: Vec<(String, String)> = vec![];
@@ -1165,11 +1167,8 @@ fn apply_pre_stat_transform(
         // Find scale for this aesthetic
         if let Some(scale) = scales.iter().find(|s| s.aesthetic == *aesthetic) {
             if let Some(ref scale_type) = scale.scale_type {
-                // Only apply to Binned scales
-                if scale_type.scale_type_kind() != ScaleTypeKind::Binned {
-                    continue;
-                }
-                // Get binning SQL from scale type
+                // Get pre-stat SQL transformation from scale type (if applicable)
+                // Each scale type's pre_stat_transform_sql() returns None if not applicable
                 if let Some(sql) =
                     scale_type.pre_stat_transform_sql(&col_name, &col_dtype, scale, type_names)
                 {
@@ -2977,8 +2976,11 @@ use crate::plot::scale::{OOB_CENSOR, OOB_KEEP, OOB_SQUISH};
 /// - `censor`: Filter out rows where the aesthetic's column values fall outside the input range
 /// - `squish`: Clamp column values to the input range limits (continuous only)
 ///
-/// For discrete scales, only `censor` is supported - values not in the allowed set are filtered.
+/// After all OOB transformations, filters out NULL rows for columns where:
+/// - The scale has an explicit input range, AND
+/// - NULL is not part of the explicit input range
 fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Result<()> {
+    // First pass: apply OOB transformations (censor sets to NULL, squish clamps)
     for scale in &spec.scales {
         // Get oob mode, skip if "keep"
         let oob_mode = match scale.properties.get("oob") {
@@ -3030,6 +3032,33 @@ fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Re
             }
         }
     }
+
+    // Second pass: filter out NULL rows for scales with explicit input ranges
+    // This handles NULLs created by both pre-stat SQL censoring and post-stat OOB censor
+    for scale in &spec.scales {
+        // Only filter if explicit input range AND NULL is not in the range
+        let should_filter_nulls = scale.explicit_input_range
+            && scale.input_range.as_ref().is_some_and(|range| {
+                !range.iter().any(|elem| matches!(elem, ArrayElement::Null))
+            });
+
+        if !should_filter_nulls {
+            continue;
+        }
+
+        let column_sources =
+            find_columns_for_aesthetic_with_sources(&spec.layers, &scale.aesthetic);
+
+        for (data_key, col_name) in column_sources {
+            if let Some(df) = data_map.get(&data_key) {
+                if df.column(&col_name).is_ok() {
+                    let filtered = filter_null_rows(df, &col_name)?;
+                    data_map.insert(data_key, filtered);
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -3047,8 +3076,15 @@ fn find_columns_for_aesthetic_with_sources(
     // Check each layer's mapping → uses layer data or global data
     // (global mappings already merged into layers)
     for (i, layer) in layers.iter().enumerate() {
-        // Determine which data source this layer uses
-        let data_key = if layer.source.is_some() || layer.filter.is_some() {
+        // Determine which data source this layer uses:
+        // - layer.source: explicit data source
+        // - layer.filter: per-layer filter creates separate data
+        // - stat transform: geoms like bar, histogram create layer-specific data
+        let has_layer_data = layer.source.is_some()
+            || layer.filter.is_some()
+            || layer.geom.needs_stat_transform(&layer.mappings);
+
+        let data_key = if has_layer_data {
             naming::layer_key(i)
         } else {
             naming::GLOBAL_DATA_KEY.to_string()
@@ -3125,7 +3161,24 @@ fn apply_oob_to_column_numeric(
     }
 }
 
+/// Filter out rows where a column has NULL values.
+///
+/// Used after OOB transformations to remove rows that were censored to NULL.
+fn filter_null_rows(df: &DataFrame, col_name: &str) -> Result<DataFrame> {
+    let col = df.column(col_name).map_err(|e| {
+        GgsqlError::ValidationError(format!("Column '{}' not found: {}", col_name, e))
+    })?;
+
+    let mask = col.is_not_null();
+    df.filter(&mask).map_err(|e| {
+        GgsqlError::InternalError(format!("Failed to filter NULL rows: {}", e))
+    })
+}
+
 /// Apply oob transformation to a single discrete/categorical column in a DataFrame.
+///
+/// For discrete scales, censoring sets out-of-range values to null (preserving all rows)
+/// rather than filtering out entire rows. This allows other aesthetics to still be visualized.
 fn apply_oob_to_column_discrete(
     df: &DataFrame,
     col_name: &str,
@@ -3145,28 +3198,38 @@ fn apply_oob_to_column_discrete(
 
     let series = col.as_materialized_series();
 
-    // Build mask: keep rows where value is null OR value is in allowed set
-    let mask: BooleanChunked = (0..series.len())
+    // Build new series: keep allowed values, set others to null
+    // This preserves all rows (unlike filtering) so other aesthetics can still be visualized
+    let new_ca: StringChunked = (0..series.len())
         .map(|i| {
             match series.get(i) {
                 Ok(val) => {
-                    // Null values are kept (similar to numeric behavior)
+                    // Null values are kept as null
                     if val.is_null() {
-                        return true;
+                        return None;
                     }
                     // Convert value to string and check membership
                     let s = val.to_string();
                     // Remove quotes if present (polars adds quotes around strings)
-                    let clean = s.trim_matches('"');
-                    allowed_values.contains(clean)
+                    let clean = s.trim_matches('"').to_string();
+                    if allowed_values.contains(&clean) {
+                        Some(clean)
+                    } else {
+                        None // CENSOR to null (not filter row!)
+                    }
                 }
-                Err(_) => true, // Keep on error
+                Err(_) => None,
             }
         })
         .collect();
 
-    df.filter(&mask)
-        .map_err(|e| GgsqlError::InternalError(format!("Failed to filter DataFrame: {}", e)))
+    // Replace column (keep all rows)
+    let new_series = new_ca.into_series().with_name(col_name.into());
+    let mut result = df.clone();
+    result
+        .with_column(new_series)
+        .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))?;
+    Ok(result)
 }
 
 /// Build data map from a query using DuckDB reader
@@ -5385,10 +5448,11 @@ mod tests {
         assert!(range.is_some());
         let range = range.unwrap();
 
-        // Nulls should be excluded, result should be ["A", "B"]
-        assert_eq!(range.len(), 2);
+        // Nulls should be included at the end, result should be ["A", "B", null]
+        assert_eq!(range.len(), 3);
         assert_eq!(range[0], ArrayElement::String("A".into()));
         assert_eq!(range[1], ArrayElement::String("B".into()));
+        assert_eq!(range[2], ArrayElement::Null);
     }
 
     #[test]
@@ -5964,7 +6028,7 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_oob_discrete_censor_filters_data() {
+    fn test_apply_oob_discrete_censor_sets_null() {
         use polars::prelude::*;
 
         // Create DataFrame with categorical values
@@ -5980,23 +6044,41 @@ mod tests {
 
         let result = apply_oob_to_column_discrete(&df, "category", &allowed, "censor").unwrap();
 
-        // Should have 3 rows: A, B, C
-        assert_eq!(result.height(), 3);
+        // Should have all 5 rows preserved (censoring sets to null, doesn't filter)
+        assert_eq!(result.height(), 5);
 
-        // Check values
+        // Check values: A, B, C should be preserved, D, E should be null
         let cat_col = result.column("category").unwrap();
-        let values: Vec<String> = (0..cat_col.len())
-            .map(|i| {
-                cat_col
-                    .as_materialized_series()
-                    .get(i)
-                    .unwrap()
-                    .to_string()
-                    .trim_matches('"')
-                    .to_string()
-            })
+        let series = cat_col.as_materialized_series();
+
+        // First 3 values should be A, B, C
+        assert_eq!(
+            series.get(0).unwrap().to_string().trim_matches('"'),
+            "A"
+        );
+        assert_eq!(
+            series.get(1).unwrap().to_string().trim_matches('"'),
+            "B"
+        );
+        assert_eq!(
+            series.get(2).unwrap().to_string().trim_matches('"'),
+            "C"
+        );
+
+        // D and E (rows 3 and 4) should be null
+        assert!(series.get(3).unwrap().is_null());
+        assert!(series.get(4).unwrap().is_null());
+
+        // Value column should be unchanged
+        let val_col = result.column("value").unwrap();
+        let values: Vec<i32> = val_col
+            .as_materialized_series()
+            .i32()
+            .unwrap()
+            .into_iter()
+            .flatten()
             .collect();
-        assert_eq!(values, vec!["A", "B", "C"]);
+        assert_eq!(values, vec![1, 2, 3, 4, 5]);
     }
 
     #[cfg(feature = "duckdb")]
@@ -6091,6 +6173,7 @@ mod tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         // Create data with categories, some outside allowed range
+        // Discrete scales always censor OOB values (no explicit oob setting needed)
         let query = r#"
             SELECT * FROM (VALUES
                 (1, 10, 'A'),
@@ -6100,14 +6183,65 @@ mod tests {
             ) AS t(x, y, category)
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
-            SCALE DISCRETE color FROM ['A', 'B'] SETTING oob => 'censor'
+            SCALE DISCRETE color FROM ['A', 'B']
         "#;
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Only rows with 'A' and 'B' should remain (C and D are out of range)
+        // All rows should be preserved (censoring sets to null, doesn't filter)
         let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(df.height(), 2);
+        assert_eq!(df.height(), 4);
+
+        // Verify x and y columns are preserved
+        let x_col = df.column("x").unwrap();
+        let x_values: Vec<i32> = x_col
+            .as_materialized_series()
+            .i32()
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .collect();
+        assert_eq!(x_values, vec![1, 2, 3, 4]);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_oob_discrete_bar_chart_filters_null_after_stat() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Bar chart with discrete scale - tests the full flow:
+        // 1. Pre-stat SQL censors 'C' to NULL
+        // 2. Stat transform (COUNT) groups by category, including NULL
+        // 3. Post-stat should filter out the NULL row
+        let query = r#"
+            SELECT * FROM (VALUES
+                ('A'), ('A'), ('A'),
+                ('B'), ('B'),
+                ('C')
+            ) AS t(category)
+            VISUALISE
+            DRAW bar MAPPING category AS x
+            SCALE x FROM ['A', 'B']
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should have 2 rows (A and B), NOT 3 (with NULL)
+        let df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(df.height(), 2, "Expected 2 rows (A and B), but got {} - NULL row should be filtered", df.height());
+
+        // Verify only A and B are present
+        let cat_col = df.column("category").unwrap();
+        let values: Vec<String> = cat_col
+            .as_materialized_series()
+            .str()
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .map(|s| s.to_string())
+            .collect();
+        assert!(values.contains(&"A".to_string()));
+        assert!(values.contains(&"B".to_string()));
     }
 
     #[cfg(feature = "duckdb")]
@@ -6130,9 +6264,100 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Default oob='censor' for non-positional, so C and D should be filtered
+        // All rows should be preserved (censoring sets to null, doesn't filter)
+        // C and D should have null color, but row is still present
         let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(df.height(), 2);
+        assert_eq!(df.height(), 4);
+
+        // Verify x and y columns are preserved
+        let y_col = df.column("y").unwrap();
+        let y_values: Vec<i32> = y_col
+            .as_materialized_series()
+            .i32()
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .collect();
+        assert_eq!(y_values, vec![10, 20, 30, 40]);
+    }
+
+    #[test]
+    fn test_oob_discrete_censor_preserves_other_columns() {
+        use polars::prelude::*;
+
+        // Create DataFrame with multiple columns
+        let df = DataFrame::new(vec![
+            Series::new("x".into(), vec![1, 2, 3, 4]).into(),
+            Series::new("y".into(), vec![10.0, 20.0, 30.0, 40.0]).into(),
+            Series::new("category".into(), vec!["A", "B", "C", "D"]).into(),
+            Series::new("label".into(), vec!["one", "two", "three", "four"]).into(),
+        ])
+        .unwrap();
+
+        // Only allow A, B in category
+        let allowed: std::collections::HashSet<String> =
+            ["A", "B"].iter().map(|s| s.to_string()).collect();
+
+        let result = apply_oob_to_column_discrete(&df, "category", &allowed, "censor").unwrap();
+
+        // All rows preserved
+        assert_eq!(result.height(), 4);
+
+        // x column unchanged
+        let x_col = result.column("x").unwrap();
+        let x_values: Vec<i32> = x_col
+            .as_materialized_series()
+            .i32()
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .collect();
+        assert_eq!(x_values, vec![1, 2, 3, 4]);
+
+        // y column unchanged
+        let y_col = result.column("y").unwrap();
+        let y_values: Vec<f64> = y_col
+            .as_materialized_series()
+            .f64()
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .collect();
+        assert_eq!(y_values, vec![10.0, 20.0, 30.0, 40.0]);
+
+        // label column unchanged
+        let label_col = result.column("label").unwrap();
+        let series = label_col.as_materialized_series();
+        assert_eq!(
+            series.get(0).unwrap().to_string().trim_matches('"'),
+            "one"
+        );
+        assert_eq!(
+            series.get(1).unwrap().to_string().trim_matches('"'),
+            "two"
+        );
+        assert_eq!(
+            series.get(2).unwrap().to_string().trim_matches('"'),
+            "three"
+        );
+        assert_eq!(
+            series.get(3).unwrap().to_string().trim_matches('"'),
+            "four"
+        );
+
+        // category column: A, B preserved, C, D set to null
+        let cat_col = result.column("category").unwrap();
+        let cat_series = cat_col.as_materialized_series();
+        assert_eq!(
+            cat_series.get(0).unwrap().to_string().trim_matches('"'),
+            "A"
+        );
+        assert_eq!(
+            cat_series.get(1).unwrap().to_string().trim_matches('"'),
+            "B"
+        );
+        assert!(cat_series.get(2).unwrap().is_null());
+        assert!(cat_series.get(3).unwrap().is_null());
     }
 
     // ==========================================================================
@@ -7125,6 +7350,7 @@ mod tests {
                 ArrayElement::Boolean(true),
                 ArrayElement::Boolean(false),
             ]),
+            explicit_input_range: false,
             output_range: None,
             transform: None,
             explicit_transform: false,
@@ -7150,6 +7376,7 @@ mod tests {
                 ArrayElement::String("A".to_string()),
                 ArrayElement::String("B".to_string()),
             ]),
+            explicit_input_range: false,
             output_range: None,
             transform: None,
             explicit_transform: false,
@@ -7172,6 +7399,7 @@ mod tests {
             aesthetic: "x".to_string(),
             scale_type: Some(ScaleType::continuous()),
             input_range: None,
+            explicit_input_range: false,
             output_range: None,
             transform: Some(Transform::date()),
             explicit_transform: true,
@@ -7194,6 +7422,7 @@ mod tests {
             aesthetic: "y".to_string(),
             scale_type: Some(ScaleType::continuous()),
             input_range: None,
+            explicit_input_range: false,
             output_range: None,
             transform: Some(Transform::log()),
             explicit_transform: true,
@@ -7216,6 +7445,7 @@ mod tests {
             aesthetic: "x".to_string(),
             scale_type: Some(ScaleType::binned()),
             input_range: None,
+            explicit_input_range: false,
             output_range: None,
             transform: None,
             explicit_transform: false,
@@ -7238,6 +7468,7 @@ mod tests {
             aesthetic: "label".to_string(),
             scale_type: Some(ScaleType::identity()),
             input_range: None,
+            explicit_input_range: false,
             output_range: None,
             transform: None,
             explicit_transform: false,
@@ -7260,6 +7491,7 @@ mod tests {
             aesthetic: "x".to_string(),
             scale_type: Some(ScaleType::continuous()),
             input_range: None,
+            explicit_input_range: false,
             output_range: None,
             transform: None,
             explicit_transform: false,

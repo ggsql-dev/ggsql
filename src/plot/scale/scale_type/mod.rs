@@ -481,11 +481,15 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         if let Some(ParameterValue::String(oob)) = resolved.get("oob") {
             validate_oob(oob)?;
 
-            // Discrete scales only support "censor" - no way to map unmapped values to output
-            if self.scale_type_kind() == ScaleTypeKind::Discrete && oob != OOB_CENSOR {
+            // Discrete and Ordinal scales only support "censor" - no way to map unmapped values to output
+            let kind = self.scale_type_kind();
+            if (kind == ScaleTypeKind::Discrete || kind == ScaleTypeKind::Ordinal)
+                && oob != OOB_CENSOR
+            {
                 return Err(format!(
-                    "Discrete scale only supports oob='censor'. Cannot use '{}' because \
+                    "{} scale only supports oob='censor'. Cannot use '{}' because \
                      values outside the input range have no corresponding output value.",
+                    self.name(),
                     oob
                 ));
             }
@@ -2280,15 +2284,15 @@ mod tests {
 
     #[test]
     fn test_resolve_properties_defaults_for_discrete() {
-        // Empty properties should be allowed for discrete, defaults to oob and reverse
+        // Empty properties should be allowed for discrete, defaults to reverse only
+        // (discrete scales always censor OOB, no explicit oob property)
         let props = HashMap::new();
         let result = ScaleType::discrete().resolve_properties("color", &props);
         assert!(result.is_ok());
         let resolved = result.unwrap();
-        // Discrete now supports oob and reverse with default values
-        assert!(resolved.contains_key("oob"));
+        // Discrete only supports reverse (oob is implicit - always censor)
         assert!(resolved.contains_key("reverse"));
-        assert_eq!(resolved.len(), 2); // oob and reverse
+        assert_eq!(resolved.len(), 1); // only reverse
     }
 
     #[test]
@@ -2476,52 +2480,31 @@ mod tests {
     }
 
     #[test]
-    fn test_discrete_supports_oob_censor_only() {
-        // Discrete scale only supports oob='censor'
+    fn test_discrete_rejects_oob_property() {
+        // Discrete scales no longer accept oob property at all
+        // (they always censor via pre-stat SQL transformation)
         let mut props = HashMap::new();
-
-        // censor should work
         props.insert("oob".to_string(), ParameterValue::String("censor".into()));
-        let result = ScaleType::discrete().resolve_properties("color", &props);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_discrete_rejects_oob_keep() {
-        // Discrete scale should reject keep (no output value for unmapped inputs)
-        let mut props = HashMap::new();
-        props.insert("oob".to_string(), ParameterValue::String("keep".into()));
 
         let result = ScaleType::discrete().resolve_properties("color", &props);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("Discrete scale only supports oob='censor'"));
+        assert!(err.contains("does not support SETTING 'oob'"));
     }
 
     #[test]
-    fn test_discrete_rejects_oob_squish() {
-        // Discrete scale should reject squish (no natural "closest" value)
-        let mut props = HashMap::new();
-        props.insert("oob".to_string(), ParameterValue::String("squish".into()));
-
-        let result = ScaleType::discrete().resolve_properties("color", &props);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("Discrete scale only supports oob='censor'"));
-    }
-
-    #[test]
-    fn test_discrete_default_oob() {
-        // Discrete scale should always default to 'censor'
+    fn test_discrete_no_oob_in_resolved_properties() {
+        // Discrete scale should not have oob in resolved properties
+        // (it always censors implicitly via pre-stat SQL)
         let props = HashMap::new();
 
         let resolved = ScaleType::discrete()
             .resolve_properties("color", &props)
             .unwrap();
-        assert_eq!(
-            resolved.get("oob"),
-            Some(&ParameterValue::String("censor".into()))
-        );
+        // oob should NOT be in the resolved properties
+        assert!(resolved.get("oob").is_none());
+        // Only reverse should be present
+        assert!(resolved.contains_key("reverse"));
     }
 
     // =========================================================================

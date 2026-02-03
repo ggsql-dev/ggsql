@@ -29,6 +29,12 @@ pub struct Scale {
     /// Input range specification (FROM clause)
     /// Maps to Vega-Lite's scale.domain
     pub input_range: Option<Vec<ArrayElement>>,
+    /// Whether the input_range was explicitly specified by the user (FROM clause).
+    /// Used to determine whether to apply pre-stat OOB handling in SQL.
+    /// If true, the range was specified explicitly (e.g., `FROM ['A', 'B']`).
+    /// If false, the range was inferred from the data.
+    #[serde(default)]
+    pub explicit_input_range: bool,
     /// Output range specification (TO clause)
     /// Either explicit values or a named palette
     pub output_range: Option<OutputRange>,
@@ -67,6 +73,7 @@ impl Scale {
             aesthetic: aesthetic.into(),
             scale_type: None,
             input_range: None,
+            explicit_input_range: false,
             output_range: None,
             transform: None,
             explicit_transform: false,
