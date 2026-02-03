@@ -572,6 +572,49 @@ impl std::fmt::Display for Binned {
     }
 }
 
+// =============================================================================
+// Binned Scale Break/Range Alignment Helpers
+// =============================================================================
+
+/// Add input range boundaries as terminal breaks if not already present.
+///
+/// This is used when an explicit input range or explicit breaks are provided.
+/// Ensures that the range boundaries are included in the breaks so bins cover
+/// the full specified range.
+///
+/// # Arguments
+///
+/// * `breaks` - The breaks array (will be modified in place)
+/// * `range` - The input range [min, max]
+pub fn add_range_boundaries_to_breaks(breaks: &mut Vec<ArrayElement>, range: &[ArrayElement]) {
+    if range.len() < 2 || breaks.is_empty() {
+        return;
+    }
+
+    let range_min = match range.first().and_then(|e| e.to_f64()) {
+        Some(v) => v,
+        None => return,
+    };
+    let range_max = match range.last().and_then(|e| e.to_f64()) {
+        Some(v) => v,
+        None => return,
+    };
+
+    // Check and add range_min as first break if needed
+    if let Some(first_break) = breaks.first().and_then(|e| e.to_f64()) {
+        if (first_break - range_min).abs() > 1e-9 && first_break > range_min {
+            breaks.insert(0, ArrayElement::Number(range_min));
+        }
+    }
+
+    // Check and add range_max as last break if needed
+    if let Some(last_break) = breaks.last().and_then(|e| e.to_f64()) {
+        if (last_break - range_max).abs() > 1e-9 && last_break < range_max {
+            breaks.push(ArrayElement::Number(range_max));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1409,5 +1452,107 @@ mod tests {
             "Last bin should have upper bound. Got: {}",
             sql
         );
+    }
+
+    // ==========================================================================
+    // Break/Range Alignment Helper Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_add_range_boundaries_to_breaks_adds_both() {
+        // Breaks: [20, 40, 60, 80], Range: [0, 100]
+        // Should become: [0, 20, 40, 60, 80, 100]
+        let mut breaks = vec![
+            ArrayElement::Number(20.0),
+            ArrayElement::Number(40.0),
+            ArrayElement::Number(60.0),
+            ArrayElement::Number(80.0),
+        ];
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+
+        super::add_range_boundaries_to_breaks(&mut breaks, &range);
+
+        assert_eq!(breaks.len(), 6);
+        assert_eq!(breaks[0], ArrayElement::Number(0.0));
+        assert_eq!(breaks[1], ArrayElement::Number(20.0));
+        assert_eq!(breaks[4], ArrayElement::Number(80.0));
+        assert_eq!(breaks[5], ArrayElement::Number(100.0));
+    }
+
+    #[test]
+    fn test_add_range_boundaries_to_breaks_adds_min_only() {
+        // Breaks: [25, 50, 75, 100], Range: [0, 100]
+        // Should become: [0, 25, 50, 75, 100]
+        let mut breaks = vec![
+            ArrayElement::Number(25.0),
+            ArrayElement::Number(50.0),
+            ArrayElement::Number(75.0),
+            ArrayElement::Number(100.0),
+        ];
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+
+        super::add_range_boundaries_to_breaks(&mut breaks, &range);
+
+        assert_eq!(breaks.len(), 5);
+        assert_eq!(breaks[0], ArrayElement::Number(0.0));
+        assert_eq!(breaks[4], ArrayElement::Number(100.0));
+    }
+
+    #[test]
+    fn test_add_range_boundaries_to_breaks_adds_max_only() {
+        // Breaks: [0, 25, 50, 75], Range: [0, 100]
+        // Should become: [0, 25, 50, 75, 100]
+        let mut breaks = vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(25.0),
+            ArrayElement::Number(50.0),
+            ArrayElement::Number(75.0),
+        ];
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+
+        super::add_range_boundaries_to_breaks(&mut breaks, &range);
+
+        assert_eq!(breaks.len(), 5);
+        assert_eq!(breaks[0], ArrayElement::Number(0.0));
+        assert_eq!(breaks[4], ArrayElement::Number(100.0));
+    }
+
+    #[test]
+    fn test_add_range_boundaries_to_breaks_no_change_needed() {
+        // Breaks already include range boundaries
+        let mut breaks = vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(25.0),
+            ArrayElement::Number(50.0),
+            ArrayElement::Number(75.0),
+            ArrayElement::Number(100.0),
+        ];
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+
+        super::add_range_boundaries_to_breaks(&mut breaks, &range);
+
+        assert_eq!(breaks.len(), 5);
+    }
+
+    #[test]
+    fn test_add_range_boundaries_uneven_explicit_breaks() {
+        // Uneven explicit breaks: [10, 30, 50, 70, 90], Range: [0, 100]
+        // Should become: [0, 10, 30, 50, 70, 90, 100]
+        let mut breaks = vec![
+            ArrayElement::Number(10.0),
+            ArrayElement::Number(30.0),
+            ArrayElement::Number(50.0),
+            ArrayElement::Number(70.0),
+            ArrayElement::Number(90.0),
+        ];
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+
+        super::add_range_boundaries_to_breaks(&mut breaks, &range);
+
+        assert_eq!(breaks.len(), 7);
+        assert_eq!(breaks[0], ArrayElement::Number(0.0));
+        assert_eq!(breaks[1], ArrayElement::Number(10.0));
+        assert_eq!(breaks[5], ArrayElement::Number(90.0));
+        assert_eq!(breaks[6], ArrayElement::Number(100.0));
     }
 }

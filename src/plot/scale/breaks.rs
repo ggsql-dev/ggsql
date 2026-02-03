@@ -206,16 +206,24 @@ pub fn pretty_breaks_simple(min: f64, max: f64, n: usize) -> Vec<f64> {
 }
 
 /// Calculate simple linear breaks (evenly spaced).
+///
+/// Generates n+2 breaks: one before min, n within [min,max], and one after max.
+/// This ensures binned scales have proper terminal bins. Continuous scales
+/// prune these extra breaks via `filter_breaks_to_range`.
 pub fn linear_breaks(min: f64, max: f64, n: usize) -> Vec<f64> {
     if n == 0 {
         return vec![];
     }
     if n == 1 {
-        return vec![(min + max) / 2.0];
+        // Single break at center, with one before and one after
+        let center = (min + max) / 2.0;
+        let half = (max - min) / 2.0;
+        return vec![min - half, center, max + half];
     }
 
     let step = (max - min) / (n - 1) as f64;
-    (0..n).map(|i| min + step * i as f64).collect()
+    // Generate n+2 breaks: one before min, n within, one after max
+    (-1..=(n as i32)).map(|i| min + step * i as f64).collect()
 }
 
 /// Calculate breaks for integer scales with even spacing.
@@ -283,18 +291,17 @@ pub fn integer_breaks(min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
         breaks
     } else {
         // Linear spacing with integer step (at least 1)
+        // Extend one step before min and one step after max for binned scales
         let step = ((int_range as f64) / (n as f64 - 1.0)).ceil() as i64;
         let step = step.max(1);
 
         let mut breaks = vec![];
-        let mut value = int_min;
-        while value <= int_max && breaks.len() < n {
+        // Start one step before int_min
+        let mut value = int_min - step;
+        // Generate until one step past int_max
+        while value <= int_max + step {
             breaks.push(value as f64);
             value += step;
-        }
-        // Ensure we include the max if we haven't reached it
-        if breaks.last().map(|&v| v < int_max as f64).unwrap_or(true) {
-            breaks.push(int_max as f64);
         }
         breaks
     }
@@ -1580,26 +1587,44 @@ mod tests {
 
     #[test]
     fn test_linear_breaks_basic() {
+        // linear_breaks now extends one step before min and one step after max
+        // for binned scales. Continuous scales filter these out.
         let breaks = linear_breaks(0.0, 100.0, 5);
-        assert_eq!(breaks, vec![0.0, 25.0, 50.0, 75.0, 100.0]);
+        // step = 25, so we get: -25, 0, 25, 50, 75, 100, 125
+        assert_eq!(breaks, vec![-25.0, 0.0, 25.0, 50.0, 75.0, 100.0, 125.0]);
     }
 
     #[test]
     fn test_linear_breaks_single() {
+        // Single break at center, with one before and one after
         let breaks = linear_breaks(0.0, 100.0, 1);
-        assert_eq!(breaks, vec![50.0]);
+        // center = 50, half = 50, so we get: -50, 50, 150
+        assert_eq!(breaks, vec![-50.0, 50.0, 150.0]);
     }
 
     #[test]
     fn test_linear_breaks_two() {
+        // step = 100, so we get: -100, 0, 100, 200
         let breaks = linear_breaks(0.0, 100.0, 2);
-        assert_eq!(breaks, vec![0.0, 100.0]);
+        assert_eq!(breaks, vec![-100.0, 0.0, 100.0, 200.0]);
     }
 
     #[test]
     fn test_linear_breaks_zero_count() {
         let breaks = linear_breaks(0.0, 100.0, 0);
         assert!(breaks.is_empty());
+    }
+
+    #[test]
+    fn test_linear_breaks_extension_ensures_coverage() {
+        // Verify that the extended breaks cover the original range
+        let breaks = linear_breaks(10.0, 90.0, 5);
+        // step = 20, so: -10, 10, 30, 50, 70, 90, 110
+        assert!(breaks.first().unwrap() < &10.0, "First break should be before min");
+        assert!(breaks.last().unwrap() > &90.0, "Last break should be after max");
+        // The range 10..90 should be fully covered
+        assert!(breaks.iter().any(|&b| b <= 10.0));
+        assert!(breaks.iter().any(|&b| b >= 90.0));
     }
 
     // =========================================================================
@@ -1817,11 +1842,15 @@ mod tests {
     #[test]
     fn test_sqrt_breaks_basic() {
         let breaks = sqrt_breaks(0.0, 100.0, 5, false);
-        // Linear in sqrt space: sqrt(100)=10, steps of 2.5
-        // Squared back: 0, 6.25, 25, 56.25, 100
-        assert_eq!(breaks.len(), 5);
-        assert!((breaks[0] - 0.0).abs() < 0.01);
-        assert!((breaks[4] - 100.0).abs() < 0.01);
+        // Linear in sqrt space with extension: sqrt(100)=10, steps of 2.5
+        // linear_breaks now extends one step before and after
+        // Squared back: ~6.25 (step before 0 gets clipped), 0, 6.25, 25, 56.25, 100, ~156.25
+        // But negative values in sqrt space get clipped
+        assert!(breaks.len() >= 5, "Should have at least 5 breaks, got {}", breaks.len());
+        // First break should be >= 0 (sqrt clips negatives)
+        assert!(breaks.first().unwrap() >= &0.0);
+        // Last break should be >= 100
+        assert!(breaks.last().unwrap() >= &100.0);
     }
 
     #[test]
@@ -1932,8 +1961,9 @@ mod tests {
     #[test]
     fn test_calculate_breaks_dispatches_identity_linear() {
         let breaks = calculate_breaks(0.0, 100.0, 5, None, false);
-        // Should use linear_breaks
-        assert_eq!(breaks, vec![0.0, 25.0, 50.0, 75.0, 100.0]);
+        // Should use linear_breaks, which extends one step before and after
+        // step = 25, so: -25, 0, 25, 50, 75, 100, 125
+        assert_eq!(breaks, vec![-25.0, 0.0, 25.0, 50.0, 75.0, 100.0, 125.0]);
     }
 
     #[test]

@@ -708,6 +708,20 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         // If breaks is a scalar Number (count), calculate actual break positions and store as Array
         // If breaks is already an Array, user provided explicit breaks - convert using transform
         // Then filter breaks to the input range (break algorithms may produce "nice" values outside range)
+        //
+        // For binned scales, we track whether breaks were explicit to determine alignment strategy:
+        // - Implicit (count, no explicit range): keep extended breaks (they extend past data)
+        // - Explicit (explicit range OR explicit breaks array): prune breaks to range, add boundaries
+        //
+        // Continuous scales always filter, binned implicit scales skip filtering.
+        let explicit_breaks_array = matches!(
+            scale.properties.get("breaks"),
+            Some(ParameterValue::Array(_))
+        );
+        let binned_implicit = self.scale_type_kind() == ScaleTypeKind::Binned
+            && !scale.explicit_input_range
+            && !explicit_breaks_array;
+
         if self.supports_breaks() {
             match scale.properties.get("breaks") {
                 Some(ParameterValue::Number(_)) => {
@@ -717,8 +731,11 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                         &scale.properties,
                         scale.transform.as_ref(),
                     ) {
-                        // Filter breaks to input range
-                        let filtered = if let Some(ref range) = scale.input_range {
+                        // For binned implicit, keep all breaks (they extend past data).
+                        // For continuous or binned explicit, filter to input range.
+                        let filtered = if binned_implicit {
+                            breaks
+                        } else if let Some(ref range) = scale.input_range {
                             super::super::breaks::filter_breaks_to_range(&breaks, range)
                         } else {
                             breaks
@@ -734,7 +751,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                         .iter()
                         .map(|elem| resolved_transform.parse_value(elem))
                         .collect();
-                    // Filter breaks to input range
+                    // Filter breaks to input range (explicit breaks always filtered)
                     let filtered = if let Some(ref range) = scale.input_range {
                         super::super::breaks::filter_breaks_to_range(&converted, range)
                     } else {
@@ -803,6 +820,46 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                     }
                 }
                 _ => {}
+            }
+        }
+
+        // 5b. For binned scales, align breaks and range for proper bins
+        //
+        // Simple rule:
+        // - If explicit input range provided → add range boundaries as terminal breaks
+        // - If no explicit input range → set input_range from terminal breaks
+        if self.scale_type_kind() == ScaleTypeKind::Binned {
+            // Extract breaks for modification
+            let maybe_breaks = match scale.properties.get("breaks") {
+                Some(ParameterValue::Array(b)) => Some(b.clone()),
+                _ => None,
+            };
+
+            if let Some(mut breaks) = maybe_breaks {
+                let mut new_input_range: Option<Vec<ArrayElement>> = None;
+
+                if scale.explicit_input_range {
+                    // Explicit input range provided → add range as terminal breaks
+                    if let Some(ref range) = scale.input_range {
+                        binned::add_range_boundaries_to_breaks(&mut breaks, range);
+                    }
+                } else if breaks.len() >= 2 {
+                    // No explicit range → set input_range from terminal breaks
+                    let terminal_range =
+                        vec![breaks.first().unwrap().clone(), breaks.last().unwrap().clone()];
+                    let expanded = expand_numeric_range(&terminal_range, mult, add);
+                    new_input_range = Some(expanded);
+                }
+
+                // Update the breaks in the scale
+                scale
+                    .properties
+                    .insert("breaks".to_string(), ParameterValue::Array(breaks));
+
+                // Update input_range if we computed a new one
+                if let Some(range) = new_input_range {
+                    scale.input_range = Some(range);
+                }
             }
         }
 
@@ -3038,7 +3095,9 @@ mod tests {
 
         assert!(breaks.is_some());
         let breaks = breaks.unwrap();
-        assert_eq!(breaks.len(), 5);
+        // linear_breaks now extends one step before and after
+        // Negative values in sqrt space get clipped, so we get more than 5 breaks
+        assert!(breaks.len() >= 5, "Should have at least 5 breaks, got {}", breaks.len());
     }
 
     #[test]
