@@ -1054,6 +1054,10 @@ impl Writer for VegaLiteWriter {
         // Build datasets - convert all DataFrames to Vega-Lite format
         let mut datasets = Map::new();
         for (key, df) in data {
+            if !layer_data_keys.contains(key) {
+                // If we don't need to include (global) data in output, skip it to save space
+                continue;
+            }
             let values = self.dataframe_to_values(df)?;
             datasets.insert(key.clone(), json!(values));
         }
