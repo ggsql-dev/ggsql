@@ -1,5 +1,7 @@
 //! Area geom implementation
 
+use crate::plot::{DefaultParam, DefaultParamValue};
+
 use super::{GeomAesthetics, GeomTrait, GeomType};
 
 /// Area geom - filled area charts
@@ -27,6 +29,13 @@ impl GeomTrait for Area {
             required: &["x", "y"],
             hidden: &[],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[DefaultParam {
+            name: "stacking",
+            default: DefaultParamValue::String("off"),
+        }]
     }
 }
 

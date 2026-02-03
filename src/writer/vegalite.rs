@@ -1183,6 +1183,29 @@ impl Writer for VegaLiteWriter {
                 }
             }
 
+            if layer.geom.geom_type() == GeomType::Area {
+                if let Some(mut y) = encoding.remove("y") {
+                    let stack_value;
+                    if let Some(ParameterValue::String(stack)) = layer.parameters.get("stacking") {
+                        stack_value = match stack.as_str() {
+                            "on" => json!("zero"),
+                            "off" => Value::Null,
+                            "fill" => json!("normalize"),
+                            _ => {
+                                return Err(GgsqlError::ValidationError(format!(
+                                "Area layer's `stacking` must be \"on\", \"off\" or \"fill\", not \"{}\"", 
+                                stack
+                            )));
+                            }
+                        };
+                    } else {
+                        stack_value = Value::Null;
+                    }
+                    y["stack"] = stack_value;
+                    encoding.insert("y".to_string(), y);
+                }
+            }
+
             // Apply guides to first layer's encoding only (they apply globally)
             if layer_idx == 0 {
                 self.apply_guides_to_encoding(&mut encoding, spec);
