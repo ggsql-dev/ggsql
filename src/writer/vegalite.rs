@@ -448,6 +448,7 @@ impl VegaLiteWriter {
                 ScaleTypeKind::Continuous => "quantitative",
                 ScaleTypeKind::Discrete => "nominal",
                 ScaleTypeKind::Binned => "quantitative", // Binned data is still quantitative
+                ScaleTypeKind::Ordinal => "ordinal",     // Native Vega-Lite ordinal type
                 ScaleTypeKind::Identity => {
                     *identity_scale = true;
                     inferred

@@ -706,7 +706,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     })
 }
 
-/// Parse scale type identifier (CONTINUOUS, DISCRETE, BINNED)
+/// Parse scale type identifier (CONTINUOUS, DISCRETE, BINNED, ORDINAL)
 ///
 /// Note: DATE and DATETIME are no longer scale types - temporal handling is done
 /// via transforms that are automatically inferred from column data types.
@@ -715,8 +715,9 @@ fn parse_scale_type_identifier(text: &str) -> Result<ScaleType> {
         "continuous" => Ok(ScaleType::continuous()),
         "discrete" => Ok(ScaleType::discrete()),
         "binned" => Ok(ScaleType::binned()),
+        "ordinal" => Ok(ScaleType::ordinal()),
         _ => Err(GgsqlError::ParseError(format!(
-            "Unknown scale type: '{}'. Valid types: continuous, discrete, binned",
+            "Unknown scale type: '{}'. Valid types: continuous, discrete, binned, ordinal",
             text
         ))),
     }
@@ -3486,5 +3487,70 @@ mod tests {
         let scales = &specs[0].scales;
 
         assert_eq!(scales[0].label_template, Some("{:time %b %Y}".to_string()));
+    }
+
+    // ========================================
+    // ORDINAL scale type tests
+    // ========================================
+
+    #[test]
+    fn test_scale_ordinal_basic() {
+        // Basic ORDINAL scale type
+        let query = r#"
+            VISUALISE x AS x, y AS y, category AS fill
+            DRAW point
+            SCALE ORDINAL fill FROM ['low', 'medium', 'high'] TO viridis
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "fill");
+        assert!(scales[0].scale_type.is_some());
+        assert_eq!(
+            scales[0].scale_type.as_ref().unwrap().scale_type_kind(),
+            crate::plot::ScaleTypeKind::Ordinal
+        );
+
+        // Check input range was parsed
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 3);
+
+        // Check output range was parsed as palette
+        assert!(scales[0].output_range.is_some());
+    }
+
+    #[test]
+    fn test_scale_ordinal_with_explicit_colors() {
+        // ORDINAL scale with explicit color array
+        let query = r#"
+            VISUALISE x AS x, y AS y, size_cat AS fill
+            DRAW point
+            SCALE ORDINAL fill FROM ['S', 'M', 'L'] TO ['#ff0000', '#00ff00', '#0000ff']
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(
+            scales[0].scale_type.as_ref().unwrap().scale_type_kind(),
+            crate::plot::ScaleTypeKind::Ordinal
+        );
+    }
+
+    #[test]
+    fn test_scale_ordinal_case_insensitive() {
+        // ORDINAL should be case-insensitive
+        let query = r#"
+            VISUALISE x AS x, y AS y, cat AS color
+            DRAW point
+            SCALE ordinal color FROM ['a', 'b', 'c']
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(
+            scales[0].scale_type.as_ref().unwrap().scale_type_kind(),
+            crate::plot::ScaleTypeKind::Ordinal
+        );
     }
 }

@@ -939,7 +939,7 @@ fn add_discrete_columns_to_partition_by(
                 let is_discrete = if let Some(scale) = scale_map.get(primary_aesthetic) {
                     if let Some(ref scale_type) = scale.scale_type {
                         match scale_type.scale_type_kind() {
-                            ScaleTypeKind::Discrete | ScaleTypeKind::Binned => true,
+                            ScaleTypeKind::Discrete | ScaleTypeKind::Binned | ScaleTypeKind::Ordinal => true,
                             ScaleTypeKind::Continuous => false,
                             ScaleTypeKind::Identity => discrete_columns.contains(col),
                         }
@@ -2502,8 +2502,8 @@ fn infer_scale_target_type(scale: &Scale) -> Option<ArrayElementType> {
     let scale_type = scale.scale_type.as_ref()?;
 
     match scale_type.scale_type_kind() {
-        // Discrete: type from input range
-        ScaleTypeKind::Discrete => scale
+        // Discrete/Ordinal: type from input range
+        ScaleTypeKind::Discrete | ScaleTypeKind::Ordinal => scale
             .input_range
             .as_ref()
             .and_then(|r| ArrayElement::infer_type(r)),

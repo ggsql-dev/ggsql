@@ -667,7 +667,8 @@ module.exports = grammar({
     scale_type_identifier: $ => choice(
       caseInsensitive('CONTINUOUS'),  // continuous numeric data
       caseInsensitive('DISCRETE'),    // categorical/discrete data
-      caseInsensitive('BINNED')       // binned/bucketed data
+      caseInsensitive('BINNED'),      // binned/bucketed data
+      caseInsensitive('ORDINAL')      // ordered categorical data with interpolated output
     ),
 
     // FROM clause - input range specification

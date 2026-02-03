@@ -33,6 +33,7 @@ mod binned;
 mod continuous;
 mod discrete;
 mod identity;
+mod ordinal;
 
 // Re-export scale type structs for direct access if needed
 use crate::plot::types::{CastTargetType, SqlTypeNames};
@@ -40,6 +41,7 @@ pub use binned::Binned;
 pub use continuous::Continuous;
 pub use discrete::{infer_transform_from_input_range, Discrete};
 pub use identity::Identity;
+pub use ordinal::Ordinal;
 
 // =============================================================================
 // Scale Data Context
@@ -261,6 +263,8 @@ pub enum ScaleTypeKind {
     Discrete,
     /// Binned/bucketed data (also supports temporal transforms)
     Binned,
+    /// Ordered categorical data with interpolated output
+    Ordinal,
     /// Identity scale (use inferred type)
     Identity,
 }
@@ -271,6 +275,7 @@ impl std::fmt::Display for ScaleTypeKind {
             ScaleTypeKind::Continuous => "continuous",
             ScaleTypeKind::Discrete => "discrete",
             ScaleTypeKind::Binned => "binned",
+            ScaleTypeKind::Ordinal => "ordinal",
             ScaleTypeKind::Identity => "identity",
         };
         write!(f, "{}", s)
@@ -944,6 +949,11 @@ impl ScaleType {
         Self(Arc::new(Identity))
     }
 
+    /// Create an Ordinal scale type
+    pub fn ordinal() -> Self {
+        Self(Arc::new(Ordinal))
+    }
+
     /// Infer scale type from a Polars data type.
     ///
     /// Maps data types to appropriate scale types:
@@ -979,6 +989,7 @@ impl ScaleType {
             ScaleTypeKind::Continuous => Self::continuous(),
             ScaleTypeKind::Discrete => Self::discrete(),
             ScaleTypeKind::Binned => Self::binned(),
+            ScaleTypeKind::Ordinal => Self::ordinal(),
             ScaleTypeKind::Identity => Self::identity(),
         }
     }

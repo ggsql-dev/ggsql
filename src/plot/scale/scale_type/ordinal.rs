@@ -1,0 +1,552 @@
+//! Ordinal scale type implementation
+//!
+//! Ordinal scales handle ordered categorical data with continuous output interpolation.
+//! Unlike discrete scales (exact 1:1 mapping), ordinal scales interpolate output values
+//! to create smooth gradients for aesthetics like color, size, and opacity.
+
+use std::collections::HashMap;
+
+use polars::prelude::{Column, DataType};
+
+use super::super::transform::{Transform, TransformKind};
+use super::{ScaleTypeKind, ScaleTypeTrait};
+use crate::plot::{ArrayElement, ParameterValue};
+
+/// Ordinal scale type - for ordered categorical data with interpolated output
+#[derive(Debug, Clone, Copy)]
+pub struct Ordinal;
+
+impl ScaleTypeTrait for Ordinal {
+    fn scale_type_kind(&self) -> ScaleTypeKind {
+        ScaleTypeKind::Ordinal
+    }
+
+    fn name(&self) -> &'static str {
+        "ordinal"
+    }
+
+    fn is_discrete(&self) -> bool {
+        true // Discrete input (categorical data)
+    }
+
+    fn allowed_transforms(&self) -> &'static [TransformKind] {
+        // Same as Discrete - categorical transforms only
+        &[
+            TransformKind::Identity,
+            TransformKind::String,
+            TransformKind::Bool,
+        ]
+    }
+
+    fn default_transform(&self, _aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
+        // Infer from column type, defaulting to String
+        match column_dtype {
+            Some(DataType::Boolean) => TransformKind::Bool,
+            _ => TransformKind::String,
+        }
+    }
+
+    fn resolve_transform(
+        &self,
+        aesthetic: &str,
+        user_transform: Option<&Transform>,
+        column_dtype: Option<&DataType>,
+        input_range: Option<&[ArrayElement]>,
+    ) -> Result<Transform, String> {
+        // If user specified a transform, validate and use it
+        if let Some(t) = user_transform {
+            if self.allowed_transforms().contains(&t.transform_kind()) {
+                return Ok(t.clone());
+            } else {
+                return Err(format!(
+                    "Transform '{}' not supported for {} scale. Allowed: {}",
+                    t.name(),
+                    self.name(),
+                    self.allowed_transforms()
+                        .iter()
+                        .map(|k| k.name())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+        }
+
+        // Priority 1: Infer from input range (FROM clause) if provided
+        if let Some(range) = input_range {
+            if let Some(kind) = super::discrete::infer_transform_from_input_range(range) {
+                return Ok(Transform::from_kind(kind));
+            }
+        }
+
+        // Priority 2: Infer from column dtype
+        Ok(Transform::from_kind(
+            self.default_transform(aesthetic, column_dtype),
+        ))
+    }
+
+    fn allowed_properties(&self, _aesthetic: &str) -> &'static [&'static str] {
+        // Same as Discrete
+        &["oob", "reverse"]
+    }
+
+    fn get_property_default(&self, _aesthetic: &str, name: &str) -> Option<ParameterValue> {
+        match name {
+            "oob" => Some(ParameterValue::String(super::OOB_CENSOR.to_string())),
+            "reverse" => Some(ParameterValue::Boolean(false)),
+            _ => None,
+        }
+    }
+
+    fn allows_data_type(&self, dtype: &DataType) -> bool {
+        // Same as Discrete - categorical types
+        matches!(
+            dtype,
+            DataType::String | DataType::Categorical(_, _) | DataType::Boolean
+        )
+    }
+
+    fn resolve_input_range(
+        &self,
+        user_range: Option<&[ArrayElement]>,
+        columns: &[&Column],
+        _properties: &HashMap<String, ParameterValue>,
+    ) -> Result<Option<Vec<ArrayElement>>, String> {
+        // Same as Discrete - compute unique values from columns
+        let computed = compute_unique_values(columns);
+
+        match user_range {
+            None => Ok(computed),
+            Some(range) if super::input_range_has_nulls(range) => match computed {
+                Some(inferred) => Ok(Some(super::merge_with_inferred(range, &inferred))),
+                None => Ok(Some(range.to_vec())),
+            },
+            Some(range) => Ok(Some(range.to_vec())),
+        }
+    }
+
+    fn default_output_range(
+        &self,
+        aesthetic: &str,
+        _scale: &super::super::Scale,
+    ) -> Result<Option<Vec<ArrayElement>>, String> {
+        use super::super::palettes;
+
+        // Colors use "sequential" (like Continuous) since ordinal has inherent ordering
+        // Other aesthetics same as Discrete
+        match aesthetic {
+            "stroke" | "fill" => {
+                let palette = palettes::get_color_palette("sequential")
+                    .ok_or_else(|| "Default color palette 'sequential' not found".to_string())?;
+                Ok(Some(
+                    palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect(),
+                ))
+            }
+            "size" | "linewidth" => Ok(Some(vec![
+                ArrayElement::Number(1.0),
+                ArrayElement::Number(6.0),
+            ])),
+            "opacity" => Ok(Some(vec![
+                ArrayElement::Number(0.1),
+                ArrayElement::Number(1.0),
+            ])),
+            "shape" => {
+                let palette = palettes::get_shape_palette("default")
+                    .ok_or_else(|| "Default shape palette not found".to_string())?;
+                Ok(Some(
+                    palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect(),
+                ))
+            }
+            "linetype" => {
+                let palette = palettes::get_linetype_palette("default")
+                    .ok_or_else(|| "Default linetype palette not found".to_string())?;
+                Ok(Some(
+                    palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect(),
+                ))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn resolve_output_range(
+        &self,
+        scale: &mut super::super::Scale,
+        aesthetic: &str,
+    ) -> Result<(), String> {
+        use super::super::colour::{interpolate_colors, ColorSpace};
+        use super::super::{palettes, OutputRange};
+
+        // Get category count from input_range (key difference from Binned which uses breaks)
+        let count = scale.input_range.as_ref().map(|r| r.len()).unwrap_or(0);
+        if count == 0 {
+            return Ok(());
+        }
+
+        // Phase 1: Ensure we have an Array (convert Palette or fill default)
+        match &scale.output_range {
+            None => {
+                if let Some(default_range) = self.default_output_range(aesthetic, scale)? {
+                    scale.output_range = Some(OutputRange::Array(default_range));
+                }
+            }
+            Some(OutputRange::Palette(name)) => {
+                let palette = match aesthetic {
+                    "shape" => palettes::get_shape_palette(name),
+                    "linetype" => palettes::get_linetype_palette(name),
+                    _ => palettes::get_color_palette(name),
+                };
+                if let Some(palette) = palette {
+                    let arr: Vec<_> = palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect();
+                    scale.output_range = Some(OutputRange::Array(arr));
+                }
+            }
+            Some(OutputRange::Array(_)) => {}
+        }
+
+        // Phase 2: Interpolate to category count (like Binned, but using input_range.len())
+        if let Some(OutputRange::Array(ref arr)) = scale.output_range.clone() {
+            if matches!(aesthetic, "fill" | "stroke") && arr.len() >= 2 {
+                // Color interpolation
+                let hex_strs: Vec<&str> = arr
+                    .iter()
+                    .filter_map(|e| match e {
+                        ArrayElement::String(s) => Some(s.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                let interpolated = interpolate_colors(&hex_strs, count, ColorSpace::Oklab)?;
+                scale.output_range = Some(OutputRange::Array(
+                    interpolated.into_iter().map(ArrayElement::String).collect(),
+                ));
+            } else if matches!(aesthetic, "size" | "linewidth" | "opacity") && arr.len() >= 2 {
+                // Numeric interpolation
+                let nums: Vec<f64> = arr.iter().filter_map(|e| e.to_f64()).collect();
+                if nums.len() >= 2 {
+                    let min_val = nums[0];
+                    let max_val = nums[nums.len() - 1];
+                    let interpolated: Vec<ArrayElement> = (0..count)
+                        .map(|i| {
+                            let t = if count > 1 {
+                                i as f64 / (count - 1) as f64
+                            } else {
+                                0.5
+                            };
+                            ArrayElement::Number(min_val + t * (max_val - min_val))
+                        })
+                        .collect();
+                    scale.output_range = Some(OutputRange::Array(interpolated));
+                }
+            } else {
+                // Non-interpolatable aesthetics (shape, linetype): truncate/error like Discrete
+                if arr.len() < count {
+                    return Err(format!(
+                        "Output range has {} values but {} categories needed",
+                        arr.len(),
+                        count
+                    ));
+                }
+                if arr.len() > count {
+                    scale.output_range = Some(OutputRange::Array(
+                        arr.iter().take(count).cloned().collect(),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn supports_breaks(&self) -> bool {
+        false // No breaks for ordinal (unlike binned)
+    }
+}
+
+/// Compute unique values from columns (same logic as discrete.rs)
+fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
+    if column_refs.is_empty() {
+        return None;
+    }
+
+    // Check if all columns are boolean
+    let all_boolean = column_refs.iter().all(|c| c.dtype() == &DataType::Boolean);
+
+    if all_boolean {
+        // For boolean columns, return ArrayElement::Boolean values
+        // Order: [false, true] for consistency (logical order)
+        let mut has_false = false;
+        let mut has_true = false;
+
+        for column in column_refs {
+            if let Ok(ca) = column.as_materialized_series().bool() {
+                for val in ca.into_iter().flatten() {
+                    if val {
+                        has_true = true;
+                    } else {
+                        has_false = true;
+                    }
+                }
+            }
+        }
+
+        let mut result = Vec::new();
+        if has_false {
+            result.push(ArrayElement::Boolean(false));
+        }
+        if has_true {
+            result.push(ArrayElement::Boolean(true));
+        }
+
+        if result.is_empty() {
+            None
+        } else {
+            Some(result)
+        }
+    } else {
+        // String-based logic for other types (categorical, string)
+        let mut unique_values: Vec<String> = Vec::new();
+
+        for column in column_refs {
+            let series = column.as_materialized_series();
+            if let Ok(unique) = series.unique() {
+                for i in 0..unique.len() {
+                    if let Ok(val) = unique.get(i) {
+                        let s = val.to_string();
+                        if s != "null" {
+                            let clean = s.trim_matches('"').to_string();
+                            if !unique_values.contains(&clean) {
+                                unique_values.push(clean);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if unique_values.is_empty() {
+            None
+        } else {
+            unique_values.sort();
+            Some(
+                unique_values
+                    .into_iter()
+                    .map(ArrayElement::String)
+                    .collect(),
+            )
+        }
+    }
+}
+
+impl std::fmt::Display for Ordinal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plot::scale::{OutputRange, Scale};
+
+    #[test]
+    fn test_ordinal_scale_type_kind() {
+        let ordinal = Ordinal;
+        assert_eq!(ordinal.scale_type_kind(), ScaleTypeKind::Ordinal);
+        assert_eq!(ordinal.name(), "ordinal");
+    }
+
+    #[test]
+    fn test_ordinal_is_discrete() {
+        let ordinal = Ordinal;
+        assert!(ordinal.is_discrete());
+    }
+
+    #[test]
+    fn test_ordinal_allowed_transforms() {
+        let ordinal = Ordinal;
+        let allowed = ordinal.allowed_transforms();
+        assert!(allowed.contains(&TransformKind::Identity));
+        assert!(allowed.contains(&TransformKind::String));
+        assert!(allowed.contains(&TransformKind::Bool));
+        assert!(!allowed.contains(&TransformKind::Log10));
+    }
+
+    #[test]
+    fn test_resolve_output_range_color_interpolation() {
+        use super::super::ScaleTypeTrait;
+
+        let ordinal = Ordinal;
+        let mut scale = Scale::new("fill");
+
+        // 3 categories
+        scale.input_range = Some(vec![
+            ArrayElement::String("A".to_string()),
+            ArrayElement::String("B".to_string()),
+            ArrayElement::String("C".to_string()),
+        ]);
+
+        // 2 colors to interpolate from
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::String("#ff0000".to_string()),
+            ArrayElement::String("#0000ff".to_string()),
+        ]));
+
+        ordinal.resolve_output_range(&mut scale, "fill").unwrap();
+
+        if let Some(OutputRange::Array(arr)) = &scale.output_range {
+            assert_eq!(
+                arr.len(),
+                3,
+                "Should interpolate to 3 colors for 3 categories"
+            );
+        } else {
+            panic!("Output range should be an Array");
+        }
+    }
+
+    #[test]
+    fn test_resolve_output_range_size_interpolation() {
+        use super::super::ScaleTypeTrait;
+
+        let ordinal = Ordinal;
+        let mut scale = Scale::new("size");
+
+        // 5 categories
+        scale.input_range = Some(vec![
+            ArrayElement::String("XS".to_string()),
+            ArrayElement::String("S".to_string()),
+            ArrayElement::String("M".to_string()),
+            ArrayElement::String("L".to_string()),
+            ArrayElement::String("XL".to_string()),
+        ]);
+
+        // Size range [1, 6]
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::Number(1.0),
+            ArrayElement::Number(6.0),
+        ]));
+
+        ordinal.resolve_output_range(&mut scale, "size").unwrap();
+
+        if let Some(OutputRange::Array(arr)) = &scale.output_range {
+            assert_eq!(
+                arr.len(),
+                5,
+                "Should interpolate to 5 sizes for 5 categories"
+            );
+            let nums: Vec<f64> = arr.iter().filter_map(|e| e.to_f64()).collect();
+            assert!((nums[0] - 1.0).abs() < 0.001);
+            assert!((nums[4] - 6.0).abs() < 0.001);
+        } else {
+            panic!("Output range should be an Array");
+        }
+    }
+
+    #[test]
+    fn test_resolve_output_range_shape_truncates() {
+        use super::super::ScaleTypeTrait;
+
+        let ordinal = Ordinal;
+        let mut scale = Scale::new("shape");
+
+        // 2 categories
+        scale.input_range = Some(vec![
+            ArrayElement::String("A".to_string()),
+            ArrayElement::String("B".to_string()),
+        ]);
+
+        // 5 shapes (more than needed)
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::String("circle".to_string()),
+            ArrayElement::String("square".to_string()),
+            ArrayElement::String("triangle".to_string()),
+            ArrayElement::String("cross".to_string()),
+            ArrayElement::String("diamond".to_string()),
+        ]));
+
+        ordinal.resolve_output_range(&mut scale, "shape").unwrap();
+
+        if let Some(OutputRange::Array(arr)) = &scale.output_range {
+            assert_eq!(
+                arr.len(),
+                2,
+                "Should truncate to 2 shapes for 2 categories"
+            );
+        } else {
+            panic!("Output range should be an Array");
+        }
+    }
+
+    #[test]
+    fn test_resolve_output_range_shape_error_insufficient() {
+        use super::super::ScaleTypeTrait;
+
+        let ordinal = Ordinal;
+        let mut scale = Scale::new("shape");
+
+        // 5 categories
+        scale.input_range = Some(vec![
+            ArrayElement::String("A".to_string()),
+            ArrayElement::String("B".to_string()),
+            ArrayElement::String("C".to_string()),
+            ArrayElement::String("D".to_string()),
+            ArrayElement::String("E".to_string()),
+        ]);
+
+        // Only 2 shapes (not enough)
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::String("circle".to_string()),
+            ArrayElement::String("square".to_string()),
+        ]));
+
+        let result = ordinal.resolve_output_range(&mut scale, "shape");
+        assert!(result.is_err(), "Should error when shapes are insufficient");
+    }
+
+    #[test]
+    fn test_resolve_output_range_opacity_interpolation() {
+        use super::super::ScaleTypeTrait;
+
+        let ordinal = Ordinal;
+        let mut scale = Scale::new("opacity");
+
+        // 4 categories
+        scale.input_range = Some(vec![
+            ArrayElement::String("low".to_string()),
+            ArrayElement::String("medium".to_string()),
+            ArrayElement::String("high".to_string()),
+            ArrayElement::String("very_high".to_string()),
+        ]);
+
+        // Opacity range [0.2, 1.0]
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::Number(0.2),
+            ArrayElement::Number(1.0),
+        ]));
+
+        ordinal.resolve_output_range(&mut scale, "opacity").unwrap();
+
+        if let Some(OutputRange::Array(arr)) = &scale.output_range {
+            assert_eq!(
+                arr.len(),
+                4,
+                "Should interpolate to 4 opacity values for 4 categories"
+            );
+            let nums: Vec<f64> = arr.iter().filter_map(|e| e.to_f64()).collect();
+            assert!((nums[0] - 0.2).abs() < 0.001);
+            assert!((nums[3] - 1.0).abs() < 0.001);
+        } else {
+            panic!("Output range should be an Array");
+        }
+    }
+}
