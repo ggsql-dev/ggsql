@@ -610,8 +610,13 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
         // 3. Resolve input range
         // Strategy: First merge user range with context (filling nulls), then apply expansion
-        // This ensures expansion is calculated on the final range span
+        // This ensures expansion is calculated on the final range span.
+        // IMPORTANT: Only expand values that were inferred (originally null), not explicit user values.
+        // For example, `FROM [0, null]` should keep min=0 and only expand max.
         let (mult, add) = get_expand_factors(&scale.properties);
+
+        // Track the original user range to know which values are explicit vs inferred
+        let original_user_range = scale.input_range.clone();
 
         // Step 1: Determine the base range (before expansion)
         let base_range: Option<Vec<ArrayElement>> = if let Some(ref user_range) = scale.input_range {
@@ -642,12 +647,18 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         };
 
         // Step 2: Apply expansion to the final merged range (if continuous/numeric)
+        // Only expand values that were originally null in the user range.
         // Then clip to the transform's valid domain to prevent invalid values
         // (e.g., expansion producing negative values for log scales)
         if let Some(range) = base_range {
             let is_continuous = range.iter().all(|e| matches!(e, ArrayElement::Number(_)));
             if is_continuous {
-                let expanded = expand_numeric_range(&range, mult, add);
+                let expanded = expand_numeric_range_selective(
+                    &range,
+                    mult,
+                    add,
+                    original_user_range.as_deref(),
+                );
                 scale.input_range =
                     Some(clip_to_transform_domain(&expanded, &resolved_transform));
             } else {
@@ -1295,6 +1306,25 @@ pub(super) fn expand_numeric_range(
     mult: f64,
     add: f64,
 ) -> Vec<ArrayElement> {
+    expand_numeric_range_selective(range, mult, add, None)
+}
+
+/// Apply expansion selectively to a numeric [min, max] range.
+///
+/// If `original_user_range` is provided, only expand values that were originally Null
+/// in the user range. This preserves explicit user limits while expanding inferred values.
+///
+/// For example, with `FROM [0, null]`:
+/// - min=0 is explicit, so it's preserved as 0
+/// - max was null (inferred from data), so it gets expanded
+///
+/// Formula for expanded values: [min - range*mult - add, max + range*mult + add]
+pub(super) fn expand_numeric_range_selective(
+    range: &[ArrayElement],
+    mult: f64,
+    add: f64,
+    original_user_range: Option<&[ArrayElement]>,
+) -> Vec<ArrayElement> {
     if range.len() < 2 {
         return range.to_vec();
     }
@@ -1310,8 +1340,23 @@ pub(super) fn expand_numeric_range(
     };
 
     let span = max - min;
-    let expanded_min = min - span * mult - add;
-    let expanded_max = max + span * mult + add;
+    let expansion = span * mult + add;
+
+    // Check if min was explicitly set by user (non-null in original range)
+    let min_is_explicit = original_user_range
+        .and_then(|ur| ur.first())
+        .map(|e| !matches!(e, ArrayElement::Null))
+        .unwrap_or(false);
+
+    // Check if max was explicitly set by user (non-null in original range)
+    let max_is_explicit = original_user_range
+        .and_then(|ur| ur.get(1))
+        .map(|e| !matches!(e, ArrayElement::Null))
+        .unwrap_or(false);
+
+    // Only expand values that were inferred (originally null)
+    let expanded_min = if min_is_explicit { min } else { min - expansion };
+    let expanded_max = if max_is_explicit { max } else { max + expansion };
 
     vec![
         ArrayElement::Number(expanded_min),
@@ -1975,6 +2020,59 @@ mod tests {
         // No expansion
         assert_eq!(expanded[0], ArrayElement::Number(0.0));
         assert_eq!(expanded[1], ArrayElement::Number(100.0));
+    }
+
+    #[test]
+    fn test_expand_selective_min_explicit() {
+        // User says FROM [0, null] → min is explicit, max is inferred
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+        let user_range = vec![ArrayElement::Number(0.0), ArrayElement::Null];
+
+        let expanded = expand_numeric_range_selective(&range, 0.05, 0.0, Some(&user_range));
+
+        // Min should stay at 0 (explicit), max should be expanded
+        // span = 100, expansion = 5
+        assert_eq!(expanded[0], ArrayElement::Number(0.0)); // NOT -5.0
+        assert_eq!(expanded[1], ArrayElement::Number(105.0)); // expanded
+    }
+
+    #[test]
+    fn test_expand_selective_max_explicit() {
+        // User says FROM [null, 100] → min is inferred, max is explicit
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+        let user_range = vec![ArrayElement::Null, ArrayElement::Number(100.0)];
+
+        let expanded = expand_numeric_range_selective(&range, 0.05, 0.0, Some(&user_range));
+
+        // Min should be expanded, max should stay at 100 (explicit)
+        // span = 100, expansion = 5
+        assert_eq!(expanded[0], ArrayElement::Number(-5.0)); // expanded
+        assert_eq!(expanded[1], ArrayElement::Number(100.0)); // NOT 105.0
+    }
+
+    #[test]
+    fn test_expand_selective_both_explicit() {
+        // User says FROM [0, 100] → both are explicit
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+        let user_range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+
+        let expanded = expand_numeric_range_selective(&range, 0.05, 0.0, Some(&user_range));
+
+        // Both should stay as-is (no expansion)
+        assert_eq!(expanded[0], ArrayElement::Number(0.0));
+        assert_eq!(expanded[1], ArrayElement::Number(100.0));
+    }
+
+    #[test]
+    fn test_expand_selective_no_user_range() {
+        // No user range (all inferred) → expand both
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+
+        let expanded = expand_numeric_range_selective(&range, 0.05, 0.0, None);
+
+        // Both should be expanded
+        assert_eq!(expanded[0], ArrayElement::Number(-5.0));
+        assert_eq!(expanded[1], ArrayElement::Number(105.0));
     }
 
     #[test]

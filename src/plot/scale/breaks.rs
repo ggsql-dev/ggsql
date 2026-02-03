@@ -2408,6 +2408,40 @@ mod tests {
     }
 
     #[test]
+    fn test_wilkinson_penguin_count_scenario() {
+        // Simulate bar chart of penguins by species:
+        // min=0 (explicitly set), max≈152 (max species count)
+        let breaks = wilkinson_extended(0.0, 152.0, 5);
+        eprintln!("Breaks for [0, 152] with target=5: {:?}", breaks);
+        assert!(
+            breaks.len() >= 4,
+            "Expected at least 4 breaks for [0, 152] but got {:?}",
+            breaks
+        );
+    }
+
+    #[test]
+    fn test_wilkinson_explicit_min_preserved() {
+        // When user sets explicit min (FROM [0, null]), only max gets expanded.
+        // This test verifies the Wilkinson algorithm produces good breaks
+        // when min=0 is preserved and only max is expanded.
+        //
+        // Scenario: bar chart with max count ~152, after selective expansion → [0, ~160]
+        let breaks = wilkinson_extended(0.0, 159.6, 5);
+        assert!(
+            breaks.len() >= 4,
+            "Expected at least 4 breaks for [0, 159.6] but got {:?}",
+            breaks
+        );
+        // Should start at 0 (preserving user's explicit min)
+        assert!(
+            breaks[0] <= 0.0,
+            "First break should be <= 0, got {}",
+            breaks[0]
+        );
+    }
+
+    #[test]
     fn test_wilkinson_small_range() {
         let breaks = wilkinson_extended(0.1, 0.9, 5);
         assert!(!breaks.is_empty());
