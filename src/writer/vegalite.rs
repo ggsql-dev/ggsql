@@ -1094,38 +1094,6 @@ impl Writer for VegaLiteWriter {
                 })
             };
 
-            // For Bar geom, set mark with width parameter
-            if layer.geom.geom_type() == GeomType::Bar {
-                use crate::plot::ParameterValue;
-                let width = layer
-                    .parameters
-                    .get("width")
-                    .and_then(|p| match p {
-                        ParameterValue::Number(n) => Some(*n),
-                        _ => None,
-                    })
-                    .unwrap_or(0.9);
-                layer_spec["mark"] = json!({
-                    "type": "bar",
-                    "width": {"band": width}
-                });
-            }
-
-            // Add window transform for Path geoms to preserve data order
-            // (Line geom uses Vega-Lite's default x-axis sorting)
-            if layer.geom.geom_type() == GeomType::Path {
-                let mut window_transform = json!({
-                    "window": [{"op": "row_number", "as": naming::ORDER_COLUMN}]
-                });
-
-                // Add groupby if partition_by is present (restarts numbering per group)
-                if !layer.partition_by.is_empty() {
-                    window_transform["groupby"] = json!(layer.partition_by);
-                }
-
-                layer_spec["transform"] = json!([window_transform]);
-            }
-
             // Build encoding for this layer
             // Track which aesthetic families have been titled to ensure only one title per family
             let mut encoding = Map::new();
@@ -1163,47 +1131,79 @@ impl Writer for VegaLiteWriter {
                 encoding.insert("y2".to_string(), json!({"datum": 0}));
             }
 
-            // Add order encoding for Path geoms (preserves data order instead of x-axis sorting)
-            if layer.geom.geom_type() == GeomType::Path {
-                encoding.insert(
-                    "order".to_string(),
-                    json!({
-                        "field": naming::ORDER_COLUMN,
-                        "type": "quantitative"
-                    }),
-                );
-            }
-
-            if layer.geom.geom_type() == GeomType::Ribbon {
-                if let Some(ymax) = encoding.remove("ymax") {
-                    encoding.insert("y".to_string(), ymax);
+            match layer.geom.geom_type() {
+                GeomType::Bar => {
+                    // For Bar geom, set mark with width parameter
+                    use crate::plot::ParameterValue;
+                    let width = layer
+                        .parameters
+                        .get("width")
+                        .and_then(|p| match p {
+                            ParameterValue::Number(n) => Some(*n),
+                            _ => None,
+                        })
+                        .unwrap_or(0.9);
+                    layer_spec["mark"] = json!({
+                        "type": "bar",
+                        "width": {"band": width}
+                    });
                 }
-                if let Some(ymin) = encoding.remove("ymin") {
-                    encoding.insert("y2".to_string(), ymin);
-                }
-            }
+                GeomType::Path => {
+                    // Add window transform for Path geoms to preserve data order
+                    // (Line geom uses Vega-Lite's default x-axis sorting)
+                    let mut window_transform = json!({
+                        "window": [{"op": "row_number", "as": naming::ORDER_COLUMN}]
+                    });
 
-            if layer.geom.geom_type() == GeomType::Area {
-                if let Some(mut y) = encoding.remove("y") {
-                    let stack_value;
-                    if let Some(ParameterValue::String(stack)) = layer.parameters.get("stacking") {
-                        stack_value = match stack.as_str() {
-                            "on" => json!("zero"),
-                            "off" => Value::Null,
-                            "fill" => json!("normalize"),
-                            _ => {
-                                return Err(GgsqlError::ValidationError(format!(
+                    // Add groupby if partition_by is present (restarts numbering per group)
+                    if !layer.partition_by.is_empty() {
+                        window_transform["groupby"] = json!(layer.partition_by);
+                    }
+
+                    layer_spec["transform"] = json!([window_transform]);
+                    // Add order encoding for Path geoms (preserves data order instead of x-axis sorting)
+                    encoding.insert(
+                        "order".to_string(),
+                        json!({
+                            "field": naming::ORDER_COLUMN,
+                            "type": "quantitative"
+                        }),
+                    );
+                }
+                GeomType::Ribbon => {
+                    // Translate ymin/ymax to y/y2
+                    if let Some(ymax) = encoding.remove("ymax") {
+                        encoding.insert("y".to_string(), ymax);
+                    }
+                    if let Some(ymin) = encoding.remove("ymin") {
+                        encoding.insert("y2".to_string(), ymin);
+                    }
+                }
+                GeomType::Area => {
+                    if let Some(mut y) = encoding.remove("y") {
+                        let stack_value;
+                        if let Some(ParameterValue::String(stack)) =
+                            layer.parameters.get("stacking")
+                        {
+                            stack_value = match stack.as_str() {
+                                "on" => json!("zero"),
+                                "off" => Value::Null,
+                                "fill" => json!("normalize"),
+                                _ => {
+                                    return Err(GgsqlError::ValidationError(format!(
                                 "Area layer's `stacking` must be \"on\", \"off\" or \"fill\", not \"{}\"", 
                                 stack
                             )));
-                            }
-                        };
-                    } else {
-                        stack_value = Value::Null;
+                                }
+                            };
+                        } else {
+                            stack_value = Value::Null;
+                        }
+                        y["stack"] = stack_value;
+                        encoding.insert("y".to_string(), y);
                     }
-                    y["stack"] = stack_value;
-                    encoding.insert("y".to_string(), y);
                 }
+                _ => {}
             }
 
             // Apply guides to first layer's encoding only (they apply globally)
