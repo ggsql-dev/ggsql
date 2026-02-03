@@ -1444,14 +1444,11 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
             // User provided complete range - use as-is for now
             Some(user_range.clone())
         }
-    } else if let Some(ref range) = context.range {
-        // No user range, use context range
-        Some(match range {
+    } else {
+        context.range.as_ref().map(|range| match range {
             InputRange::Continuous(r) => r.clone(),
             InputRange::Discrete(r) => r.clone(),
         })
-    } else {
-        None
     };
 
     // Step 2: Apply expansion to the final merged range (if continuous/numeric)
@@ -2571,7 +2568,7 @@ mod tests {
             .resolve_properties("color", &props)
             .unwrap();
         // oob should NOT be in the resolved properties
-        assert!(resolved.get("oob").is_none());
+        assert!(!resolved.contains_key("oob"));
         // Only reverse should be present
         assert!(resolved.contains_key("reverse"));
     }
