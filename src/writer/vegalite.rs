@@ -1172,6 +1172,15 @@ impl Writer for VegaLiteWriter {
                 );
             }
 
+            if layer.geom.geom_type() == GeomType::Ribbon {
+                if let Some(ymax) = encoding.remove("ymax") {
+                    encoding.insert("y".to_string(), ymax);
+                }
+                if let Some(ymin) = encoding.remove("ymin") {
+                    encoding.insert("y2".to_string(), ymin);
+                }
+            }
+
             // Apply guides to first layer's encoding only (they apply globally)
             if layer_idx == 0 {
                 self.apply_guides_to_encoding(&mut encoding, spec);
