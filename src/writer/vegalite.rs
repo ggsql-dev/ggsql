@@ -4098,9 +4098,18 @@ mod tests {
     #[test]
     fn test_render_ribbon_translates_ymin_ymax() {
         let mut encoding = Map::new();
-        encoding.insert("x".to_string(), json!({"field": "x", "type": "quantitative"}));
-        encoding.insert("ymin".to_string(), json!({"field": "lower", "type": "quantitative"}));
-        encoding.insert("ymax".to_string(), json!({"field": "upper", "type": "quantitative"}));
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "x", "type": "quantitative"}),
+        );
+        encoding.insert(
+            "ymin".to_string(),
+            json!({"field": "lower", "type": "quantitative"}),
+        );
+        encoding.insert(
+            "ymax".to_string(),
+            json!({"field": "upper", "type": "quantitative"}),
+        );
 
         render_ribbon(&mut encoding);
 
@@ -4130,7 +4139,10 @@ mod tests {
 
         for (stacking_param, expected_stack) in test_cases {
             let mut encoding = Map::new();
-            encoding.insert("y".to_string(), json!({"field": "value", "type": "quantitative"}));
+            encoding.insert(
+                "y".to_string(),
+                json!({"field": "value", "type": "quantitative"}),
+            );
 
             let mut layer = Layer::new(Geom::area());
             if let Some(value) = stacking_param {
@@ -4143,9 +4155,11 @@ mod tests {
             render_area(&mut encoding, &layer).unwrap();
 
             assert_eq!(
-                encoding.get("y").unwrap()["stack"], expected_stack,
+                encoding.get("y").unwrap()["stack"],
+                expected_stack,
                 "stacking={:?} should produce stack={:?}",
-                stacking_param, expected_stack
+                stacking_param,
+                expected_stack
             );
         }
     }
@@ -4153,10 +4167,15 @@ mod tests {
     #[test]
     fn test_render_area_stacking_invalid() {
         let mut encoding = Map::new();
-        encoding.insert("y".to_string(), json!({"field": "value", "type": "quantitative"}));
+        encoding.insert(
+            "y".to_string(),
+            json!({"field": "value", "type": "quantitative"}),
+        );
 
-        let layer = Layer::new(Geom::area())
-            .with_parameter("stacking".to_string(), ParameterValue::String("invalid".to_string()));
+        let layer = Layer::new(Geom::area()).with_parameter(
+            "stacking".to_string(),
+            ParameterValue::String("invalid".to_string()),
+        );
 
         let result = render_area(&mut encoding, &layer);
 
