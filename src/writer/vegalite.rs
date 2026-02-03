@@ -24,6 +24,7 @@ use crate::naming;
 use crate::plot::layer::geom::{GeomAesthetics, GeomType};
 use crate::plot::{ArrayElement, Coord, CoordType, LiteralValue, ParameterValue};
 use crate::writer::Writer;
+use crate::Layer;
 use crate::{AestheticValue, DataFrame, Geom, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use serde_json::{json, Map, Value};
@@ -1170,39 +1171,8 @@ impl Writer for VegaLiteWriter {
                         }),
                     );
                 }
-                GeomType::Ribbon => {
-                    // Translate ymin/ymax to y/y2
-                    if let Some(ymax) = encoding.remove("ymax") {
-                        encoding.insert("y".to_string(), ymax);
-                    }
-                    if let Some(ymin) = encoding.remove("ymin") {
-                        encoding.insert("y2".to_string(), ymin);
-                    }
-                }
-                GeomType::Area => {
-                    if let Some(mut y) = encoding.remove("y") {
-                        let stack_value;
-                        if let Some(ParameterValue::String(stack)) =
-                            layer.parameters.get("stacking")
-                        {
-                            stack_value = match stack.as_str() {
-                                "on" => json!("zero"),
-                                "off" => Value::Null,
-                                "fill" => json!("normalize"),
-                                _ => {
-                                    return Err(GgsqlError::ValidationError(format!(
-                                "Area layer's `stacking` must be \"on\", \"off\" or \"fill\", not \"{}\"", 
-                                stack
-                            )));
-                                }
-                            };
-                        } else {
-                            stack_value = Value::Null;
-                        }
-                        y["stack"] = stack_value;
-                        encoding.insert("y".to_string(), y);
-                    }
-                }
+                GeomType::Ribbon => render_ribbon(&mut encoding),
+                GeomType::Area => render_area(&mut encoding, layer)?,
                 _ => {}
             }
 
@@ -1327,6 +1297,39 @@ impl Writer for VegaLiteWriter {
 
         Ok(())
     }
+}
+
+fn render_ribbon(encoding: &mut Map<String, Value>) -> () {
+    if let Some(ymax) = encoding.remove("ymax") {
+        encoding.insert("y".to_string(), ymax);
+    }
+    if let Some(ymin) = encoding.remove("ymin") {
+        encoding.insert("y2".to_string(), ymin);
+    }
+}
+
+fn render_area(encoding: &mut Map<String, Value>, layer: &Layer) -> Result<()> {
+    if let Some(mut y) = encoding.remove("y") {
+        let stack_value;
+        if let Some(ParameterValue::String(stack)) = layer.parameters.get("stacking") {
+            stack_value = match stack.as_str() {
+                "on" => json!("zero"),
+                "off" => Value::Null,
+                "fill" => json!("normalize"),
+                _ => {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Area layer's `stacking` must be \"on\", \"off\" or \"fill\", not \"{}\"",
+                        stack
+                    )));
+                }
+            }
+        } else {
+            stack_value = Value::Null
+        }
+        y["stack"] = stack_value;
+        encoding.insert("y".to_string(), y);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
