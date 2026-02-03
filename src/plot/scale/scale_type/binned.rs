@@ -4,7 +4,10 @@ use std::collections::HashMap;
 
 use polars::prelude::{ChunkAgg, Column, DataType};
 
-use super::{ScaleTypeKind, ScaleTypeTrait, TransformKind, OOB_SQUISH};
+use super::{
+    expand_numeric_range, resolve_common_steps, ScaleDataContext, ScaleTypeKind, ScaleTypeTrait,
+    TransformKind, OOB_SQUISH,
+};
 use crate::plot::{ArrayElement, ParameterValue};
 
 /// Binned scale type - for binned/bucketed data
@@ -276,6 +279,213 @@ impl ScaleTypeTrait for Binned {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    /// Resolve scale properties from data context.
+    ///
+    /// Binned scales override this to add Binned-specific logic:
+    /// - Implicit break handling (skip filtering for implicit breaks)
+    /// - Break/range alignment (add range boundaries to breaks or compute range from breaks)
+    /// - Terminal label suppression for oob='squish'
+    fn resolve(
+        &self,
+        scale: &mut super::super::Scale,
+        context: &ScaleDataContext,
+        aesthetic: &str,
+    ) -> Result<(), String> {
+        // Steps 1-4: Common resolution logic (properties, transform, input_range, convert values)
+        let common_result = resolve_common_steps(self, scale, context, aesthetic)?;
+        let resolved_transform = common_result.transform;
+        let (mult, add) = common_result.expand_factors;
+
+        // 5. Calculate breaks for binned scale
+        // Track whether breaks were explicit to determine alignment strategy:
+        // - Implicit (count, no explicit range): keep extended breaks (they extend past data)
+        // - Explicit (explicit range OR explicit breaks array): prune breaks to range, add boundaries
+        let explicit_breaks_array = matches!(
+            scale.properties.get("breaks"),
+            Some(ParameterValue::Array(_))
+        );
+        let binned_implicit = !scale.explicit_input_range && !explicit_breaks_array;
+
+        match scale.properties.get("breaks") {
+            Some(ParameterValue::Number(_)) => {
+                // Scalar count → calculate actual breaks and store as Array
+                if let Some(breaks) = self.resolve_breaks(
+                    scale.input_range.as_deref(),
+                    &scale.properties,
+                    scale.transform.as_ref(),
+                ) {
+                    // For binned implicit, keep all breaks (they extend past data).
+                    // For binned explicit, filter to input range.
+                    let filtered = if binned_implicit {
+                        breaks
+                    } else if let Some(ref range) = scale.input_range {
+                        super::super::super::breaks::filter_breaks_to_range(&breaks, range)
+                    } else {
+                        breaks
+                    };
+                    scale
+                        .properties
+                        .insert("breaks".to_string(), ParameterValue::Array(filtered));
+                }
+            }
+            Some(ParameterValue::Array(explicit_breaks)) => {
+                // User provided explicit breaks - convert using transform
+                let converted: Vec<ArrayElement> = explicit_breaks
+                    .iter()
+                    .map(|elem| resolved_transform.parse_value(elem))
+                    .collect();
+                // Filter breaks to input range (explicit breaks always filtered)
+                let filtered = if let Some(ref range) = scale.input_range {
+                    super::super::super::breaks::filter_breaks_to_range(&converted, range)
+                } else {
+                    converted
+                };
+                scale
+                    .properties
+                    .insert("breaks".to_string(), ParameterValue::Array(filtered));
+            }
+            Some(ParameterValue::String(interval_str)) => {
+                // Temporal interval string like "2 months", "week"
+                // Only valid for temporal transforms (Date, DateTime, Time)
+                use super::super::super::breaks::{
+                    temporal_breaks_date, temporal_breaks_datetime, temporal_breaks_time,
+                    TemporalInterval,
+                };
+
+                if let Some(interval) = TemporalInterval::create_from_str(interval_str) {
+                    if let Some(ref range) = scale.input_range {
+                        let breaks: Vec<ArrayElement> = match resolved_transform.transform_kind() {
+                            TransformKind::Date => {
+                                let min = range[0].to_f64().unwrap_or(0.0) as i32;
+                                let max = range[range.len() - 1].to_f64().unwrap_or(0.0) as i32;
+                                temporal_breaks_date(min, max, interval)
+                                    .into_iter()
+                                    .map(ArrayElement::String)
+                                    .collect()
+                            }
+                            TransformKind::DateTime => {
+                                let min = range[0].to_f64().unwrap_or(0.0) as i64;
+                                let max = range[range.len() - 1].to_f64().unwrap_or(0.0) as i64;
+                                temporal_breaks_datetime(min, max, interval)
+                                    .into_iter()
+                                    .map(ArrayElement::String)
+                                    .collect()
+                            }
+                            TransformKind::Time => {
+                                let min = range[0].to_f64().unwrap_or(0.0) as i64;
+                                let max = range[range.len() - 1].to_f64().unwrap_or(0.0) as i64;
+                                temporal_breaks_time(min, max, interval)
+                                    .into_iter()
+                                    .map(ArrayElement::String)
+                                    .collect()
+                            }
+                            _ => vec![], // Non-temporal transforms don't support interval strings
+                        };
+
+                        if !breaks.is_empty() {
+                            // Convert string breaks to appropriate temporal ArrayElement types
+                            let converted: Vec<ArrayElement> = breaks
+                                .iter()
+                                .map(|elem| resolved_transform.parse_value(elem))
+                                .collect();
+                            // Filter to input range
+                            let filtered =
+                                super::super::super::breaks::filter_breaks_to_range(&converted, range);
+                            scale
+                                .properties
+                                .insert("breaks".to_string(), ParameterValue::Array(filtered));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        // 5b. Binned-specific: align breaks and range for proper bins
+        //
+        // Simple rule:
+        // - If explicit input range provided → add range boundaries as terminal breaks
+        // - If no explicit input range → set input_range from terminal breaks
+        {
+            // Extract breaks for modification
+            let maybe_breaks = match scale.properties.get("breaks") {
+                Some(ParameterValue::Array(b)) => Some(b.clone()),
+                _ => None,
+            };
+
+            if let Some(mut breaks) = maybe_breaks {
+                let mut new_input_range: Option<Vec<ArrayElement>> = None;
+
+                if scale.explicit_input_range {
+                    // Explicit input range provided → add range as terminal breaks
+                    if let Some(ref range) = scale.input_range {
+                        add_range_boundaries_to_breaks(&mut breaks, range);
+                    }
+                } else if breaks.len() >= 2 {
+                    // No explicit range → set input_range from terminal breaks
+                    let terminal_range = vec![
+                        breaks.first().unwrap().clone(),
+                        breaks.last().unwrap().clone(),
+                    ];
+                    let expanded = expand_numeric_range(&terminal_range, mult, add);
+                    new_input_range = Some(expanded);
+                }
+
+                // Update the breaks in the scale
+                scale
+                    .properties
+                    .insert("breaks".to_string(), ParameterValue::Array(breaks));
+
+                // Update input_range if we computed a new one
+                if let Some(range) = new_input_range {
+                    scale.input_range = Some(range);
+                }
+            }
+        }
+
+        // 6. Apply label template (RENAMING * => '...')
+        // Default to '{}' to ensure we control formatting instead of Vega-Lite
+        // For binned scales, apply to breaks array
+        let template = scale.label_template.as_deref().unwrap_or("{}");
+
+        let values_to_label = match scale.properties.get("breaks") {
+            Some(ParameterValue::Array(breaks)) => Some(breaks.clone()),
+            _ => None,
+        };
+
+        if let Some(values) = values_to_label {
+            let generated_labels =
+                crate::format::apply_label_template(&values, template, &scale.label_mapping);
+            scale.label_mapping = Some(generated_labels);
+        }
+
+        // 6b. Binned-specific: suppress terminal break labels for oob='squish'
+        // since those bins extend to infinity (-∞ to first internal break, last internal break to +∞)
+        if let Some(ParameterValue::String(oob)) = scale.properties.get("oob") {
+            if oob == OOB_SQUISH {
+                if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
+                    if breaks.len() > 2 {
+                        // Suppress first and last break labels
+                        let first_key = breaks[0].to_key_string();
+                        let last_key = breaks[breaks.len() - 1].to_key_string();
+
+                        let label_mapping = scale.label_mapping.get_or_insert_with(HashMap::new);
+                        label_mapping.insert(first_key, None);
+                        label_mapping.insert(last_key, None);
+                    }
+                }
+            }
+        }
+
+        // 7. Resolve output range (TO clause)
+        self.resolve_output_range(scale, aesthetic)?;
+
+        // Mark scale as resolved
+        scale.resolved = true;
 
         Ok(())
     }

@@ -612,116 +612,30 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Updates: input_range, transform, and properties["breaks"] on the scale.
     ///
     /// Default implementation:
-    /// 1. Resolves input_range from context (or merges with existing partial range)
+    /// 1. Resolves properties (fills in defaults, validates)
     /// 2. Resolves transform from context dtype if not set
-    /// 3. Converts input_range values using transform (e.g., ISO strings → Date/DateTime/Time)
-    /// 4. If breaks is a scalar Number, calculates break positions and stores as Array
+    /// 3. Resolves input_range from context (or merges with existing partial range)
+    /// 4. Converts input_range values using transform (e.g., ISO strings → Date/DateTime/Time)
+    /// 5. If breaks is a scalar Number, calculates break positions and stores as Array
+    /// 6. Applies label template
+    /// 7. Resolves output range
+    ///
+    /// Note: Binned scale overrides this method to add Binned-specific logic
+    /// (implicit break handling, break/range alignment, terminal label suppression).
     fn resolve(
         &self,
         scale: &mut super::Scale,
         context: &ScaleDataContext,
         aesthetic: &str,
     ) -> Result<(), String> {
-        // 1. Resolve properties (fills in defaults, validates)
-        scale.properties = self.resolve_properties(aesthetic, &scale.properties)?;
-
-        // 2. Resolve transform from user input, input range (FROM clause), and context dtype
-        // Priority: user transform > input range inference > column dtype inference > aesthetic default
-        let resolved_transform = self.resolve_transform(
-            aesthetic,
-            scale.transform.as_ref(),
-            context.dtype.as_ref(),
-            scale.input_range.as_deref(),
-        )?;
-        scale.transform = Some(resolved_transform.clone());
-
-        // 3. Resolve input range
-        // Strategy: First merge user range with context (filling nulls), then apply expansion
-        // This ensures expansion is calculated on the final range span.
-        // IMPORTANT: Only expand values that were inferred (originally null), not explicit user values.
-        // For example, `FROM [0, null]` should keep min=0 and only expand max.
-        let (mult, add) = get_expand_factors(&scale.properties);
-
-        // Track the original user range to know which values are explicit vs inferred
-        let original_user_range = scale.input_range.clone();
-
-        // Step 1: Determine the base range (before expansion)
-        let base_range: Option<Vec<ArrayElement>> = if let Some(ref user_range) = scale.input_range {
-            if input_range_has_nulls(user_range) {
-                // User provided partial range with Nulls - merge with context (not expanded yet)
-                if let Some(ref range) = context.range {
-                    let context_values = match range {
-                        InputRange::Continuous(r) => r.clone(),
-                        InputRange::Discrete(r) => r.clone(),
-                    };
-                    Some(merge_with_context(user_range, &context_values))
-                } else {
-                    // No context range, keep user range as-is (Nulls will remain)
-                    Some(user_range.clone())
-                }
-            } else {
-                // User provided complete range - use as-is for now
-                Some(user_range.clone())
-            }
-        } else if let Some(ref range) = context.range {
-            // No user range, use context range
-            Some(match range {
-                InputRange::Continuous(r) => r.clone(),
-                InputRange::Discrete(r) => r.clone(),
-            })
-        } else {
-            None
-        };
-
-        // Step 2: Apply expansion to the final merged range (if continuous/numeric)
-        // Only expand values that were originally null in the user range.
-        // Then clip to the transform's valid domain to prevent invalid values
-        // (e.g., expansion producing negative values for log scales)
-        if let Some(range) = base_range {
-            let is_continuous = range.iter().all(|e| matches!(e, ArrayElement::Number(_)));
-            if is_continuous {
-                let expanded = expand_numeric_range_selective(
-                    &range,
-                    mult,
-                    add,
-                    original_user_range.as_deref(),
-                );
-                scale.input_range =
-                    Some(clip_to_transform_domain(&expanded, &resolved_transform));
-            } else {
-                // Discrete ranges don't get expanded
-                scale.input_range = Some(range);
-            }
-        }
-
-        // 4. Convert input_range values using transform (e.g., ISO strings → Date/DateTime/Time)
-        // This ensures temporal scales properly parse user-provided date strings
-        if let Some(ref input_range) = scale.input_range {
-            let converted: Vec<ArrayElement> = input_range
-                .iter()
-                .map(|elem| resolved_transform.parse_value(elem))
-                .collect();
-            scale.input_range = Some(converted);
-        }
+        // Steps 1-4: Common resolution logic (properties, transform, input_range, convert values)
+        let common_result = resolve_common_steps(self, scale, context, aesthetic)?;
+        let resolved_transform = common_result.transform;
 
         // 5. Calculate breaks if supports_breaks()
         // If breaks is a scalar Number (count), calculate actual break positions and store as Array
         // If breaks is already an Array, user provided explicit breaks - convert using transform
         // Then filter breaks to the input range (break algorithms may produce "nice" values outside range)
-        //
-        // For binned scales, we track whether breaks were explicit to determine alignment strategy:
-        // - Implicit (count, no explicit range): keep extended breaks (they extend past data)
-        // - Explicit (explicit range OR explicit breaks array): prune breaks to range, add boundaries
-        //
-        // Continuous scales always filter, binned implicit scales skip filtering.
-        let explicit_breaks_array = matches!(
-            scale.properties.get("breaks"),
-            Some(ParameterValue::Array(_))
-        );
-        let binned_implicit = self.scale_type_kind() == ScaleTypeKind::Binned
-            && !scale.explicit_input_range
-            && !explicit_breaks_array;
-
         if self.supports_breaks() {
             match scale.properties.get("breaks") {
                 Some(ParameterValue::Number(_)) => {
@@ -731,11 +645,8 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                         &scale.properties,
                         scale.transform.as_ref(),
                     ) {
-                        // For binned implicit, keep all breaks (they extend past data).
-                        // For continuous or binned explicit, filter to input range.
-                        let filtered = if binned_implicit {
-                            breaks
-                        } else if let Some(ref range) = scale.input_range {
+                        // Filter to input range
+                        let filtered = if let Some(ref range) = scale.input_range {
                             super::super::breaks::filter_breaks_to_range(&breaks, range)
                         } else {
                             breaks
@@ -751,7 +662,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                         .iter()
                         .map(|elem| resolved_transform.parse_value(elem))
                         .collect();
-                    // Filter breaks to input range (explicit breaks always filtered)
+                    // Filter breaks to input range
                     let filtered = if let Some(ref range) = scale.input_range {
                         super::super::breaks::filter_breaks_to_range(&converted, range)
                     } else {
@@ -823,54 +734,14 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             }
         }
 
-        // 5b. For binned scales, align breaks and range for proper bins
-        //
-        // Simple rule:
-        // - If explicit input range provided → add range boundaries as terminal breaks
-        // - If no explicit input range → set input_range from terminal breaks
-        if self.scale_type_kind() == ScaleTypeKind::Binned {
-            // Extract breaks for modification
-            let maybe_breaks = match scale.properties.get("breaks") {
-                Some(ParameterValue::Array(b)) => Some(b.clone()),
-                _ => None,
-            };
-
-            if let Some(mut breaks) = maybe_breaks {
-                let mut new_input_range: Option<Vec<ArrayElement>> = None;
-
-                if scale.explicit_input_range {
-                    // Explicit input range provided → add range as terminal breaks
-                    if let Some(ref range) = scale.input_range {
-                        binned::add_range_boundaries_to_breaks(&mut breaks, range);
-                    }
-                } else if breaks.len() >= 2 {
-                    // No explicit range → set input_range from terminal breaks
-                    let terminal_range =
-                        vec![breaks.first().unwrap().clone(), breaks.last().unwrap().clone()];
-                    let expanded = expand_numeric_range(&terminal_range, mult, add);
-                    new_input_range = Some(expanded);
-                }
-
-                // Update the breaks in the scale
-                scale
-                    .properties
-                    .insert("breaks".to_string(), ParameterValue::Array(breaks));
-
-                // Update input_range if we computed a new one
-                if let Some(range) = new_input_range {
-                    scale.input_range = Some(range);
-                }
-            }
-        }
-
         // 6. Apply label template (RENAMING * => '...')
         // Default to '{}' to ensure we control formatting instead of Vega-Lite
-        // For continuous/binned scales, apply to breaks array
+        // For continuous scales, apply to breaks array
         // For discrete scales, apply to input_range (domain values)
         let template = scale.label_template.as_deref().unwrap_or("{}");
 
         let values_to_label = if self.supports_breaks() {
-            // Continuous/Binned: use breaks
+            // Continuous: use breaks
             match scale.properties.get("breaks") {
                 Some(ParameterValue::Array(breaks)) => Some(breaks.clone()),
                 _ => None,
@@ -884,26 +755,6 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             let generated_labels =
                 crate::format::apply_label_template(&values, template, &scale.label_mapping);
             scale.label_mapping = Some(generated_labels);
-        }
-
-        // 6b. For binned scales with oob='squish', suppress terminal break labels
-        // since those bins extend to infinity (-∞ to first internal break, last internal break to +∞)
-        if self.scale_type_kind() == ScaleTypeKind::Binned {
-            if let Some(ParameterValue::String(oob)) = scale.properties.get("oob") {
-                if oob == OOB_SQUISH {
-                    if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
-                        if breaks.len() > 2 {
-                            // Suppress first and last break labels
-                            let first_key = breaks[0].to_key_string();
-                            let last_key = breaks[breaks.len() - 1].to_key_string();
-
-                            let label_mapping = scale.label_mapping.get_or_insert_with(HashMap::new);
-                            label_mapping.insert(first_key, None);
-                            label_mapping.insert(last_key, None);
-                        }
-                    }
-                }
-            }
         }
 
         // 7. Resolve output range (TO clause)
@@ -1319,7 +1170,7 @@ pub(super) fn is_positional_aesthetic(aesthetic: &str) -> bool {
 }
 
 /// Check if input range contains any Null placeholders
-pub(super) fn input_range_has_nulls(range: &[ArrayElement]) -> bool {
+pub(crate) fn input_range_has_nulls(range: &[ArrayElement]) -> bool {
     range.iter().any(|e| matches!(e, ArrayElement::Null))
 }
 
@@ -1411,7 +1262,7 @@ pub(super) fn parse_expand_value(expand: &ParameterValue) -> Option<(f64, f64)> 
 /// Returns expanded [min, max] as ArrayElements.
 ///
 /// Formula: [min - range*mult - add, max + range*mult + add]
-pub(super) fn expand_numeric_range(
+pub(crate) fn expand_numeric_range(
     range: &[ArrayElement],
     mult: f64,
     add: f64,
@@ -1429,7 +1280,7 @@ pub(super) fn expand_numeric_range(
 /// - max was null (inferred from data), so it gets expanded
 ///
 /// Formula for expanded values: [min - range*mult - add, max + range*mult + add]
-pub(super) fn expand_numeric_range_selective(
+pub(crate) fn expand_numeric_range_selective(
     range: &[ArrayElement],
     mult: f64,
     add: f64,
@@ -1475,7 +1326,7 @@ pub(super) fn expand_numeric_range_selective(
 }
 
 /// Get expand factors from properties, using defaults for continuous/temporal scales.
-pub(super) fn get_expand_factors(properties: &HashMap<String, ParameterValue>) -> (f64, f64) {
+pub(crate) fn get_expand_factors(properties: &HashMap<String, ParameterValue>) -> (f64, f64) {
     properties
         .get("expand")
         .and_then(parse_expand_value)
@@ -1486,7 +1337,7 @@ pub(super) fn get_expand_factors(properties: &HashMap<String, ParameterValue>) -
 ///
 /// This prevents expansion from producing invalid values for transforms
 /// with restricted domains (e.g., log scales which exclude 0 and negatives).
-pub(super) fn clip_to_transform_domain(
+pub(crate) fn clip_to_transform_domain(
     range: &[ArrayElement],
     transform: &Transform,
 ) -> Vec<ArrayElement> {
@@ -1510,6 +1361,123 @@ pub(super) fn clip_to_transform_domain(
     }
 
     result
+}
+
+// =============================================================================
+// Common Scale Resolution Logic
+// =============================================================================
+
+/// Result from the common scale resolution steps.
+///
+/// Contains values needed by both the default resolve() implementation
+/// and any scale type overrides (like Binned).
+pub(crate) struct ResolveCommonResult {
+    /// Resolved transform
+    pub transform: Transform,
+    /// Expansion factors (mult, add)
+    pub expand_factors: (f64, f64),
+}
+
+/// Perform the common scale resolution steps (1-4).
+///
+/// This handles:
+/// 1. Resolve properties (fills in defaults, validates)
+/// 2. Resolve transform from user input, input range (FROM clause), and context dtype
+/// 3. Resolve input range (merge user range with context, apply expansion, clip to domain)
+/// 4. Convert input_range values using transform
+///
+/// Returns the resolved transform and expand factors for use by callers.
+pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
+    scale_type: &T,
+    scale: &mut super::Scale,
+    context: &ScaleDataContext,
+    aesthetic: &str,
+) -> Result<ResolveCommonResult, String> {
+    // 1. Resolve properties (fills in defaults, validates)
+    scale.properties = scale_type.resolve_properties(aesthetic, &scale.properties)?;
+
+    // 2. Resolve transform from user input, input range (FROM clause), and context dtype
+    // Priority: user transform > input range inference > column dtype inference > aesthetic default
+    let resolved_transform = scale_type.resolve_transform(
+        aesthetic,
+        scale.transform.as_ref(),
+        context.dtype.as_ref(),
+        scale.input_range.as_deref(),
+    )?;
+    scale.transform = Some(resolved_transform.clone());
+
+    // 3. Resolve input range
+    // Strategy: First merge user range with context (filling nulls), then apply expansion
+    // This ensures expansion is calculated on the final range span.
+    // IMPORTANT: Only expand values that were inferred (originally null), not explicit user values.
+    // For example, `FROM [0, null]` should keep min=0 and only expand max.
+    let (mult, add) = get_expand_factors(&scale.properties);
+
+    // Track the original user range to know which values are explicit vs inferred
+    let original_user_range = scale.input_range.clone();
+
+    // Step 1: Determine the base range (before expansion)
+    let base_range: Option<Vec<ArrayElement>> = if let Some(ref user_range) = scale.input_range {
+        if input_range_has_nulls(user_range) {
+            // User provided partial range with Nulls - merge with context (not expanded yet)
+            if let Some(ref range) = context.range {
+                let context_values = match range {
+                    InputRange::Continuous(r) => r.clone(),
+                    InputRange::Discrete(r) => r.clone(),
+                };
+                Some(merge_with_context(user_range, &context_values))
+            } else {
+                // No context range, keep user range as-is (Nulls will remain)
+                Some(user_range.clone())
+            }
+        } else {
+            // User provided complete range - use as-is for now
+            Some(user_range.clone())
+        }
+    } else if let Some(ref range) = context.range {
+        // No user range, use context range
+        Some(match range {
+            InputRange::Continuous(r) => r.clone(),
+            InputRange::Discrete(r) => r.clone(),
+        })
+    } else {
+        None
+    };
+
+    // Step 2: Apply expansion to the final merged range (if continuous/numeric)
+    // Only expand values that were originally null in the user range.
+    // Then clip to the transform's valid domain to prevent invalid values
+    // (e.g., expansion producing negative values for log scales)
+    if let Some(range) = base_range {
+        let is_continuous = range.iter().all(|e| matches!(e, ArrayElement::Number(_)));
+        if is_continuous {
+            let expanded = expand_numeric_range_selective(
+                &range,
+                mult,
+                add,
+                original_user_range.as_deref(),
+            );
+            scale.input_range = Some(clip_to_transform_domain(&expanded, &resolved_transform));
+        } else {
+            // Discrete ranges don't get expanded
+            scale.input_range = Some(range);
+        }
+    }
+
+    // 4. Convert input_range values using transform (e.g., ISO strings → Date/DateTime/Time)
+    // This ensures temporal scales properly parse user-provided date strings
+    if let Some(ref input_range) = scale.input_range {
+        let converted: Vec<ArrayElement> = input_range
+            .iter()
+            .map(|elem| resolved_transform.parse_value(elem))
+            .collect();
+        scale.input_range = Some(converted);
+    }
+
+    Ok(ResolveCommonResult {
+        transform: resolved_transform,
+        expand_factors: (mult, add),
+    })
 }
 
 // =============================================================================
