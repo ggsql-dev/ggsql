@@ -36,7 +36,7 @@ impl ScaleTypeTrait for Binned {
         ]
     }
 
-    fn default_transform(&self, aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
+    fn default_transform(&self, _aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
         // First check column data type for temporal transforms
         if let Some(dtype) = column_dtype {
             match dtype {
@@ -47,11 +47,8 @@ impl ScaleTypeTrait for Binned {
             }
         }
 
-        // Fall back to aesthetic-based defaults
-        match aesthetic {
-            "size" => TransformKind::Sqrt, // Area-proportional scaling
-            _ => TransformKind::Identity,
-        }
+        // Default to identity (linear) for all aesthetics
+        TransformKind::Identity
     }
 
     fn allowed_properties(&self, aesthetic: &str) -> &'static [&'static str] {

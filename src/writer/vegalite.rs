@@ -23,6 +23,15 @@
 use crate::naming;
 use crate::plot::layer::geom::{GeomAesthetics, GeomType};
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
+
+/// Conversion factor from points to pixels (CSS standard: 96 DPI, 72 points/inch)
+/// 1 point = 96/72 pixels ≈ 1.333
+const POINTS_TO_PIXELS: f64 = 96.0 / 72.0;
+
+/// Conversion factor from radius (in points) to area (in square pixels)
+/// Used for size aesthetic: area = π × r² where r is in pixels
+/// So: area_px² = π × (r_pt × POINTS_TO_PIXELS)² = π × r_pt² × (96/72)²
+const POINTS_TO_AREA: f64 = std::f64::consts::PI * POINTS_TO_PIXELS * POINTS_TO_PIXELS;
 // ArrayElement is used in tests and for pattern matching; suppress unused import warning
 #[allow(unused_imports)]
 use crate::plot::ArrayElement;
@@ -589,6 +598,17 @@ impl VegaLiteWriter {
                                                 json!(s)
                                             }
                                         }
+                                        ArrayElement::Number(n) => {
+                                            match aesthetic {
+                                                // Size: convert radius (points) to area (pixels²)
+                                                // area = r² × π × (96/72)²
+                                                "size" => json!(n * n * POINTS_TO_AREA),
+                                                // Linewidth: convert points to pixels
+                                                "linewidth" => json!(n * POINTS_TO_PIXELS),
+                                                // Other aesthetics: pass through unchanged
+                                                _ => json!(n),
+                                            }
+                                        }
                                         // All other types use to_json()
                                         other => other.to_json(),
                                     })
@@ -771,9 +791,20 @@ impl VegaLiteWriter {
             }
             AestheticValue::Literal(lit) => {
                 // For literal values, use constant value encoding
+                // Size and linewidth need unit conversion from points to Vega-Lite units
                 let val = match lit {
                     LiteralValue::String(s) => json!(s),
-                    LiteralValue::Number(n) => json!(n),
+                    LiteralValue::Number(n) => {
+                        match aesthetic {
+                            // Size: interpret as radius in points, convert to area in pixels²
+                            // area = r² × π × (96/72)²
+                            "size" => json!(n * n * POINTS_TO_AREA),
+                            // Linewidth: interpret as width in points, convert to pixels
+                            "linewidth" => json!(n * POINTS_TO_PIXELS),
+                            // Other aesthetics: pass through unchanged
+                            _ => json!(n),
+                        }
+                    }
                     LiteralValue::Boolean(b) => json!(b),
                 };
                 Ok(json!({"value": val}))
@@ -1421,7 +1452,16 @@ impl Writer for VegaLiteWriter {
                     let channel_name = self.map_aesthetic_name(param_name);
                     // Only add if not already set by MAPPING (MAPPING takes precedence)
                     if !encoding.contains_key(&channel_name) {
-                        encoding.insert(channel_name, json!({"value": param_value.to_json()}));
+                        // Convert size and linewidth from points to Vega-Lite units
+                        let converted_value = match (param_name.as_str(), param_value) {
+                            // Size: interpret as radius in points, convert to area in pixels²
+                            ("size", ParameterValue::Number(n)) => json!(n * n * POINTS_TO_AREA),
+                            // Linewidth: interpret as width in points, convert to pixels
+                            ("linewidth", ParameterValue::Number(n)) => json!(n * POINTS_TO_PIXELS),
+                            // Other aesthetics: pass through unchanged
+                            _ => param_value.to_json(),
+                        };
+                        encoding.insert(channel_name, json!({"value": converted_value}));
                     }
                 }
             }
@@ -1558,7 +1598,7 @@ impl Writer for VegaLiteWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{Labels, Layer, LiteralValue, ParameterValue, Scale};
+    use crate::plot::{ArrayElement, Labels, Layer, LiteralValue, OutputRange, ParameterValue, Scale};
     use std::collections::HashMap;
 
     /// Helper to wrap a DataFrame in a data map for testing
@@ -2101,6 +2141,43 @@ mod tests {
 
     #[test]
     fn test_literal_number_value() {
+        // Test that numeric literals pass through unchanged for aesthetics that
+        // don't have special unit conversion (like opacity)
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "opacity".to_string(),
+                AestheticValue::Literal(LiteralValue::Number(0.5)),
+            );
+        spec.layers.push(layer);
+
+        let df = df! {
+            "x" => &[1, 2],
+            "y" => &[3, 4],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Opacity passes through unchanged
+        assert_eq!(vl_spec["layer"][0]["encoding"]["opacity"]["value"], 0.5);
+    }
+
+    #[test]
+    fn test_size_literal_radius_to_area_conversion() {
+        // Test that size literals are converted from radius (points) to area (pixels²)
+        // Formula: area = radius² × π × (96/72)²
         let writer = VegaLiteWriter::new();
 
         let mut spec = Plot::new();
@@ -2115,7 +2192,8 @@ mod tests {
             )
             .with_aesthetic(
                 "size".to_string(),
-                AestheticValue::Literal(LiteralValue::Number(100.0)),
+                // Radius of 5 points
+                AestheticValue::Literal(LiteralValue::Number(5.0)),
             );
         spec.layers.push(layer);
 
@@ -2128,7 +2206,63 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["layer"][0]["encoding"]["size"]["value"], 100.0);
+        // Expected: 5² × π × (96/72)² = 25 × 5.585... ≈ 139.63
+        let size_value = vl_spec["layer"][0]["encoding"]["size"]["value"]
+            .as_f64()
+            .unwrap();
+        let expected = 5.0 * 5.0 * POINTS_TO_AREA;
+        assert!(
+            (size_value - expected).abs() < 0.01,
+            "Size conversion: expected {:.2}, got {:.2}",
+            expected,
+            size_value
+        );
+    }
+
+    #[test]
+    fn test_linewidth_literal_points_to_pixels_conversion() {
+        // Test that linewidth literals are converted from points to pixels
+        // Formula: pixels = points × (96/72)
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "linewidth".to_string(),
+                // Width of 3 points
+                AestheticValue::Literal(LiteralValue::Number(3.0)),
+            );
+        spec.layers.push(layer);
+
+        let df = df! {
+            "x" => &[1, 2],
+            "y" => &[3, 4],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Expected: 3 × (96/72) = 3 × 1.333... = 4.0
+        // linewidth maps to strokeWidth in Vega-Lite
+        let width_value = vl_spec["layer"][0]["encoding"]["strokeWidth"]["value"]
+            .as_f64()
+            .unwrap();
+        let expected = 3.0 * POINTS_TO_PIXELS;
+        assert!(
+            (width_value - expected).abs() < 0.01,
+            "Linewidth conversion: expected {:.2}, got {:.2}",
+            expected,
+            width_value
+        );
     }
 
     #[test]
@@ -3702,6 +3836,7 @@ mod tests {
     #[test]
     fn test_aesthetic_in_setting_numeric_value() {
         // Test that numeric aesthetics in SETTING are encoded as literals
+        // Note: size gets converted from radius (points) to area (pixels²)
         let writer = VegaLiteWriter::new();
 
         let mut spec = Plot::new();
@@ -3714,7 +3849,7 @@ mod tests {
                 "y".to_string(),
                 AestheticValue::standard_column("y".to_string()),
             )
-            .with_parameter("size".to_string(), ParameterValue::Number(100.0))
+            .with_parameter("size".to_string(), ParameterValue::Number(5.0)) // radius in points
             .with_parameter("opacity".to_string(), ParameterValue::Number(0.5));
         spec.layers.push(layer);
 
@@ -3727,14 +3862,63 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        // Size and opacity should be encoded as literal values
-        assert_eq!(
-            vl_spec["layer"][0]["encoding"]["size"]["value"], 100.0,
-            "SETTING size => 100 should produce {{\"value\": 100}}"
+        // Size is converted from radius (points) to area (pixels²)
+        // Expected: 5² × π × (96/72)² ≈ 139.63
+        let size_value = vl_spec["layer"][0]["encoding"]["size"]["value"]
+            .as_f64()
+            .unwrap();
+        let expected_size = 5.0 * 5.0 * POINTS_TO_AREA;
+        assert!(
+            (size_value - expected_size).abs() < 0.01,
+            "SETTING size => 5 should produce converted area value ~{:.2}, got {:.2}",
+            expected_size,
+            size_value
         );
+
+        // Opacity passes through unchanged
         assert_eq!(
             vl_spec["layer"][0]["encoding"]["opacity"]["value"], 0.5,
             "SETTING opacity => 0.5 should produce {{\"value\": 0.5}}"
+        );
+    }
+
+    #[test]
+    fn test_setting_linewidth_points_to_pixels() {
+        // Test that SETTING linewidth is converted from points to pixels
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_parameter("linewidth".to_string(), ParameterValue::Number(3.0)); // 3 points
+        spec.layers.push(layer);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 20, 30],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Linewidth: 3 × (96/72) = 4.0 pixels
+        let width_value = vl_spec["layer"][0]["encoding"]["strokeWidth"]["value"]
+            .as_f64()
+            .unwrap();
+        let expected = 3.0 * POINTS_TO_PIXELS;
+        assert!(
+            (width_value - expected).abs() < 0.01,
+            "SETTING linewidth => 3 should produce {:.2} pixels, got {:.2}",
+            expected,
+            width_value
         );
     }
 
@@ -4758,6 +4942,351 @@ mod tests {
             !expr.contains("timeFormat"),
             "non-temporal labelExpr should NOT use timeFormat: got {}",
             expr
+        );
+    }
+
+    // ========================================
+    // Size and Linewidth Unit Conversion Tests
+    // ========================================
+
+    #[test]
+    fn test_size_scale_range_conversion() {
+        // Test that SCALE size TO [1, 6] converts radius (points) to area (pixels²)
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "size".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add scale with output range [1, 6] (radius in points)
+        let mut scale = Scale::new("size");
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::Number(1.0),
+            ArrayElement::Number(6.0),
+        ]));
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[1, 2, 3],
+            "value" => &[10, 20, 30],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Range should be converted: [1², 6²] × π × (96/72)²
+        let range = vl_spec["layer"][0]["encoding"]["size"]["scale"]["range"]
+            .as_array()
+            .unwrap();
+        let expected_min = 1.0 * 1.0 * POINTS_TO_AREA; // ~5.585
+        let expected_max = 6.0 * 6.0 * POINTS_TO_AREA; // ~201.1
+
+        assert!(
+            (range[0].as_f64().unwrap() - expected_min).abs() < 0.1,
+            "Range min: expected ~{:.1}, got {:.1}",
+            expected_min,
+            range[0].as_f64().unwrap()
+        );
+        assert!(
+            (range[1].as_f64().unwrap() - expected_max).abs() < 0.1,
+            "Range max: expected ~{:.1}, got {:.1}",
+            expected_max,
+            range[1].as_f64().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_linewidth_scale_range_conversion() {
+        // Test that SCALE linewidth TO [0.5, 4] converts points to pixels
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "linewidth".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add scale with output range [0.5, 4] (width in points)
+        let mut scale = Scale::new("linewidth");
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::Number(0.5),
+            ArrayElement::Number(4.0),
+        ]));
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[1, 2, 3],
+            "value" => &[10, 20, 30],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Range should be converted: [0.5, 4] × (96/72)
+        let range = vl_spec["layer"][0]["encoding"]["strokeWidth"]["scale"]["range"]
+            .as_array()
+            .unwrap();
+        let expected_min = 0.5 * POINTS_TO_PIXELS; // ~0.667
+        let expected_max = 4.0 * POINTS_TO_PIXELS; // ~5.333
+
+        assert!(
+            (range[0].as_f64().unwrap() - expected_min).abs() < 0.01,
+            "Range min: expected ~{:.2}, got {:.2}",
+            expected_min,
+            range[0].as_f64().unwrap()
+        );
+        assert!(
+            (range[1].as_f64().unwrap() - expected_max).abs() < 0.01,
+            "Range max: expected ~{:.2}, got {:.2}",
+            expected_max,
+            range[1].as_f64().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_size_sqrt_transform_passes_through() {
+        // Test that SCALE size VIA sqrt passes through to Vega-Lite as sqrt scale
+        use crate::plot::scale::Transform;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "size".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add sqrt transform for size
+        let mut scale = Scale::new("size");
+        scale.transform = Some(Transform::sqrt());
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[1, 2, 3],
+            "value" => &[100, 400, 900],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Sqrt transform passes through to Vega-Lite
+        let scale_obj = &vl_spec["layer"][0]["encoding"]["size"]["scale"];
+        assert_eq!(
+            scale_obj["type"], "sqrt",
+            "Sqrt transform on size should pass through as sqrt scale"
+        );
+    }
+
+    #[test]
+    fn test_size_identity_transform_uses_linear_scale() {
+        // Test that SCALE size VIA identity (linear) also results in linear scale
+        use crate::plot::scale::Transform;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "size".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add identity transform for size
+        let mut scale = Scale::new("size");
+        scale.transform = Some(Transform::identity());
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[1, 2, 3],
+            "value" => &[10, 20, 30],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Should NOT have scale.type (linear is default)
+        let scale_obj = &vl_spec["layer"][0]["encoding"]["size"]["scale"];
+        assert!(
+            scale_obj.get("type").is_none() || scale_obj["type"].is_null(),
+            "Identity transform on size should use linear scale, got: {}",
+            scale_obj
+        );
+    }
+
+    #[test]
+    fn test_size_log_transform_passes_through() {
+        // Test that SCALE size VIA log passes through to Vega-Lite as log scale
+        use crate::plot::scale::Transform;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "size".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add log transform for size
+        let mut scale = Scale::new("size");
+        scale.transform = Some(Transform::log());
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[1, 2, 3],
+            "value" => &[10, 100, 1000],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Log transform passes through to Vega-Lite
+        let scale_obj = &vl_spec["layer"][0]["encoding"]["size"]["scale"];
+        assert_eq!(
+            scale_obj["type"], "log",
+            "Log transform on size should pass through as log scale"
+        );
+        assert_eq!(
+            scale_obj["base"], 10,
+            "Log transform should have base 10"
+        );
+    }
+
+    #[test]
+    fn test_non_size_sqrt_transform_unchanged() {
+        // Verify that sqrt transform on non-size aesthetics still produces sqrt scale
+        use crate::plot::scale::Transform;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add sqrt transform for y axis
+        let mut scale = Scale::new("y");
+        scale.transform = Some(Transform::sqrt());
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[1, 4, 9],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Y axis should have sqrt scale
+        let scale_obj = &vl_spec["layer"][0]["encoding"]["y"]["scale"];
+        assert_eq!(
+            scale_obj["type"], "sqrt",
+            "Sqrt transform on y should produce sqrt scale"
+        );
+    }
+
+    #[test]
+    fn test_other_aesthetics_pass_through_unchanged() {
+        // Test that color, opacity, shape literals are not converted
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "opacity".to_string(),
+                AestheticValue::Literal(LiteralValue::Number(0.75)),
+            );
+        spec.layers.push(layer);
+
+        let df = df! {
+            "x" => &[1, 2],
+            "y" => &[3, 4],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Opacity should pass through unchanged
+        assert_eq!(
+            vl_spec["layer"][0]["encoding"]["opacity"]["value"], 0.75,
+            "Opacity literal should pass through unchanged"
         );
     }
 }

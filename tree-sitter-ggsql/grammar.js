@@ -491,7 +491,8 @@ module.exports = grammar({
       $.string,
       $.number,
       $.boolean,
-      $.null_literal
+      $.null_literal,
+      $.array
     ),
 
     // PARTITION BY clause for grouping: PARTITION BY category, region

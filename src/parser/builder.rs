@@ -499,6 +499,10 @@ fn parse_parameter_value(node: &Node, source: &str) -> Result<ParameterValue> {
             "null_literal" => {
                 return Ok(ParameterValue::Null);
             }
+            "array" => {
+                let elements = parse_array(&child, source)?;
+                return Ok(ParameterValue::Array(elements));
+            }
             _ => {}
         }
     }

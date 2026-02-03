@@ -378,12 +378,11 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     ///
     /// The transform is inferred in order of priority:
     /// 1. Column data type (Date -> Date transform, DateTime -> DateTime transform, etc.)
-    /// 2. Aesthetic defaults (`size` -> sqrt for area-proportional scaling)
-    /// 3. Identity (default)
+    /// 2. Identity (default for all aesthetics including size)
     ///
     /// The column_dtype parameter enables automatic temporal transform inference when
     /// a Date, DateTime, or Time column is mapped to an aesthetic.
-    fn default_transform(&self, aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
+    fn default_transform(&self, _aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
         // First check column data type for temporal transforms
         if let Some(dtype) = column_dtype {
             match dtype {
@@ -394,11 +393,8 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             }
         }
 
-        // Fall back to aesthetic-based defaults
-        match aesthetic {
-            "size" => TransformKind::Sqrt,
-            _ => TransformKind::Identity,
-        }
+        // Default to identity (linear) for all aesthetics
+        TransformKind::Identity
     }
 
     /// Resolve and validate the transform.
@@ -407,8 +403,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// If user_transform is None, infers the transform in priority order:
     /// 1. Input range type (FROM clause) - if provided
     /// 2. Column data type - if available
-    /// 3. Aesthetic defaults (e.g., size → sqrt)
-    /// 4. Identity (fallback)
+    /// 3. Identity (fallback for all aesthetics)
     fn resolve_transform(
         &self,
         aesthetic: &str,
@@ -1057,8 +1052,7 @@ impl ScaleType {
     /// If user_transform is None, infers the transform in priority order:
     /// 1. Input range type (FROM clause) - if provided
     /// 2. Column data type - if available
-    /// 3. Aesthetic defaults (e.g., size → sqrt)
-    /// 4. Identity (fallback)
+    /// 3. Identity (fallback for all aesthetics)
     pub fn resolve_transform(
         &self,
         aesthetic: &str,
@@ -2443,11 +2437,11 @@ mod tests {
     }
 
     #[test]
-    fn test_continuous_default_transform_size_is_sqrt() {
-        // Size aesthetic defaults to sqrt for area-proportional scaling
+    fn test_continuous_default_transform_size_is_identity() {
+        // Size aesthetic defaults to identity (linear) - user can specify sqrt if desired
         assert_eq!(
             ScaleType::continuous().default_transform("size", None),
-            TransformKind::Sqrt
+            TransformKind::Identity
         );
     }
 
@@ -2474,14 +2468,14 @@ mod tests {
             TransformKind::Time
         );
 
-        // Non-temporal column -> falls back to aesthetic default
+        // Non-temporal column -> falls back to identity for all aesthetics
         assert_eq!(
             ScaleType::continuous().default_transform("x", Some(&DataType::Int64)),
             TransformKind::Identity
         );
         assert_eq!(
             ScaleType::continuous().default_transform("size", Some(&DataType::Float64)),
-            TransformKind::Sqrt
+            TransformKind::Identity
         );
     }
 
@@ -2507,10 +2501,11 @@ mod tests {
     }
 
     #[test]
-    fn test_binned_default_transform_size_is_sqrt() {
+    fn test_binned_default_transform_size_is_identity() {
+        // Size defaults to identity (linear) for all scale types
         assert_eq!(
             ScaleType::binned().default_transform("size", None),
-            TransformKind::Sqrt
+            TransformKind::Identity
         );
         assert_eq!(
             ScaleType::binned().default_transform("x", None),
@@ -2566,12 +2561,13 @@ mod tests {
 
     #[test]
     fn test_resolve_transform_fills_default() {
-        // Without user input, fills in default
+        // Without user input, fills in identity (linear) for all aesthetics
         let result = ScaleType::continuous().resolve_transform("x", None, None, None);
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Identity);
 
+        // Size also defaults to identity - user can specify sqrt if desired
         let result = ScaleType::continuous().resolve_transform("size", None, None, None);
-        assert_eq!(result.unwrap().transform_kind(), TransformKind::Sqrt);
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::Identity);
     }
 
     #[test]
