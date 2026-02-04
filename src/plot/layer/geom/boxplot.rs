@@ -25,8 +25,6 @@ impl GeomTrait for Boxplot {
             supported: &[
                 "x",
                 "y",
-                "color",
-                "colour",
                 "fill",
                 "stroke",
                 "opacity",
