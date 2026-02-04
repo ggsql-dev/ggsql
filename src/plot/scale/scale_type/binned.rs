@@ -215,10 +215,7 @@ impl ScaleTypeTrait for Binned {
             // Generate sequential ink-density palette sized to bin_count
             let sequential = palettes::generate_linetype_sequential(bin_count);
             scale.output_range = Some(OutputRange::Array(
-                sequential
-                    .into_iter()
-                    .map(ArrayElement::String)
-                    .collect(),
+                sequential.into_iter().map(ArrayElement::String).collect(),
             ));
         } else {
             match &scale.output_range {
@@ -1462,9 +1459,7 @@ mod tests {
         // No output range specified - should use sequential ink palette
         scale.output_range = None;
 
-        binned
-            .resolve_output_range(&mut scale, "linetype")
-            .unwrap();
+        binned.resolve_output_range(&mut scale, "linetype").unwrap();
 
         // Should have 4 linetypes with increasing ink density
         if let Some(OutputRange::Array(arr)) = &scale.output_range {
@@ -1515,9 +1510,7 @@ mod tests {
         // Explicitly request sequential palette
         scale.output_range = Some(OutputRange::Palette("sequential".to_string()));
 
-        binned
-            .resolve_output_range(&mut scale, "linetype")
-            .unwrap();
+        binned.resolve_output_range(&mut scale, "linetype").unwrap();
 
         // Should have 3 linetypes
         if let Some(OutputRange::Array(arr)) = &scale.output_range {

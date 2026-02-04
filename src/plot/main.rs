@@ -165,12 +165,17 @@ impl Plot {
                         continue;
                     }
 
+                    // Use label_name() to get the original column name for display
+                    // This returns original_name if available, otherwise falls back to name
+                    let label_source = value.label_name().unwrap_or(name);
+
                     // Compute the label from the column name
-                    let column_name = if let Some(stat_name) = naming::extract_stat_name(name) {
-                        stat_name.to_string()
-                    } else {
-                        name.clone()
-                    };
+                    let column_name =
+                        if let Some(stat_name) = naming::extract_stat_name(label_source) {
+                            stat_name.to_string()
+                        } else {
+                            label_source.to_string()
+                        };
 
                     labels.labels.insert(primary.to_string(), column_name);
                 }

@@ -1227,7 +1227,7 @@ pub const OOB_KEEP: &str = "keep";
 
 /// Default oob mode for an aesthetic.
 /// Positional aesthetics default to "keep", others default to "censor".
-pub(super) fn default_oob(aesthetic: &str) -> &'static str {
+pub fn default_oob(aesthetic: &str) -> &'static str {
     if is_positional_aesthetic(aesthetic) {
         OOB_KEEP
     } else {
@@ -2350,7 +2350,10 @@ mod tests {
     #[test]
     fn test_resolve_properties_binned_rejects_keep_oob() {
         let mut props = HashMap::new();
-        props.insert("oob".to_string(), ParameterValue::String("keep".to_string()));
+        props.insert(
+            "oob".to_string(),
+            ParameterValue::String("keep".to_string()),
+        );
 
         let result = ScaleType::binned().resolve_properties("x", &props);
         assert!(result.is_err());
@@ -2361,7 +2364,10 @@ mod tests {
     #[test]
     fn test_resolve_properties_binned_allows_squish_oob() {
         let mut props = HashMap::new();
-        props.insert("oob".to_string(), ParameterValue::String("squish".to_string()));
+        props.insert(
+            "oob".to_string(),
+            ParameterValue::String("squish".to_string()),
+        );
 
         let result = ScaleType::binned().resolve_properties("x", &props);
         assert!(result.is_ok());

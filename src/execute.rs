@@ -398,6 +398,37 @@ fn type_info_to_schema(type_info: &[TypeInfo]) -> Schema {
         .collect()
 }
 
+/// Add type info for literal (constant) mappings to layer type info.
+///
+/// When a layer has literal mappings like `'blue' AS fill`, we need the type info
+/// for these columns in the schema. Instead of re-querying the database, we can
+/// derive the types directly from the AST.
+///
+/// This is called after global mappings are merged and color is split, so all
+/// literal mappings are already in place.
+fn add_literal_columns_to_type_info(layers: &[Layer], layer_type_info: &mut [Vec<TypeInfo>]) {
+    use polars::prelude::DataType;
+
+    for (layer, type_info) in layers.iter().zip(layer_type_info.iter_mut()) {
+        for (aesthetic, value) in &layer.mappings.aesthetics {
+            if let AestheticValue::Literal(lit) = value {
+                let dtype = match lit {
+                    LiteralValue::String(_) => DataType::String,
+                    LiteralValue::Number(_) => DataType::Float64,
+                    LiteralValue::Boolean(_) => DataType::Boolean,
+                };
+                let is_discrete = matches!(lit, LiteralValue::String(_) | LiteralValue::Boolean(_));
+                let col_name = naming::aesthetic_column(aesthetic);
+
+                // Only add if not already present
+                if !type_info.iter().any(|(name, _, _)| name == &col_name) {
+                    type_info.push((col_name, dtype, is_discrete));
+                }
+            }
+        }
+    }
+}
+
 // =============================================================================
 // Type Requirements and Casting
 // =============================================================================
@@ -554,57 +585,6 @@ fn determine_type_requirements(
     layer_requirements
 }
 
-/// Apply column casting to a SQL query.
-///
-/// Wraps the query to cast specified columns to their target types.
-/// Uses DuckDB's EXCLUDE syntax for clean column replacement.
-///
-/// Example output:
-/// ```sql
-/// SELECT * EXCLUDE (date_col, value_col),
-///        CAST(date_col AS DATE) AS date_col,
-///        CAST(value_col AS DOUBLE) AS value_col
-/// FROM (original_query)
-/// ```
-fn apply_column_casting(query: &str, requirements: &[TypeRequirement]) -> String {
-    if requirements.is_empty() {
-        return query.to_string();
-    }
-
-    // Build EXCLUDE clause
-    let exclude_cols: Vec<&str> = requirements.iter().map(|r| r.column.as_str()).collect();
-    let exclude_clause = if exclude_cols.len() == 1 {
-        format!("EXCLUDE (\"{}\")", exclude_cols[0])
-    } else {
-        format!(
-            "EXCLUDE ({})",
-            exclude_cols
-                .iter()
-                .map(|c| format!("\"{}\"", c))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    };
-
-    // Build CAST expressions
-    let cast_exprs: Vec<String> = requirements
-        .iter()
-        .map(|r| {
-            format!(
-                "CAST(\"{}\" AS {}) AS \"{}\"",
-                r.column, r.sql_type_name, r.column
-            )
-        })
-        .collect();
-
-    format!(
-        "SELECT * {}, {} FROM ({})",
-        exclude_clause,
-        cast_exprs.join(", "),
-        query
-    )
-}
-
 /// Update type info with post-cast dtypes.
 ///
 /// After determining casting requirements, updates the type info
@@ -633,77 +613,17 @@ fn update_type_info_for_casting(type_info: &mut [TypeInfo], requirements: &[Type
     }
 }
 
-/// Collect type requirements for the global query.
-///
-/// For the global query, we need to cast columns that are used by any layer
-/// that reads from global data (layers without explicit source).
-fn collect_requirements_for_global(
-    layer_requirements: &[Vec<TypeRequirement>],
-    spec: &Plot,
-) -> Vec<TypeRequirement> {
-    let mut global_reqs: Vec<TypeRequirement> = Vec::new();
-
-    for (layer_idx, layer) in spec.layers.iter().enumerate() {
-        // Only include requirements from layers that use global data
-        if layer.source.is_none() && layer_idx < layer_requirements.len() {
-            for req in &layer_requirements[layer_idx] {
-                // Don't add duplicates
-                if !global_reqs.iter().any(|r| r.column == req.column) {
-                    global_reqs.push(req.clone());
-                }
-            }
-        }
-    }
-
-    global_reqs
-}
-
-/// Determine the data source table name for a layer
+/// Determine the data source table name for a layer.
 ///
 /// Returns the table/CTE name to query from:
 /// - Layer with explicit source (CTE, table, file) → that source name
-/// - Layer using global data → None (caller should use global schema)
-fn determine_layer_source(layer: &Layer, materialized_ctes: &HashSet<String>) -> Option<String> {
-    match &layer.source {
-        Some(DataSource::Identifier(name)) => {
-            // Check if it's a materialized CTE
-            if materialized_ctes.contains(name) {
-                Some(naming::cte_table(name))
-            } else {
-                Some(name.clone())
-            }
-        }
-        Some(DataSource::FilePath(path)) => {
-            // File paths need single quotes for DuckDB
-            Some(format!("'{}'", path))
-        }
-        None => {
-            // Layer uses global data
-            None
-        }
-    }
-}
-
-/// Build the base query for a layer including constant columns.
-///
-/// Returns `SELECT * [, constants...] FROM source` or None if layer uses global directly
-/// without needing any transformation.
-///
-/// Constants are included in the base query ONLY for layers with their own source or filter.
-/// For layers using global data (no source, no filter), constants are injected into the
-/// global table with layer-indexed names by `prepare_data_with_executor`, so we don't add
-/// them here.
-fn build_base_layer_query(
+/// - Layer using global data → global table name
+fn determine_layer_source(
     layer: &Layer,
     materialized_ctes: &HashSet<String>,
     has_global: bool,
-) -> Option<String> {
-    // For layers using global data (no source, no filter), constants are already
-    // in the global table with layer-indexed names. Return None to use global directly.
-    let uses_global_directly = layer.source.is_none() && layer.filter.is_none();
-
-    // Determine source table
-    let source = match &layer.source {
+) -> String {
+    match &layer.source {
         Some(DataSource::Identifier(name)) => {
             if materialized_ctes.contains(name) {
                 naming::cte_table(name)
@@ -711,38 +631,268 @@ fn build_base_layer_query(
                 name.clone()
             }
         }
-        Some(DataSource::FilePath(path)) => format!("'{}'", path),
-        None => {
-            // Layer uses global data
-            if has_global {
-                naming::global_table()
-            } else {
-                return None;
-            }
+        Some(DataSource::FilePath(path)) => {
+            format!("'{}'", path)
         }
-    };
+        None => {
+            // Layer uses global data - caller must ensure has_global is true
+            debug_assert!(has_global, "Layer has no source and no global data");
+            naming::global_table()
+        }
+    }
+}
 
-    // For layers using global directly, don't add constants (they're already in global)
-    if uses_global_directly {
-        return Some(format!("SELECT * FROM {}", source));
+/// Build the source query for a layer.
+///
+/// Returns `SELECT * FROM source` where source is either:
+/// - The layer's explicit source (table, CTE, file)
+/// - The global table if layer has no explicit source
+///
+/// Note: This is distinct from `build_layer_base_query()` which builds a full
+/// SELECT with aesthetic column renames and type casts.
+fn layer_source_query(
+    layer: &Layer,
+    materialized_ctes: &HashSet<String>,
+    has_global: bool,
+) -> String {
+    let source = determine_layer_source(layer, materialized_ctes, has_global);
+    format!("SELECT * FROM {}", source)
+}
+
+/// Build the SELECT list for a layer query with aesthetic-renamed columns and casting.
+///
+/// This function builds SELECT expressions that:
+/// 1. Rename source columns to prefixed aesthetic names
+/// 2. Apply type casts based on scale requirements
+///
+/// # Arguments
+///
+/// * `layer` - The layer configuration with aesthetic mappings
+/// * `type_requirements` - Columns that need type casting
+///
+/// # Returns
+///
+/// A vector of SQL SELECT expressions starting with `*` followed by aesthetic columns:
+/// - `*` (preserves all original columns)
+/// - `CAST("Date" AS DATE) AS "__ggsql_aes_x__"` (cast + rename)
+/// - `"Temp" AS "__ggsql_aes_y__"` (rename only, no cast needed)
+/// - `'red' AS "__ggsql_aes_color__"` (literal value as aesthetic column)
+///
+/// The prefix `__ggsql_aes_` avoids conflicts with source columns that might
+/// have names matching aesthetics (e.g., a column named "x" or "color").
+///
+/// Note: Facet variables are preserved automatically via `SELECT *`.
+fn build_layer_select_list(layer: &Layer, type_requirements: &[TypeRequirement]) -> Vec<String> {
+    let mut select_exprs = Vec::new();
+
+    // Start with * to preserve all original columns
+    // This ensures facet variables, partition_by columns, and any other
+    // columns are available for downstream processing (stat transforms, etc.)
+    select_exprs.push("*".to_string());
+
+    // Build a map of column -> cast requirement for quick lookup
+    let cast_map: std::collections::HashMap<&str, &TypeRequirement> = type_requirements
+        .iter()
+        .map(|r| (r.column.as_str(), r))
+        .collect();
+
+    // Add aesthetic-mapped columns with prefixed names (and casts where needed)
+    for (aesthetic, value) in &layer.mappings.aesthetics {
+        let aes_col_name = naming::aesthetic_column(aesthetic);
+        let select_expr = match value {
+            AestheticValue::Column { name, .. } => {
+                // Check if this column needs casting
+                if let Some(req) = cast_map.get(name.as_str()) {
+                    // Cast and rename to prefixed aesthetic name
+                    format!(
+                        "CAST(\"{}\" AS {}) AS \"{}\"",
+                        name, req.sql_type_name, aes_col_name
+                    )
+                } else {
+                    // Just rename to prefixed aesthetic name
+                    format!("\"{}\" AS \"{}\"", name, aes_col_name)
+                }
+            }
+            AestheticValue::Literal(lit) => {
+                // Literals become columns with prefixed aesthetic name
+                format!("{} AS \"{}\"", literal_to_sql(lit), aes_col_name)
+            }
+        };
+
+        select_exprs.push(select_expr);
     }
 
-    // For layers with their own source or filter, add constants with non-indexed names
-    let constants = extract_constants(layer);
+    select_exprs
+}
 
-    // Build query with constants
-    if constants.is_empty() {
-        Some(format!("SELECT * FROM {}", source))
-    } else {
-        let const_cols: Vec<String> = constants
-            .iter()
-            .map(|(aes, lit)| format!("{} AS {}", literal_to_sql(lit), naming::const_column(aes)))
-            .collect();
-        Some(format!(
-            "SELECT *, {} FROM {}",
-            const_cols.join(", "),
-            source
-        ))
+/// Update layer mappings to use prefixed aesthetic column names.
+///
+/// After building a layer query that creates aesthetic columns with prefixed names,
+/// the layer's mappings need to be updated to point to these prefixed column names.
+///
+/// This function converts:
+/// - `AestheticValue::Column { name: "Date", ... }` → `AestheticValue::Column { name: "__ggsql_aes_x__", ... }`
+/// - `AestheticValue::Literal(...)` → `AestheticValue::Column { name: "__ggsql_aes_color__", ... }`
+///
+/// Note: The final rename from prefixed names to clean aesthetic names (e.g., "x")
+/// happens in Polars after query execution, before the data goes to the writer.
+fn update_mappings_for_aesthetic_columns(layer: &mut Layer) {
+    for (aesthetic, value) in layer.mappings.aesthetics.iter_mut() {
+        let aes_col_name = naming::aesthetic_column(aesthetic);
+        match value {
+            AestheticValue::Column {
+                name,
+                original_name,
+                ..
+            } => {
+                // Preserve the original column name for labels before overwriting
+                if original_name.is_none() {
+                    *original_name = Some(name.clone());
+                }
+                // Column is now named with the prefixed aesthetic name
+                *name = aes_col_name;
+            }
+            AestheticValue::Literal(_) => {
+                // Literals are also columns with prefixed aesthetic name
+                // Note: literals don't have an original_name to preserve
+                *value = AestheticValue::standard_column(aes_col_name);
+            }
+        }
+    }
+}
+
+/// Build a schema with prefixed aesthetic column names from the original schema.
+///
+/// For each aesthetic mapped to a column, looks up the original column's type
+/// in the schema and adds it with the prefixed aesthetic name (e.g., `__ggsql_aes_x__`).
+///
+/// This schema is used by stat transforms to look up column types using the
+/// prefixed names that appear in the query after `build_layer_select_list`.
+fn build_aesthetic_schema(layer: &Layer, schema: &Schema) -> Schema {
+    use polars::prelude::DataType;
+
+    let mut aesthetic_schema: Schema = Vec::new();
+
+    for (aesthetic, value) in &layer.mappings.aesthetics {
+        let aes_col_name = naming::aesthetic_column(aesthetic);
+        match value {
+            AestheticValue::Column { name, .. } => {
+                // Find the original column's type in schema
+                if let Some(original_col) = schema.iter().find(|c| c.name == *name) {
+                    aesthetic_schema.push(ColumnInfo {
+                        name: aes_col_name,
+                        dtype: original_col.dtype.clone(),
+                        is_discrete: original_col.is_discrete,
+                        min: original_col.min.clone(),
+                        max: original_col.max.clone(),
+                    });
+                } else {
+                    // Column not in schema - add with Unknown type
+                    aesthetic_schema.push(ColumnInfo {
+                        name: aes_col_name,
+                        dtype: DataType::Unknown(Default::default()),
+                        is_discrete: false,
+                        min: None,
+                        max: None,
+                    });
+                }
+            }
+            AestheticValue::Literal(lit) => {
+                // Literals become columns with appropriate type
+                let dtype = match lit {
+                    LiteralValue::String(_) => DataType::String,
+                    LiteralValue::Number(_) => DataType::Float64,
+                    LiteralValue::Boolean(_) => DataType::Boolean,
+                };
+                aesthetic_schema.push(ColumnInfo {
+                    name: aes_col_name,
+                    dtype,
+                    is_discrete: matches!(lit, LiteralValue::String(_) | LiteralValue::Boolean(_)),
+                    min: None,
+                    max: None,
+                });
+            }
+        }
+    }
+
+    // Add facet variables and partition_by columns with their original types
+    for col in &layer.partition_by {
+        if !aesthetic_schema.iter().any(|c| c.name == *col) {
+            if let Some(original_col) = schema.iter().find(|c| c.name == *col) {
+                aesthetic_schema.push(original_col.clone());
+            }
+        }
+    }
+
+    aesthetic_schema
+}
+
+/// Rename columns in DataFrame after query execution.
+///
+/// This function performs two types of renames:
+/// 1. Prefixed aesthetic columns to clean names: `__ggsql_aes_x__` → `x`
+/// 2. Stat columns to aesthetic names via remappings: `__ggsql_stat_count` → `y`
+///
+/// This keeps SQL queries using safe prefixed names while producing clean
+/// output for the Vega-Lite writer.
+/// Apply remappings to rename stat columns to their target aesthetic's prefixed name.
+///
+/// After stat transforms, columns like `__ggsql_stat_count` need to be renamed
+/// to the target aesthetic's prefixed name (e.g., `__ggsql_aes_y__`).
+///
+/// Note: Prefixed aesthetic names persist through the entire pipeline.
+/// We do NOT rename `__ggsql_aes_x__` back to `x`.
+fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataFrame> {
+    let mut df = df;
+
+    // Apply remappings: stat columns → prefixed aesthetic names
+    // e.g., __ggsql_stat_count → __ggsql_aes_y__
+    // Remappings structure: HashMap<target_aesthetic, AestheticValue pointing to stat column>
+    for (target_aesthetic, stat_col_value) in &layer.remappings.aesthetics {
+        if let Some(stat_col_name) = stat_col_value.column_name() {
+            // Check if this stat column exists in the DataFrame
+            if df.column(stat_col_name).is_ok() {
+                let target_col_name = naming::aesthetic_column(target_aesthetic);
+                df.rename(stat_col_name, target_col_name.into())
+                    .map_err(|e| {
+                        GgsqlError::InternalError(format!(
+                            "Failed to rename stat column '{}' to '{}': {}",
+                            stat_col_name, target_aesthetic, e
+                        ))
+                    })?;
+            }
+        }
+    }
+
+    Ok(df)
+}
+
+/// Update layer mappings to use prefixed aesthetic names for remapped columns.
+///
+/// After remappings are applied (stat columns renamed to prefixed aesthetic names),
+/// the layer mappings need to be updated so the writer uses the correct field names.
+///
+/// The original name is set to the stat name (e.g., "density", "count") so axis labels
+/// show meaningful names instead of internal prefixed names.
+fn update_mappings_for_remappings(layer: &mut Layer) {
+    // For each remapping, add the target aesthetic to mappings pointing to the prefixed name
+    for (target_aesthetic, stat_col_value) in &layer.remappings.aesthetics {
+        let prefixed_name = naming::aesthetic_column(target_aesthetic);
+
+        // Use the stat name from remappings as the original_name for labels
+        // The stat_col_value contains the user-specified stat name (e.g., "density", "count")
+        let original_name = stat_col_value.column_name().map(|s| s.to_string());
+
+        let value = AestheticValue::Column {
+            name: prefixed_name,
+            original_name,
+            is_dummy: false,
+        };
+
+        layer
+            .mappings
+            .aesthetics
+            .insert(target_aesthetic.clone(), value);
     }
 }
 
@@ -948,48 +1098,6 @@ fn add_discrete_columns_to_partition_by(
     }
 }
 
-/// Extract constant aesthetics from a layer
-fn extract_constants(layer: &Layer) -> Vec<(String, LiteralValue)> {
-    layer
-        .mappings
-        .aesthetics
-        .iter()
-        .filter_map(|(aesthetic, value)| {
-            if let AestheticValue::Literal(lit) = value {
-                Some((aesthetic.clone(), lit.clone()))
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-/// Replace literal aesthetic values with column references to synthetic constant columns
-///
-/// After data has been fetched with constants injected as columns, this function
-/// updates the spec so that aesthetics point to the synthetic column names instead
-/// of literal values.
-///
-/// For layers using global data (no source, no filter), uses layer-indexed column names
-/// (e.g., `__ggsql_const_color_0__`) since constants are injected into global data.
-/// For other layers, uses non-indexed column names (e.g., `__ggsql_const_color__`).
-fn replace_literals_with_columns(spec: &mut Plot) {
-    for (layer_idx, layer) in spec.layers.iter_mut().enumerate() {
-        for (aesthetic, value) in layer.mappings.aesthetics.iter_mut() {
-            if matches!(value, AestheticValue::Literal(_)) {
-                // Use layer-indexed column name for layers using global data (no source, no filter)
-                // Use non-indexed name for layers with their own data (filter or explicit source)
-                let col_name = if layer.source.is_none() && layer.filter.is_none() {
-                    naming::const_column_indexed(aesthetic, layer_idx)
-                } else {
-                    naming::const_column(aesthetic)
-                };
-                *value = AestheticValue::standard_column(col_name);
-            }
-        }
-    }
-}
-
 /// Materialize CTEs as temporary tables in the database
 ///
 /// Creates a temp table for each CTE in declaration order. When a CTE
@@ -1096,48 +1204,6 @@ fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> Optio
 // Pre-Stat Transform
 // =============================================================================
 
-/// Check if a layer needs pre-stat transformation based on its mapped aesthetics and scales.
-///
-/// Returns true if any mapped aesthetic has a scale that would generate pre-stat SQL
-/// (e.g., binned scales with resolved breaks).
-fn needs_pre_stat_transform(
-    layer: &Layer,
-    schema: &Schema,
-    scales: &[crate::plot::Scale],
-    type_names: &SqlTypeNames,
-) -> bool {
-    use polars::prelude::DataType;
-
-    for (aesthetic, value) in &layer.mappings.aesthetics {
-        let col_name = if let Some(col) = value.column_name() {
-            col.to_string()
-        } else if value.is_literal() {
-            naming::const_column(aesthetic)
-        } else {
-            continue;
-        };
-
-        let col_dtype = schema
-            .iter()
-            .find(|c| c.name == col_name)
-            .map(|c| c.dtype.clone())
-            .unwrap_or(DataType::String);
-
-        if let Some(scale) = scales.iter().find(|s| s.aesthetic == *aesthetic) {
-            if let Some(ref scale_type) = scale.scale_type {
-                if scale_type
-                    .pre_stat_transform_sql(&col_name, &col_dtype, scale, type_names)
-                    .is_some()
-                {
-                    return true;
-                }
-            }
-        }
-    }
-
-    false
-}
-
 /// Apply pre-stat transformations for scales that require data modification before stats.
 ///
 /// Handles multiple scale types:
@@ -1165,8 +1231,9 @@ fn apply_pre_stat_transform(
     use polars::prelude::DataType;
 
     let mut transform_exprs: Vec<(String, String)> = vec![];
+    let mut transformed_columns: HashSet<String> = HashSet::new();
 
-    // Check layer mappings for aesthetics with Binned scales
+    // Check layer mappings for aesthetics with scales that need pre-stat transformation
     // Handles both column mappings and literal mappings (which are injected as synthetic columns)
     for (aesthetic, value) in &layer.mappings.aesthetics {
         // Get the column name - either the mapped column or the synthetic constant column
@@ -1178,6 +1245,12 @@ fn apply_pre_stat_transform(
         } else {
             continue;
         };
+
+        // Skip if we already have a transform for this column
+        // (can happen when fill and stroke both map to the same column)
+        if transformed_columns.contains(&col_name) {
+            continue;
+        }
 
         // Find column dtype from schema
         let col_dtype = schema
@@ -1194,6 +1267,7 @@ fn apply_pre_stat_transform(
                 if let Some(sql) =
                     scale_type.pre_stat_transform_sql(&col_name, &col_dtype, scale, type_names)
                 {
+                    transformed_columns.insert(col_name.clone());
                     transform_exprs.push((col_name, sql));
                 }
             }
@@ -1243,117 +1317,111 @@ fn apply_pre_stat_transform(
     )
 }
 
-/// Build a layer query handling all source types
+/// Part 1: Build the initial layer query with SELECT, casts, filters, and aesthetic renames.
 ///
-/// Handles:
-/// - `None` source with filter, constants, or stat transform needed → queries `__ggsql_global__`
-/// - `None` source without filter, constants, or stat transform → returns `None` (use global directly)
-/// - `Identifier` source → checks if CTE, uses temp table or table name
-/// - `FilePath` source → wraps path in single quotes
+/// This function builds a query that:
+/// 1. Applies filter (uses original column names - that's what users write)
+/// 2. Renames columns to aesthetic names (e.g., "Date" AS "__ggsql_aes_x__")
+/// 3. Applies type casts based on scale requirements
 ///
-/// Constants are injected as synthetic columns (e.g., `'value' AS __ggsql_const_color__`).
-/// Also applies statistical transformations for geoms that need them
-/// (e.g., histogram binning, bar counting).
+/// The resulting query can be used for:
+/// - Schema completion (fetching min/max values)
+/// - Scale input range resolution
 ///
-/// Returns:
-/// - `Ok(Some(query))` - execute this query and store result
-/// - `Ok(None)` - layer uses `__global__` directly (no source, no filter, no constants, no stat transform)
-/// - `Err(...)` - validation error (e.g., filter without global data)
+/// Does NOT apply stat transforms or ORDER BY - those require completed schemas.
 ///
-/// Note: This function takes `&mut Layer` because stat transforms may add new aesthetic mappings
-/// (e.g., mapping y to `__ggsql_stat__count` for histogram or bar count).
+/// # Arguments
 ///
-/// Pre-stat transforms are applied (e.g., binning for Binned scales) before stat transforms.
+/// * `layer` - The layer configuration with aesthetic mappings
+/// * `source_query` - The base query for the layer's data source
+/// * `type_requirements` - Columns that need type casting
 ///
-/// Note: Constants are now included in the cast_base_query (via build_base_layer_query),
-/// so this function no longer needs to add them.
-fn build_layer_query<F>(
+/// # Returns
+///
+/// The base query string with SELECT/casts/filters applied.
+fn build_layer_base_query(
+    layer: &Layer,
+    source_query: &str,
+    type_requirements: &[TypeRequirement],
+) -> String {
+    // Build SELECT list with aesthetic renames, casts
+    let select_exprs = build_layer_select_list(layer, type_requirements);
+    let select_clause = if select_exprs.is_empty() {
+        "*".to_string()
+    } else {
+        select_exprs.join(", ")
+    };
+
+    // Build query with optional WHERE clause
+    if let Some(ref f) = layer.filter {
+        format!(
+            "SELECT {} FROM ({}) WHERE {}",
+            select_clause,
+            source_query,
+            f.as_str()
+        )
+    } else {
+        format!("SELECT {} FROM ({})", select_clause, source_query)
+    }
+}
+
+/// Part 2: Apply stat transforms and ORDER BY to a base query.
+///
+/// This function:
+/// 1. Builds the aesthetic-named schema for stat transforms
+/// 2. Updates layer mappings to use prefixed aesthetic names
+/// 3. Applies pre-stat transforms (e.g., binning, discrete censoring)
+/// 4. Builds group_by columns from partition_by and facet
+/// 5. Applies statistical transformation
+/// 6. Applies ORDER BY
+///
+/// Should be called AFTER schema completion and scale input range resolution,
+/// since stat transforms may depend on resolved breaks.
+///
+/// # Arguments
+///
+/// * `layer` - The layer to transform (modified by stat transforms)
+/// * `base_query` - The base query from build_layer_base_query
+/// * `schema` - The layer's schema (with min/max from base_query)
+/// * `facet` - Optional facet configuration (needed for group_by columns)
+/// * `scales` - All resolved scales
+/// * `type_names` - SQL type names for the database backend
+/// * `execute_query` - Function to execute queries (needed for some stat transforms)
+///
+/// # Returns
+///
+/// The final query string with stat transforms and ORDER BY applied.
+fn apply_layer_transforms<F>(
     layer: &mut Layer,
-    cast_base_query: &str,
+    base_query: &str,
     schema: &Schema,
-    has_global: bool,
-    layer_idx: usize,
     facet: Option<&Facet>,
     scales: &[crate::plot::Scale],
     type_names: &SqlTypeNames,
     execute_query: &F,
-) -> Result<Option<String>>
+) -> Result<String>
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
-    // Apply default parameter values (e.g., bins=30 for histogram)
-    // Must be done before any immutable borrows of layer
-    layer.apply_default_params();
+    // Clone order_by early to avoid borrow conflicts
+    let order_by = layer.order_by.clone();
 
-    let filter = layer.filter.as_ref().map(|f| f.as_str());
-    let order_by = layer.order_by.as_ref().map(|f| f.as_str());
+    // Build the aesthetic-named schema for stat transforms
+    let aesthetic_schema: Schema = build_aesthetic_schema(layer, schema);
 
-    // Check if layer needs a query or can use global directly
-    // NOTE: Constants alone do NOT trigger a query for layers using global data (no source, no filter)
-    // because those constants are already injected into the global table with layer-indexed names.
-    // Constants only require a query when combined with a filter (which creates layer-specific data).
-    let needs_query = match &layer.source {
-        Some(_) => true, // Has explicit source
-        None => {
-            // No source - check if we need to query
-            if filter.is_some() || order_by.is_some() {
-                if !has_global {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Layer {} has a FILTER or ORDER BY but no data source. Either provide a SQL query or use MAPPING FROM.",
-                        layer_idx + 1
-                    )));
-                }
-                true
-            } else if layer.geom.needs_stat_transform(&layer.mappings) {
-                if !has_global {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Layer {} requires data for statistical transformation but no data source.",
-                        layer_idx + 1
-                    )));
-                }
-                true
-            } else if needs_pre_stat_transform(layer, schema, scales, type_names) {
-                // Layer has binned scales that need data transformation
-                if !has_global {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Layer {} requires data transformation for binned scale but no data source.",
-                        layer_idx + 1
-                    )));
-                }
-                true
-            } else {
-                // No source, no filter, no stat transform, no pre-stat transform
-                // - use __global__ data directly
-                // (constants are already in global table with layer-indexed names)
-                false
-            }
-        }
-    };
+    // Update mappings to use prefixed aesthetic names
+    // This must happen BEFORE stat transforms so they use aesthetic names
+    update_mappings_for_aesthetic_columns(layer);
 
-    if !needs_query {
-        return Ok(None);
+    // Apply pre-stat transforms (e.g., binning, discrete censoring)
+    // Uses aesthetic names since columns are now renamed and mappings updated
+    let query = apply_pre_stat_transform(base_query, layer, &aesthetic_schema, scales, type_names);
+
+    // Build group_by columns from partition_by and facet variables
+    let mut group_by: Vec<String> = Vec::new();
+    for col in &layer.partition_by {
+        group_by.push(col.clone());
     }
-
-    // Determine the base query source
-    // For layers with explicit source, cast_base_query already includes constants
-    // For layers without source, cast_base_query is the cast global query
-    let base_source = match &layer.source {
-        Some(DataSource::FilePath(path)) => {
-            // File paths need to be queried directly (casting not applied to files)
-            format!("SELECT * FROM '{}'", path)
-        }
-        _ => {
-            // Use the pre-built cast base query (which now includes constants)
-            cast_base_query.to_string()
-        }
-    };
-
-    // Wrap the cast base query (constants are already included)
-    let mut query = format!("SELECT * FROM ({})", base_source);
-
-    // Combine partition_by (which includes discrete mapped columns) and facet variables for grouping
-    // Note: partition_by is pre-populated with discrete columns by add_discrete_columns_to_partition_by()
-    let mut group_by = layer.partition_by.clone();
     if let Some(f) = facet {
         for var in f.get_variables() {
             if !group_by.contains(&var) {
@@ -1362,27 +1430,17 @@ where
         }
     }
 
-    // Apply filter
-    if let Some(f) = filter {
-        query = format!("{} WHERE {}", query, f);
-    }
-
-    // Apply pre-stat transformations (e.g., binning for Binned scales)
-    // This must happen before stat transforms so that data is transformed first
-    query = apply_pre_stat_transform(&query, layer, schema, scales, type_names);
-
-    // Apply statistical transformation (after filter, uses combined group_by)
-    // Returns StatResult::Identity for no transformation, StatResult::Transformed for transformed query
+    // Apply statistical transformation (uses aesthetic names)
     let stat_result = layer.geom.apply_stat_transform(
         &query,
-        schema,
+        &aesthetic_schema,
         &layer.mappings,
         &group_by,
         &layer.parameters,
         execute_query,
     )?;
 
-    match stat_result {
+    let final_query = match stat_result {
         StatResult::Transformed {
             query: transformed_query,
             stat_columns,
@@ -1398,59 +1456,96 @@ where
                 .collect();
 
             // User REMAPPING overrides defaults
-            // In remappings, the aesthetic key is the target, and the column name is the stat name
+            // When user maps a stat to an aesthetic, remove any default mapping to that aesthetic
             for (aesthetic, value) in &layer.remappings.aesthetics {
                 if let Some(stat_name) = value.column_name() {
-                    // stat_name maps to this aesthetic
+                    // Remove any existing mapping to this aesthetic (from defaults)
+                    final_remappings.retain(|_, aes| aes != aesthetic);
+                    // Add the user's mapping
                     final_remappings.insert(stat_name.to_string(), aesthetic.clone());
                 }
             }
 
-            // FIRST: Remove consumed aesthetics - they were used as stat input, not visual output
+            // Capture original names from consumed aesthetics before removing them.
+            // This allows stat-generated replacements to use the original column name for labels.
+            // e.g., "revenue AS x" with histogram → x gets label "revenue" not "bin_start"
+            let mut consumed_original_names: HashMap<String, String> = HashMap::new();
+            for aes in &consumed_aesthetics {
+                if let Some(value) = layer.mappings.get(aes) {
+                    // Use label_name() to get the best available name for labels
+                    if let Some(label) = value.label_name() {
+                        consumed_original_names.insert(aes.clone(), label.to_string());
+                    }
+                }
+            }
+
+            // Remove consumed aesthetics - they were used as stat input, not visual output
             for aes in &consumed_aesthetics {
                 layer.mappings.aesthetics.remove(aes);
             }
 
-            // THEN: Apply stat_columns to layer aesthetics using the remappings
+            // Apply stat_columns to layer aesthetics using the remappings
             for stat in &stat_columns {
                 if let Some(aesthetic) = final_remappings.get(stat) {
-                    let col = naming::stat_column(stat);
                     let is_dummy = dummy_columns.contains(stat);
-                    layer.mappings.insert(
-                        aesthetic.clone(),
-                        if is_dummy {
-                            AestheticValue::dummy_column(col)
-                        } else {
-                            AestheticValue::standard_column(col)
-                        },
-                    );
+                    let prefixed_name = naming::aesthetic_column(aesthetic);
+
+                    // Determine the original_name for labels:
+                    // - If this aesthetic was consumed, use the original column name
+                    // - Otherwise, use the stat name (e.g., "density", "count")
+                    let original_name = consumed_original_names
+                        .get(aesthetic)
+                        .cloned()
+                        .or_else(|| Some(stat.clone()));
+
+                    let value = AestheticValue::Column {
+                        name: prefixed_name,
+                        original_name,
+                        is_dummy,
+                    };
+                    layer.mappings.insert(aesthetic.clone(), value);
                 }
             }
 
-            // Use the transformed query
-            let mut final_query = transformed_query;
-            if let Some(o) = order_by {
-                final_query = format!("{} ORDER BY {}", final_query, o);
-            }
-            Ok(Some(final_query))
-        }
-        StatResult::Identity => {
-            // Identity - no stat transformation
-            // If the layer has no explicit source, no filter, and no order_by,
-            // we can use __global__ directly (return None)
-            // NOTE: Constants don't require a query because they're already in global table
-            if layer.source.is_none() && filter.is_none() && order_by.is_none() {
-                Ok(None)
+            // Wrap transformed query to rename stat columns to prefixed aesthetic names
+            let stat_rename_exprs: Vec<String> = stat_columns
+                .iter()
+                .filter_map(|stat| {
+                    final_remappings.get(stat).map(|aes| {
+                        let stat_col = naming::stat_column(stat);
+                        let prefixed_aes = naming::aesthetic_column(aes);
+                        format!("\"{}\" AS \"{}\"", stat_col, prefixed_aes)
+                    })
+                })
+                .collect();
+
+            if stat_rename_exprs.is_empty() {
+                transformed_query
             } else {
-                // Layer has source, filter, or order_by - still need the query
-                let mut final_query = query;
-                if let Some(o) = order_by {
-                    final_query = format!("{} ORDER BY {}", final_query, o);
-                }
-                Ok(Some(final_query))
+                let stat_col_names: Vec<String> = stat_columns
+                    .iter()
+                    .map(|s| naming::stat_column(s))
+                    .collect();
+                let exclude_clause = format!("EXCLUDE ({})", stat_col_names.join(", "));
+                format!(
+                    "SELECT * {}, {} FROM ({})",
+                    exclude_clause,
+                    stat_rename_exprs.join(", "),
+                    transformed_query
+                )
             }
         }
-    }
+        StatResult::Identity => query,
+    };
+
+    // Apply ORDER BY
+    let final_query = if let Some(ref o) = order_by {
+        format!("{} ORDER BY {}", final_query, o.as_str())
+    } else {
+        final_query
+    };
+
+    Ok(final_query)
 }
 
 /// Merge global mappings into layer aesthetics and expand wildcards
@@ -1617,6 +1712,25 @@ fn split_color_aesthetic(spec: &mut Plot) {
             layer.mappings.aesthetics.remove("color");
         }
     }
+
+    // 3. Split color parameter (SETTING) to fill/stroke in layers
+    for layer in &mut spec.layers {
+        if let Some(color_value) = layer.parameters.get("color").cloned() {
+            let supported = layer.geom.aesthetics().supported;
+
+            for &aes in &["stroke", "fill"] {
+                if supported.contains(&aes) {
+                    layer
+                        .parameters
+                        .entry(aes.to_string())
+                        .or_insert(color_value.clone());
+                }
+            }
+
+            // Remove color after splitting
+            layer.parameters.remove("color");
+        }
+    }
 }
 
 /// Result of preparing data for visualization
@@ -1673,93 +1787,22 @@ where
     // Build data map for multi-source support
     let mut data_map: HashMap<String, DataFrame> = HashMap::new();
 
-    // Collect constants from layers that use global data (no source, no filter)
-    // These get injected into the global data table so all layers share the same data source
-    // (required for faceting to work). Use layer-indexed column names to allow different
-    // constant values per layer (e.g., layer 0: 'value' AS color, layer 1: 'value2' AS color)
-    let first_spec = &specs[0];
-
-    // First, extract global constants from VISUALISE clause (e.g., VISUALISE 'value' AS color)
-    // These apply to all layers that use global data
-    let global_mappings_constants: Vec<(String, LiteralValue)> = first_spec
-        .global_mappings
-        .aesthetics
-        .iter()
-        .filter_map(|(aesthetic, value)| {
-            if let AestheticValue::Literal(lit) = value {
-                Some((aesthetic.clone(), lit.clone()))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    // Find layers that use global data (no source, no filter)
-    let global_data_layer_indices: Vec<usize> = first_spec
-        .layers
-        .iter()
-        .enumerate()
-        .filter(|(_, layer)| layer.source.is_none() && layer.filter.is_none())
-        .map(|(idx, _)| idx)
-        .collect();
-
-    // Collect all constants: layer-specific constants + global constants for each global-data layer
-    let mut global_constants: Vec<(usize, String, LiteralValue)> = Vec::new();
-
-    // Add layer-specific constants (from MAPPING clauses)
-    for (layer_idx, layer) in first_spec.layers.iter().enumerate() {
-        if layer.source.is_none() && layer.filter.is_none() {
-            for (aes, lit) in extract_constants(layer) {
-                global_constants.push((layer_idx, aes, lit));
-            }
-        }
-    }
-
-    // Add global mapping constants for each layer that uses global data
-    // (these will be injected into the global data table)
-    for layer_idx in &global_data_layer_indices {
-        for (aes, lit) in &global_mappings_constants {
-            // Only add if this layer doesn't already have this aesthetic from its own MAPPING
-            let layer = &first_spec.layers[*layer_idx];
-            if !layer.mappings.contains_key(aes) {
-                global_constants.push((*layer_idx, aes.clone(), lit.clone()));
-            }
-        }
-    }
-
     // Execute global SQL if present
     // If there's a WITH clause, extract just the trailing SELECT and transform CTE references.
     // The global result is stored as a temp table so filtered layers can query it efficiently.
     // Track whether we actually create the temp table (depends on transform_global_sql succeeding)
+    //
+    // Note: Constants (literals in mappings) are no longer injected into the global table.
+    // Each layer now builds its own query via build_layer_select_list which includes
+    // literals as aesthetic-named columns (e.g., 'red' AS "color").
     let mut has_global_table = false;
     if !sql_part.trim().is_empty() {
         if let Some(transformed_sql) = transform_global_sql(&sql_part, &materialized_ctes) {
-            // Inject global constants into the query (with layer-indexed names)
-            let global_query = if global_constants.is_empty() {
-                transformed_sql
-            } else {
-                let const_cols: Vec<String> = global_constants
-                    .iter()
-                    .map(|(layer_idx, aes, lit)| {
-                        format!(
-                            "{} AS {}",
-                            literal_to_sql(lit),
-                            naming::const_column_indexed(aes, *layer_idx)
-                        )
-                    })
-                    .collect();
-                format!(
-                    "SELECT *, {} FROM ({})",
-                    const_cols.join(", "),
-                    transformed_sql
-                )
-            };
-
             // Create temp table for global result
             let create_global = format!(
                 "CREATE OR REPLACE TEMP TABLE {} AS {}",
                 naming::global_table(),
-                global_query
+                transformed_sql
             );
             execute_query(&create_global)?;
 
@@ -1769,35 +1812,32 @@ where
         }
     }
 
-    // Build base queries for all layers BEFORE other processing
-    // These are the raw SELECT * FROM source queries, without filters/stats
-    let global_base_query = format!("SELECT * FROM {}", naming::global_table());
-    let mut layer_base_queries: Vec<Option<String>> = Vec::new();
-    for layer in &specs[0].layers {
-        let source = determine_layer_source(layer, &materialized_ctes);
-        let base_query = source.map(|src| format!("SELECT * FROM {}", src));
-        layer_base_queries.push(base_query);
+    // Validate all layers have a data source (explicit source or global data)
+    for (idx, layer) in specs[0].layers.iter().enumerate() {
+        if layer.source.is_none() && !has_global_table {
+            return Err(GgsqlError::ValidationError(format!(
+                "Layer {} has no data source. Either provide a SQL query before VISUALISE or use FROM in the layer.",
+                idx + 1
+            )));
+        }
     }
 
-    // Get types from base queries (Phase 1: types only, no min/max yet)
-    let global_type_info = if has_global_table {
-        fetch_schema_types(&global_base_query, &execute_query)?
-    } else {
-        Vec::new()
-    };
+    // Build source queries for each layer to fetch initial type info
+    // Every layer now has its own source query (either explicit source or global table)
+    let layer_source_queries: Vec<String> = specs[0]
+        .layers
+        .iter()
+        .map(|layer| layer_source_query(layer, &materialized_ctes, has_global_table))
+        .collect();
 
-    // Get types for each layer
+    // Get types for each layer from source queries (Phase 1: types only, no min/max yet)
     let mut layer_type_info: Vec<Vec<TypeInfo>> = Vec::new();
-    for base_query in &layer_base_queries {
-        let type_info = match base_query {
-            Some(q) => fetch_schema_types(q, &execute_query)?,
-            None => global_type_info.clone(), // Uses global
-        };
+    for source_query in &layer_source_queries {
+        let type_info = fetch_schema_types(source_query, &execute_query)?;
         layer_type_info.push(type_info);
     }
 
-    // Initial schemas (types only, no min/max - will be completed after casting)
-    let global_schema = type_info_to_schema(&global_type_info);
+    // Initial schemas (types only, no min/max - will be completed after base queries)
     let mut layer_schemas: Vec<Schema> = layer_type_info
         .iter()
         .map(|ti| type_info_to_schema(ti))
@@ -1809,29 +1849,13 @@ where
 
     // Split 'color' aesthetic to 'fill' and 'stroke' early in the pipeline
     // This must happen before validation so fill/stroke are validated (not color)
-    // Note: Literals may create redundant constant columns (fill and stroke both 'blue')
-    // but this is acceptable for correct validation behavior
     for spec in &mut specs {
         split_color_aesthetic(spec);
     }
 
-    // Rebuild base queries WITH constants now that global mappings are merged
-    // This ensures constants are included in schema extraction and can be cast if needed
-    let layer_base_queries: Vec<Option<String>> = specs[0]
-        .layers
-        .iter()
-        .map(|layer| build_base_layer_query(layer, &materialized_ctes, has_global_table))
-        .collect();
-
-    // Re-fetch type info from base queries now that they include constants
-    let mut layer_type_info: Vec<Vec<TypeInfo>> = Vec::new();
-    for base_query in &layer_base_queries {
-        let type_info = match base_query {
-            Some(q) => fetch_schema_types(q, &execute_query)?,
-            None => global_type_info.clone(), // Uses global
-        };
-        layer_type_info.push(type_info);
-    }
+    // Add literal (constant) columns to type info programmatically
+    // This avoids re-querying the database - we derive types from the AST
+    add_literal_columns_to_type_info(&specs[0].layers, &mut layer_type_info);
 
     // Rebuild layer schemas with constant columns included
     layer_schemas = layer_type_info
@@ -1841,48 +1865,16 @@ where
 
     // Validate all layers against their schemas
     // This must happen BEFORE build_layer_query because stat transforms remove consumed aesthetics
-    // (e.g., 'weight' is consumed by bar's stat_count and removed from mappings)
-    // This catches errors with clear error messages:
-    // - Missing required aesthetics
-    // - Invalid SETTING parameters
-    // - Non-existent columns in mappings
-    // - Non-existent columns in PARTITION BY
-    // - Unsupported aesthetics in REMAPPING
-    // - Invalid stat columns in REMAPPING
     validate(&specs[0].layers, &layer_schemas)?;
 
     // Create scales for all mapped aesthetics that don't have explicit SCALE clauses
-    // This ensures temporal transform inference works even without explicit SCALE x
     create_missing_scales(&mut specs[0]);
 
     // Resolve scale types and transforms early based on column dtypes
-    // This enables type coercion and determines what casting may be needed
     resolve_scale_types_and_transforms(&mut specs[0], &layer_type_info)?;
 
     // Determine which columns need type casting
-    // This is based on scale requirements and type coercion across layers
     let type_requirements = determine_type_requirements(&specs[0], &layer_type_info, type_names);
-
-    // Apply casting to base queries
-    // This wraps queries with CAST expressions for columns that need type conversion
-    let cast_global_query = if has_global_table {
-        // Collect requirements for global query (columns mapped by any layer using global data)
-        let global_requirements = collect_requirements_for_global(&type_requirements, &specs[0]);
-        apply_column_casting(&global_base_query, &global_requirements)
-    } else {
-        global_base_query.clone()
-    };
-
-    // Apply casting to layer base queries
-    let cast_layer_queries: Vec<Option<String>> = layer_base_queries
-        .iter()
-        .enumerate()
-        .map(|(idx, base_q)| {
-            base_q
-                .as_ref()
-                .map(|q| apply_column_casting(q, &type_requirements[idx]))
-        })
-        .collect();
 
     // Update type info with post-cast dtypes
     // This ensures subsequent schema extraction and scale resolution see the correct types
@@ -1892,105 +1884,109 @@ where
         }
     }
 
-    // Complete schemas with min/max from cast queries (Phase 2: ranges from cast data)
-    // This ensures min/max values reflect the actual cast types
-    let global_schema = if has_global_table {
-        complete_schema_ranges(&cast_global_query, &global_type_info, &execute_query)?
-    } else {
-        global_schema
-    };
+    // Build layer base queries using build_layer_base_query()
+    // These include: SELECT with aesthetic renames, casts from type_requirements, filters
+    // Note: This is Part 1 of the split - base queries that can be used for schema completion
+    let layer_base_queries: Vec<String> = specs[0]
+        .layers
+        .iter()
+        .enumerate()
+        .map(|(idx, layer)| {
+            build_layer_base_query(layer, &layer_source_queries[idx], &type_requirements[idx])
+        })
+        .collect();
 
-    // Complete layer schemas with min/max from cast queries
-    for (idx, cast_query) in cast_layer_queries.iter().enumerate() {
-        layer_schemas[idx] = match cast_query {
-            Some(cq) => complete_schema_ranges(cq, &layer_type_info[idx], &execute_query)?,
-            None => global_schema.clone(), // Uses global
-        };
+    // Clone facet for apply_layer_transforms
+    let facet = specs[0].facet.clone();
+
+    // Complete schemas with min/max from base queries (Phase 2: ranges from cast data)
+    // Base queries include casting via build_layer_select_list, so min/max reflect cast types
+    for (idx, base_query) in layer_base_queries.iter().enumerate() {
+        layer_schemas[idx] =
+            complete_schema_ranges(base_query, &layer_type_info[idx], &execute_query)?;
     }
 
     // Pre-resolve Binned scales using schema-derived context
-    // This must happen before build_layer_query so pre_stat_transform_sql has resolved breaks
+    // This must happen before apply_layer_transforms so pre_stat_transform_sql has resolved breaks
     apply_pre_stat_resolve(&mut specs[0], &layer_schemas)?;
 
     // Add discrete mapped columns to partition_by for all layers
-    // This ensures proper grouping for color, fill, shape, etc. aesthetics
-    // Uses scale type (if explicit) to determine discreteness, falling back to schema
-    // Clone scales to avoid borrow conflict (layers borrowed mutably, scales immutably)
     let scales = specs[0].scales.clone();
     add_discrete_columns_to_partition_by(&mut specs[0].layers, &layer_schemas, &scales);
 
-    // Execute layer-specific queries
-    // build_layer_query() handles all cases:
-    // - Layer with source (CTE, table, or file) → query that source
-    // - Layer with filter/order_by but no source → query __ggsql_global__ with filter/order_by and constants
-    // - Layer with no source, no filter, no order_by → returns None (use global directly, constants already injected)
-    let facet = specs[0].facet.clone();
-    // Clone scales to avoid borrow conflict (layers borrowed mutably, scales immutably)
+    // Clone scales for apply_layer_transforms
     let scales = specs[0].scales.clone();
 
-    for (idx, layer) in specs[0].layers.iter_mut().enumerate() {
-        // Get the cast base query for this layer (or use global)
-        // Constants are now included in cast_layer_queries via build_base_layer_query
-        let cast_base = cast_layer_queries[idx]
-            .as_deref()
-            .unwrap_or(&cast_global_query);
+    // Build final layer queries using apply_layer_transforms (Part 2 of the split)
+    // This applies: pre-stat transforms, stat transforms, ORDER BY
+    let mut layer_queries: Vec<String> = Vec::new();
 
-        // Get mutable reference to layer for stat transform to update aesthetics
-        if let Some(layer_query) = build_layer_query(
+    for (idx, layer) in specs[0].layers.iter_mut().enumerate() {
+        // Validate weight aesthetic is a column, not a literal
+        if let Some(weight_value) = layer.mappings.aesthetics.get("weight") {
+            if weight_value.is_literal() {
+                return Err(GgsqlError::ValidationError(
+                    "Bar weight aesthetic must be a column, not a literal".to_string(),
+                ));
+            }
+        }
+
+        // Apply default parameter values (e.g., bins=30 for histogram)
+        layer.apply_default_params();
+
+        // Apply stat transforms and ORDER BY (Part 2)
+        let layer_query = apply_layer_transforms(
             layer,
-            cast_base,
+            &layer_base_queries[idx],
             &layer_schemas[idx],
-            has_global_table,
-            idx,
             facet.as_ref(),
             &scales,
             type_names,
             &execute_query,
-        )? {
-            let df = execute_query(&layer_query).map_err(|e| {
+        )?;
+        layer_queries.push(layer_query);
+    }
+
+    // Phase 2: Deduplicate and execute unique queries
+    let mut query_to_result: HashMap<String, DataFrame> = HashMap::new();
+    for (idx, query) in layer_queries.iter().enumerate() {
+        if !query_to_result.contains_key(query) {
+            let df = execute_query(query).map_err(|e| {
                 GgsqlError::ReaderError(format!(
                     "Failed to fetch data for layer {}: {}",
                     idx + 1,
                     e
                 ))
             })?;
-            data_map.insert(naming::layer_key(idx), df);
+            query_to_result.insert(query.clone(), df);
         }
-        // If None returned, layer uses __global__ data directly (no entry needed)
     }
 
-    // Check if any layer uses global data directly
-    // A layer "uses global" only if:
-    // 1. There are no layers (VISUALISE without DRAW) - global data is the output
-    // 2. build_layer_query returned None (no entry in data_map) - layer uses global DataFrame directly
-    // Note: Layers with filters/stats query the global temp table but produce their own data,
-    // so they don't need GLOBAL_DATA_KEY in data_map
-    let needs_global_data = specs[0].layers.is_empty()
-        || (0..specs[0].layers.len()).any(|idx| !data_map.contains_key(&naming::layer_key(idx)));
-
-    // If global data is needed, execute the CAST global query now
-    // This ensures global data goes through the same casting pipeline as layer data
-    if needs_global_data && has_global_table {
-        let df = execute_query(&cast_global_query)
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to fetch global data: {}", e)))?;
-        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
+    // Phase 3: Map results to layers (clone shared results)
+    for (idx, query) in layer_queries.iter().enumerate() {
+        let df = query_to_result.get(query).unwrap().clone();
+        data_map.insert(naming::layer_key(idx), df);
     }
 
-    // Validate we have some data
+    // Phase 4: Apply remappings (rename stat columns to prefixed aesthetic names)
+    // e.g., __ggsql_stat_count → __ggsql_aes_y__
+    // Note: Prefixed aesthetic names persist through the entire pipeline
+    for (idx, layer) in specs[0].layers.iter_mut().enumerate() {
+        let layer_key = naming::layer_key(idx);
+        if let Some(df) = data_map.remove(&layer_key) {
+            let df_with_remappings = apply_remappings_post_query(df, layer)?;
+            data_map.insert(layer_key, df_with_remappings);
+
+            // Update layer mappings to include remapped aesthetics
+            update_mappings_for_remappings(layer);
+        }
+    }
+
+    // Validate we have some data (every layer should have its own data)
     if data_map.is_empty() {
         return Err(GgsqlError::ValidationError(
             "No data sources found. Either provide a SQL query or use MAPPING FROM in layers."
                 .to_string(),
-        ));
-    }
-
-    // For layers that use global data directly (no layer-specific data), ensure global data exists
-    // Note: Layers with stat transforms create their own data in layer_key(idx), so they don't need this
-    let layer_uses_global_directly =
-        (0..specs[0].layers.len()).any(|idx| !data_map.contains_key(&naming::layer_key(idx)));
-    if layer_uses_global_directly && !data_map.contains_key(naming::GLOBAL_DATA_KEY) {
-        return Err(GgsqlError::ValidationError(
-            "Some layers use global data but no SQL query was provided.".to_string(),
         ));
     }
 
@@ -2001,10 +1997,10 @@ where
         create_missing_scales_post_stat(spec);
     }
 
-    // Post-process specs: replace literals with column references and compute labels
+    // Post-process specs: compute aesthetic labels
+    // Note: Literal to column conversion is now handled by update_mappings_for_aesthetic_columns()
+    // inside build_layer_query(), so replace_literals_with_columns() is no longer needed
     for spec in &mut specs {
-        // Replace literal aesthetic values with column references to synthetic constant columns
-        replace_literals_with_columns(spec);
         // Compute aesthetic labels (uses first non-constant column, respects user-specified labels)
         spec.compute_aesthetic_labels();
     }
@@ -2163,7 +2159,7 @@ fn apply_post_stat_binning(spec: &Plot, data_map: &mut HashMap<String, DataFrame
 
         // Find columns for this aesthetic across layers
         let column_sources =
-            find_columns_for_aesthetic_with_sources(&spec.layers, &scale.aesthetic);
+            find_columns_for_aesthetic_with_sources(&spec.layers, &scale.aesthetic, data_map);
 
         // Apply binning to each column
         for (data_key, col_name) in column_sources {
@@ -2827,37 +2823,32 @@ fn coerce_aesthetic_columns(
     target_type: ArrayElementType,
 ) -> Result<()> {
     let aesthetics_to_check = get_aesthetic_family(aesthetic);
-    let global_key = naming::GLOBAL_DATA_KEY.to_string();
 
     // Track which (data_key, column_name) pairs we've already coerced
     let mut coerced: HashSet<(String, String)> = HashSet::new();
 
-    // Check each layer's mapping → look up in layer data OR global data
+    // Check each layer's mapping - every layer has its own data
     for (i, layer) in layers.iter().enumerate() {
         let layer_key = naming::layer_key(i);
 
         for aes_name in &aesthetics_to_check {
             if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(aes_name) {
-                // Determine which data source to use
-                let data_key = if data_map.contains_key(&layer_key) {
-                    layer_key.clone()
-                } else if data_map.contains_key(&global_key) {
-                    global_key.clone()
-                } else {
+                // Skip if layer doesn't have data
+                if !data_map.contains_key(&layer_key) {
                     continue;
-                };
+                }
 
                 // Skip if already coerced
-                let key = (data_key.clone(), name.clone());
+                let key = (layer_key.clone(), name.clone());
                 if coerced.contains(&key) {
                     continue;
                 }
 
                 // Check if column exists in this DataFrame
-                if let Some(df) = data_map.get(&data_key) {
+                if let Some(df) = data_map.get(&layer_key) {
                     if df.column(name).is_ok() {
                         let coerced_df = coerce_column_to_type(df, name, target_type)?;
-                        data_map.insert(data_key.clone(), coerced_df);
+                        data_map.insert(layer_key.clone(), coerced_df);
                         coerced.insert(key);
                     }
                 }
@@ -2951,14 +2942,10 @@ fn find_columns_for_aesthetic<'a>(
 ) -> Vec<&'a Column> {
     let mut column_refs = Vec::new();
     let aesthetics_to_check = get_aesthetic_family(aesthetic);
-    let global_df = data_map.get(naming::GLOBAL_DATA_KEY);
 
-    // Check each layer's mapping → look up in layer data OR global data
-    // (global mappings already merged into layers)
+    // Check each layer's mapping - every layer has its own data
     for (i, layer) in layers.iter().enumerate() {
-        // Use layer-specific data if available, otherwise fall back to global
-        let df = data_map.get(&naming::layer_key(i)).or(global_df);
-        if let Some(df) = df {
+        if let Some(df) = data_map.get(&naming::layer_key(i)) {
             for aes_name in &aesthetics_to_check {
                 if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(aes_name) {
                     if let Ok(column) = df.column(name) {
@@ -3012,11 +2999,24 @@ use crate::plot::scale::{OOB_CENSOR, OOB_KEEP, OOB_SQUISH};
 /// - The scale has an explicit input range, AND
 /// - NULL is not part of the explicit input range
 fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Result<()> {
+    use crate::plot::scale::default_oob;
+
     // First pass: apply OOB transformations (censor sets to NULL, squish clamps)
     for scale in &spec.scales {
-        // Get oob mode, skip if "keep"
+        // Get oob mode:
+        // - If explicitly set, use that value (skip if "keep")
+        // - If not set but has explicit input range, use default for aesthetic
+        // - Otherwise skip
         let oob_mode = match scale.properties.get("oob") {
             Some(ParameterValue::String(s)) if s != OOB_KEEP => s.as_str(),
+            Some(ParameterValue::String(_)) => continue, // explicit "keep"
+            None if scale.explicit_input_range => {
+                let default = default_oob(&scale.aesthetic);
+                if default == OOB_KEEP {
+                    continue;
+                }
+                default
+            }
             _ => continue,
         };
 
@@ -3028,7 +3028,7 @@ fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Re
 
         // Find all (data_key, column_name) pairs for this aesthetic
         let column_sources =
-            find_columns_for_aesthetic_with_sources(&spec.layers, &scale.aesthetic);
+            find_columns_for_aesthetic_with_sources(&spec.layers, &scale.aesthetic, data_map);
 
         // Determine if this is a numeric or discrete range
         let is_numeric_range = matches!(
@@ -3080,7 +3080,7 @@ fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Re
         }
 
         let column_sources =
-            find_columns_for_aesthetic_with_sources(&spec.layers, &scale.aesthetic);
+            find_columns_for_aesthetic_with_sources(&spec.layers, &scale.aesthetic, data_map);
 
         for (data_key, col_name) in column_sources {
             if let Some(df) = data_map.get(&data_key) {
@@ -3102,30 +3102,23 @@ fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Re
 fn find_columns_for_aesthetic_with_sources(
     layers: &[Layer],
     aesthetic: &str,
+    data_map: &HashMap<String, DataFrame>,
 ) -> Vec<(String, String)> {
     let mut results = Vec::new();
     let aesthetics_to_check = get_aesthetic_family(aesthetic);
 
-    // Check each layer's mapping → uses layer data or global data
-    // (global mappings already merged into layers)
+    // Check each layer's mapping - every layer has its own data
     for (i, layer) in layers.iter().enumerate() {
-        // Determine which data source this layer uses:
-        // - layer.source: explicit data source
-        // - layer.filter: per-layer filter creates separate data
-        // - stat transform: geoms like bar, histogram create layer-specific data
-        let has_layer_data = layer.source.is_some()
-            || layer.filter.is_some()
-            || layer.geom.needs_stat_transform(&layer.mappings);
+        let layer_key = naming::layer_key(i);
 
-        let data_key = if has_layer_data {
-            naming::layer_key(i)
-        } else {
-            naming::GLOBAL_DATA_KEY.to_string()
-        };
+        // Skip if layer doesn't have data
+        if !data_map.contains_key(&layer_key) {
+            continue;
+        }
 
         for aes_name in &aesthetics_to_check {
             if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(aes_name) {
-                results.push((data_key.clone(), name.clone()));
+                results.push((layer_key.clone(), name.clone()));
             }
         }
     }
@@ -3276,7 +3269,7 @@ pub fn prepare_data(query: &str, reader: &DuckDBReader) -> Result<PreparedData> 
 mod tests {
     use super::*;
     use crate::naming;
-    use crate::plot::{ArrayElement, SqlExpression};
+    use crate::plot::ArrayElement;
     use crate::Geom;
     use polars::prelude::{DataType, IntoColumn};
 
@@ -3288,7 +3281,8 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        // With the new approach, every layer has its own data (no GLOBAL_DATA_KEY)
+        assert!(result.data.contains_key(&naming::layer_key(0)));
         assert_eq!(result.specs.len(), 1);
     }
 
@@ -3483,475 +3477,6 @@ mod tests {
     }
 
     // ========================================
-    // Build Layer Query Tests
-    // ========================================
-
-    /// Mock execute function for tests that don't need actual data
-    fn mock_execute(_sql: &str) -> Result<DataFrame> {
-        // Return empty DataFrame - tests that need real data use DuckDB
-        Ok(DataFrame::default())
-    }
-
-    /// Test helper to create SqlTypeNames with default values
-    fn test_type_names() -> SqlTypeNames {
-        SqlTypeNames {
-            number: Some("DOUBLE".to_string()),
-            integer: Some("BIGINT".to_string()),
-            date: Some("DATE".to_string()),
-            datetime: Some("TIMESTAMP".to_string()),
-            time: Some("TIME".to_string()),
-            string: Some("VARCHAR".to_string()),
-            boolean: Some("BOOLEAN".to_string()),
-        }
-    }
-
-    #[test]
-    fn test_build_layer_query_with_cte() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.source = Some(DataSource::Identifier("sales".to_string()));
-
-        // Build cast base query (simulating what prepare_data_with_executor would do)
-        let cast_base_query = format!("SELECT * FROM {}", naming::cte_table("sales"));
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            &cast_base_query,
-            &empty_schema,
-            false,
-            0,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        // Should use the cast base query wrapped in FROM
-        let query = result.unwrap().unwrap();
-        assert!(query.contains("FROM (SELECT * FROM __ggsql_cte_sales_"));
-        assert!(query.contains(naming::session_id()));
-    }
-
-    #[test]
-    fn test_build_layer_query_with_cte_and_filter() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.source = Some(DataSource::Identifier("sales".to_string()));
-        layer.filter = Some(SqlExpression::new("year = 2024"));
-
-        // Build cast base query (simulating what prepare_data_with_executor would do)
-        let cast_base_query = format!("SELECT * FROM {}", naming::cte_table("sales"));
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            &cast_base_query,
-            &empty_schema,
-            false,
-            0,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        // Should use the cast base query wrapped in FROM with filter
-        let query = result.unwrap().unwrap();
-        assert!(query.contains("__ggsql_cte_sales_"));
-        assert!(query.ends_with(" WHERE year = 2024"));
-        assert!(query.contains(naming::session_id()));
-    }
-
-    #[test]
-    fn test_build_layer_query_without_cte() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.source = Some(DataSource::Identifier("some_table".to_string()));
-
-        // Build cast base query (simulating what prepare_data_with_executor would do)
-        let cast_base_query = "SELECT * FROM some_table";
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            cast_base_query,
-            &empty_schema,
-            false,
-            0,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        // Should wrap the cast base query
-        assert_eq!(
-            result.unwrap(),
-            Some("SELECT * FROM (SELECT * FROM some_table)".to_string())
-        );
-    }
-
-    #[test]
-    fn test_build_layer_query_table_with_filter() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.source = Some(DataSource::Identifier("some_table".to_string()));
-        layer.filter = Some(SqlExpression::new("value > 100"));
-
-        // Build cast base query (simulating what prepare_data_with_executor would do)
-        let cast_base_query = "SELECT * FROM some_table";
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            cast_base_query,
-            &empty_schema,
-            false,
-            0,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        assert_eq!(
-            result.unwrap(),
-            Some("SELECT * FROM (SELECT * FROM some_table) WHERE value > 100".to_string())
-        );
-    }
-
-    #[test]
-    fn test_build_layer_query_file_path() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.source = Some(DataSource::FilePath("data/sales.csv".to_string()));
-
-        // For file paths, cast_base_query is not used (file paths are queried directly)
-        let cast_base_query = "";
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            cast_base_query,
-            &empty_schema,
-            false,
-            0,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        // File paths should be wrapped in single quotes
-        assert_eq!(
-            result.unwrap(),
-            Some("SELECT * FROM (SELECT * FROM 'data/sales.csv')".to_string())
-        );
-    }
-
-    #[test]
-    fn test_build_layer_query_file_path_with_filter() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.source = Some(DataSource::FilePath("data.parquet".to_string()));
-        layer.filter = Some(SqlExpression::new("x > 10"));
-
-        // For file paths, cast_base_query is not used (file paths are queried directly)
-        let cast_base_query = "";
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            cast_base_query,
-            &empty_schema,
-            false,
-            0,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        assert_eq!(
-            result.unwrap(),
-            Some("SELECT * FROM (SELECT * FROM 'data.parquet') WHERE x > 10".to_string())
-        );
-    }
-
-    #[test]
-    fn test_build_layer_query_none_source_with_filter() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.filter = Some(SqlExpression::new("category = 'A'"));
-
-        // Build cast base query (the cast global query)
-        let cast_base_query = format!("SELECT * FROM {}", naming::global_table());
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            &cast_base_query,
-            &empty_schema,
-            true,
-            0,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        // Should wrap the cast global query and add filter
-        let query = result.unwrap().unwrap();
-        assert!(query.contains("FROM (SELECT * FROM __ggsql_global_"));
-        assert!(query.ends_with(") WHERE category = 'A'"));
-        assert!(query.contains(naming::session_id()));
-    }
-
-    #[test]
-    fn test_build_layer_query_none_source_no_filter() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-
-        // Cast base query (won't be used when returning None)
-        let cast_base_query = format!("SELECT * FROM {}", naming::global_table());
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            &cast_base_query,
-            &empty_schema,
-            true,
-            0,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        // Should return None - layer uses __global__ directly
-        assert_eq!(result.unwrap(), None);
-    }
-
-    #[test]
-    fn test_build_layer_query_filter_without_global_errors() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.filter = Some(SqlExpression::new("x > 10"));
-
-        // Cast base query (won't be used due to error)
-        let cast_base_query = "";
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            cast_base_query,
-            &empty_schema,
-            false,
-            2,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        // Should return validation error
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("Layer 3")); // layer_idx 2 -> Layer 3 in message
-        assert!(err.contains("FILTER"));
-    }
-
-    #[test]
-    fn test_build_layer_query_with_order_by() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.source = Some(DataSource::Identifier("some_table".to_string()));
-        layer.order_by = Some(SqlExpression::new("date ASC"));
-
-        // Build cast base query
-        let cast_base_query = "SELECT * FROM some_table";
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            cast_base_query,
-            &empty_schema,
-            false,
-            0,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        assert_eq!(
-            result.unwrap(),
-            Some("SELECT * FROM (SELECT * FROM some_table) ORDER BY date ASC".to_string())
-        );
-    }
-
-    #[test]
-    fn test_build_layer_query_with_filter_and_order_by() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.source = Some(DataSource::Identifier("some_table".to_string()));
-        layer.filter = Some(SqlExpression::new("year = 2024"));
-        layer.order_by = Some(SqlExpression::new("date DESC, value ASC"));
-
-        // Build cast base query
-        let cast_base_query = "SELECT * FROM some_table";
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            cast_base_query,
-            &empty_schema,
-            false,
-            0,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        assert_eq!(
-            result.unwrap(),
-            Some(
-                "SELECT * FROM (SELECT * FROM some_table) WHERE year = 2024 ORDER BY date DESC, value ASC"
-                    .to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn test_build_layer_query_none_source_with_order_by() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.order_by = Some(SqlExpression::new("x ASC"));
-
-        // Build cast base query (the cast global query)
-        let cast_base_query = format!("SELECT * FROM {}", naming::global_table());
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            &cast_base_query,
-            &empty_schema,
-            true,
-            0,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        // Should wrap the cast global query and add order_by
-        let query = result.unwrap().unwrap();
-        assert!(query.contains("FROM (SELECT * FROM __ggsql_global_"));
-        assert!(query.ends_with(") ORDER BY x ASC"));
-        assert!(query.contains(naming::session_id()));
-    }
-
-    #[test]
-    fn test_build_base_layer_query_with_constants() {
-        let materialized = HashSet::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.source = Some(DataSource::Identifier("some_table".to_string()));
-        // Add literal mappings which become constants
-        layer.mappings.insert(
-            "color".to_string(),
-            AestheticValue::Literal(LiteralValue::String("value".to_string())),
-        );
-        layer.mappings.insert(
-            "size".to_string(),
-            AestheticValue::Literal(LiteralValue::String("value2".to_string())),
-        );
-
-        // build_base_layer_query should include constants
-        let base_query = build_base_layer_query(&layer, &materialized, false);
-
-        // Should inject constants as columns
-        let query = base_query.unwrap();
-        assert!(query.contains("SELECT *"));
-        assert!(query.contains("'value' AS __ggsql_const_color__"));
-        assert!(query.contains("'value2' AS __ggsql_const_size__"));
-        assert!(query.contains("FROM some_table"));
-    }
-
-    #[test]
-    fn test_build_base_layer_query_constants_on_global() {
-        let materialized = HashSet::new();
-
-        // No source but has constants - should use global table
-        // Constants are NOT added here because they're injected into the global table
-        // with layer-indexed names (e.g., __ggsql_const_fill_0__)
-        let mut layer = Layer::new(Geom::point());
-        layer.mappings.insert(
-            "fill".to_string(),
-            AestheticValue::Literal(LiteralValue::String("value".to_string())),
-        );
-
-        // build_base_layer_query should return simple query from global
-        // (constants are already in global table with layer-indexed names)
-        let base_query = build_base_layer_query(&layer, &materialized, true);
-
-        let query = base_query.unwrap();
-        assert!(query.contains("FROM __ggsql_global_"));
-        assert!(query.contains(naming::session_id()));
-        // Constants should NOT be in the base query - they're in the global table
-        assert!(!query.contains("__ggsql_const_fill__"));
-    }
-
-    #[test]
-    fn test_build_layer_query_with_constants_in_base() {
-        let empty_schema: Schema = Vec::new();
-
-        let mut layer = Layer::new(Geom::point());
-        layer.source = Some(DataSource::Identifier("some_table".to_string()));
-        // Add literal mappings which become constants
-        layer.mappings.insert(
-            "fill".to_string(),
-            AestheticValue::Literal(LiteralValue::String("blue".to_string())),
-        );
-
-        // Simulate what prepare_data_with_executor does: build base query with constants
-        let cast_base_query = "SELECT *, 'blue' AS __ggsql_const_fill__ FROM some_table";
-
-        let type_names = test_type_names();
-        let result = build_layer_query(
-            &mut layer,
-            cast_base_query,
-            &empty_schema,
-            false,
-            0,
-            None,
-            &[],
-            &type_names,
-            &mock_execute,
-        );
-
-        // build_layer_query wraps the cast_base_query (which already has constants)
-        let query = result.unwrap().unwrap();
-        assert!(query.contains("FROM (SELECT *"));
-        assert!(query.contains("__ggsql_const_fill__"));
-        assert!(query.contains("FROM some_table"));
-    }
-
-    // ========================================
     // End-to-End CTE Reference Tests
     // ========================================
 
@@ -3980,17 +3505,17 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Should have global data (from sales) and layer 1 data (from targets CTE)
-        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        // With new approach, all layers have their own data
+        assert!(result.data.contains_key(&naming::layer_key(0)));
         assert!(result.data.contains_key(&naming::layer_key(1)));
 
-        // Global should have 2 rows (from sales)
-        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(global_df.height(), 2);
+        // Layer 0 should have 2 rows (from sales via global)
+        let layer0_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer0_df.height(), 2);
 
         // Layer 1 should have 2 rows (from targets CTE)
-        let layer_df = result.data.get(&naming::layer_key(1)).unwrap();
-        assert_eq!(layer_df.height(), 2);
+        let layer1_df = result.data.get(&naming::layer_key(1)).unwrap();
+        assert_eq!(layer1_df.height(), 2);
     }
 
     #[cfg(feature = "duckdb")]
@@ -4014,13 +3539,13 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Global should have all 4 rows
-        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(global_df.height(), 4);
+        // Layer 0 should have all 4 rows (from global)
+        let layer0_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer0_df.height(), 4);
 
         // Layer 1 should have 2 rows (filtered to category = 'A')
-        let layer_df = result.data.get(&naming::layer_key(1)).unwrap();
-        assert_eq!(layer_df.height(), 2);
+        let layer1_df = result.data.get(&naming::layer_key(1)).unwrap();
+        assert_eq!(layer1_df.height(), 2);
     }
 
     #[cfg(feature = "duckdb")]
@@ -4104,17 +3629,13 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // VISUALISE FROM causes SELECT injection, so we have global data
-        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
-        // Layers without their own FROM use global directly (no separate entry)
-        assert!(!result.data.contains_key(&naming::layer_key(0)));
-        assert!(!result.data.contains_key(&naming::layer_key(1)));
+        // With new approach, all layers have their own data
+        assert!(result.data.contains_key(&naming::layer_key(0)));
+        assert!(result.data.contains_key(&naming::layer_key(1)));
 
-        // Global should have 3 rows
-        assert_eq!(
-            result.data.get(naming::GLOBAL_DATA_KEY).unwrap().height(),
-            3
-        );
+        // Both layers should have 3 rows (from the same source)
+        assert_eq!(result.data.get(&naming::layer_key(0)).unwrap().height(), 3);
+        assert_eq!(result.data.get(&naming::layer_key(1)).unwrap().height(), 3);
     }
 
     #[cfg(feature = "duckdb")]
@@ -4164,16 +3685,11 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Global from SELECT, layer 1 from CTE
-        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        // With new approach, all layers have their own data
+        assert!(result.data.contains_key(&naming::layer_key(0)));
         assert!(result.data.contains_key(&naming::layer_key(1)));
-        // Layer 0 has no entry (uses global directly)
-        assert!(!result.data.contains_key(&naming::layer_key(0)));
 
-        assert_eq!(
-            result.data.get(naming::GLOBAL_DATA_KEY).unwrap().height(),
-            2
-        );
+        assert_eq!(result.data.get(&naming::layer_key(0)).unwrap().height(), 2);
         assert_eq!(result.data.get(&naming::layer_key(1)).unwrap().height(), 2);
     }
 
@@ -4199,11 +3715,8 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Global should have all 5 rows
-        assert_eq!(
-            result.data.get(naming::GLOBAL_DATA_KEY).unwrap().height(),
-            5
-        );
+        // Layer 0 should have all 5 rows
+        assert_eq!(result.data.get(&naming::layer_key(0)).unwrap().height(), 5);
 
         // Layer 1 should have 2 rows (cat='A' AND active=true)
         assert_eq!(result.data.get(&naming::layer_key(1)).unwrap().height(), 2);
@@ -4239,14 +3752,27 @@ mod tests {
         assert!(result.data.contains_key(&naming::layer_key(0)));
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
-        // Should have stat bin and count columns
-        let col_names: Vec<&str> = layer_df
-            .get_column_names()
+        // Should have prefixed aesthetic-named columns (stat columns are renamed to aesthetics)
+        // __ggsql_stat__bin -> __ggsql_aes_x__, __ggsql_stat__count -> __ggsql_aes_y__
+        let col_names: Vec<String> = layer_df
+            .get_column_names_str()
             .iter()
-            .map(|s| s.as_str())
+            .map(|s| s.to_string())
             .collect();
-        assert!(col_names.contains(&naming::stat_column("bin").as_str()));
-        assert!(col_names.contains(&naming::stat_column("count").as_str()));
+        let x_col = naming::aesthetic_column("x");
+        let y_col = naming::aesthetic_column("y");
+        assert!(
+            col_names.contains(&x_col),
+            "Should have '{}' column (from stat bin): {:?}",
+            x_col,
+            col_names
+        );
+        assert!(
+            col_names.contains(&y_col),
+            "Should have '{}' column (from stat count): {:?}",
+            y_col,
+            col_names
+        );
 
         // Should have fewer rows than original (binned)
         assert!(layer_df.height() < 100);
@@ -4457,9 +3983,15 @@ mod tests {
         assert!(breaks.is_some(), "y scale should have breaks property");
 
         // Verify the data has been binned (count values should be bin centers)
+        // With prefixed aesthetic-named columns, stat count is renamed to "__ggsql_aes_y__"
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
-        let count_col = layer_df.column(naming::stat_column("count").as_str());
-        assert!(count_col.is_ok(), "Should have count column in layer data");
+        let y_col_name = naming::aesthetic_column("y");
+        let count_col = layer_df.column(&y_col_name);
+        assert!(
+            count_col.is_ok(),
+            "Should have '{}' column (from stat count) in layer data",
+            y_col_name
+        );
     }
 
     #[cfg(feature = "duckdb")]
@@ -4492,14 +4024,27 @@ mod tests {
         // Should have 3 rows (3 unique categories: A, B, C)
         assert_eq!(layer_df.height(), 3);
 
-        // Should have category (original x) and stat count columns
-        let col_names: Vec<&str> = layer_df
-            .get_column_names()
+        // With new approach, columns are renamed to prefixed aesthetic names
+        // So "category" is renamed to "__ggsql_aes_x__" and stat count column is renamed to "__ggsql_aes_y__"
+        let col_names: Vec<String> = layer_df
+            .get_column_names_str()
             .iter()
-            .map(|s| s.as_str())
+            .map(|s| s.to_string())
             .collect();
-        assert!(col_names.contains(&"category"));
-        assert!(col_names.contains(&naming::stat_column("count").as_str()));
+        let x_col = naming::aesthetic_column("x");
+        let y_col = naming::aesthetic_column("y");
+        assert!(
+            col_names.contains(&x_col),
+            "Expected '{}' in {:?}",
+            x_col,
+            col_names
+        );
+        assert!(
+            col_names.contains(&y_col),
+            "Expected '{}' in {:?}",
+            y_col,
+            col_names
+        );
     }
 
     #[cfg(feature = "duckdb")]
@@ -4525,13 +4070,12 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Should NOT have layer 0 data (no transformation needed, uses global)
-        assert!(!result.data.contains_key(&naming::layer_key(0)));
-        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        // With new approach, every layer has its own data
+        assert!(result.data.contains_key(&naming::layer_key(0)));
 
-        // Global should have original 3 rows
-        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(global_df.height(), 3);
+        // Layer should have original 3 rows (no stat transform when y is mapped)
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer_df.height(), 3);
     }
 
     #[cfg(feature = "duckdb")]
@@ -4565,14 +4109,31 @@ mod tests {
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
         // Should have region column preserved for faceting
-        let col_names: Vec<&str> = layer_df
-            .get_column_names()
+        // Stat columns are renamed to prefixed aesthetic names (bin->x, count->y)
+        let col_names: Vec<String> = layer_df
+            .get_column_names_str()
             .iter()
-            .map(|s| s.as_str())
+            .map(|s| s.to_string())
             .collect();
-        assert!(col_names.contains(&"region"));
-        assert!(col_names.contains(&naming::stat_column("bin").as_str()));
-        assert!(col_names.contains(&naming::stat_column("count").as_str()));
+        let x_col = naming::aesthetic_column("x");
+        let y_col = naming::aesthetic_column("y");
+        assert!(
+            col_names.contains(&"region".to_string()),
+            "Should have 'region' facet column: {:?}",
+            col_names
+        );
+        assert!(
+            col_names.contains(&x_col),
+            "Should have '{}' column (from stat bin): {:?}",
+            x_col,
+            col_names
+        );
+        assert!(
+            col_names.contains(&y_col),
+            "Should have '{}' column (from stat count): {:?}",
+            y_col,
+            col_names
+        );
     }
 
     #[cfg(feature = "duckdb")]
@@ -4605,15 +4166,32 @@ mod tests {
         assert!(result.data.contains_key(&naming::layer_key(0)));
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
-        // Should have grp column preserved for grouping
-        let col_names: Vec<&str> = layer_df
-            .get_column_names()
+        // Should have grp column preserved for grouping (partition_by)
+        // category is renamed to prefixed x, count is renamed to prefixed y
+        let col_names: Vec<String> = layer_df
+            .get_column_names_str()
             .iter()
-            .map(|s| s.as_str())
+            .map(|s| s.to_string())
             .collect();
-        assert!(col_names.contains(&"grp"));
-        assert!(col_names.contains(&"category"));
-        assert!(col_names.contains(&naming::stat_column("count").as_str()));
+        let x_col = naming::aesthetic_column("x");
+        let y_col = naming::aesthetic_column("y");
+        assert!(
+            col_names.contains(&"grp".to_string()),
+            "Expected 'grp' (partition_by column) in {:?}",
+            col_names
+        );
+        assert!(
+            col_names.contains(&x_col),
+            "Expected '{}' in {:?}",
+            x_col,
+            col_names
+        );
+        assert!(
+            col_names.contains(&y_col),
+            "Expected '{}' in {:?}",
+            y_col,
+            col_names
+        );
 
         // G1 has A(2), B(1) = 2 rows; G2 has A(1), B(1), C(1) = 3 rows; total = 5 rows
         assert_eq!(layer_df.height(), 5);
@@ -4642,13 +4220,12 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Should NOT have layer 0 data (no transformation, uses global)
-        assert!(!result.data.contains_key(&naming::layer_key(0)));
-        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        // With new approach, every layer has its own data
+        assert!(result.data.contains_key(&naming::layer_key(0)));
 
-        // Global should have original 3 rows
-        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(global_df.height(), 3);
+        // Layer should have 3 rows (no transformation, but still layer-specific)
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer_df.height(), 3);
     }
 
     #[cfg(feature = "duckdb")]
@@ -4675,16 +4252,12 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Should NOT have layer 0 data (no transformation needed, y is mapped and exists)
-        assert!(
-            !result.data.contains_key(&naming::layer_key(0)),
-            "Bar with y mapped should use global data directly"
-        );
-        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        // With new approach, every layer has its own data
+        assert!(result.data.contains_key(&naming::layer_key(0)));
 
-        // Global should have original 3 rows
-        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(global_df.height(), 3);
+        // Layer should have original 3 rows (no transformation when y is mapped and exists)
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer_df.height(), 3);
 
         // Verify spec has x and y aesthetics merged into layer
         assert_eq!(result.specs.len(), 1);
@@ -4725,16 +4298,12 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // With wildcard and y column present, bar uses identity (no layer 0 data)
-        assert!(
-            !result.data.contains_key(&naming::layer_key(0)),
-            "Bar with wildcard + y column should use identity (no COUNT)"
-        );
-        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        // With new approach, every layer has its own data
+        assert!(result.data.contains_key(&naming::layer_key(0)));
 
-        // Global should have original 3 rows
-        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(global_df.height(), 3);
+        // Layer should have original 3 rows (wildcard with y uses identity)
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer_df.height(), 3);
     }
 
     #[cfg(feature = "duckdb")]
@@ -4762,16 +4331,12 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Should NOT have layer 0 data (no transformation, y is explicitly mapped and exists)
-        assert!(
-            !result.data.contains_key(&naming::layer_key(0)),
-            "Bar with explicit y should use global data directly"
-        );
-        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        // With new approach, every layer has its own data
+        assert!(result.data.contains_key(&naming::layer_key(0)));
 
-        // Global should have original 3 rows (no COUNT applied)
-        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(global_df.height(), 3);
+        // Layer should have original 3 rows (no COUNT applied when y exists)
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer_df.height(), 3);
     }
 
     #[cfg(feature = "duckdb")]
@@ -4838,15 +4403,12 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Bar geom with y mapped - no stat transform (y column exists)
-        assert!(
-            !result.data.contains_key(&naming::layer_key(0)),
-            "Bar with explicit y should use global data directly"
-        );
-        assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
+        // With new approach, every layer has its own data
+        assert!(result.data.contains_key(&naming::layer_key(0)));
 
-        let global_df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(global_df.height(), 3);
+        // Layer should have 3 rows (no stat transform since y column exists)
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer_df.height(), 3);
     }
 
     #[cfg(feature = "duckdb")]
@@ -4884,14 +4446,18 @@ mod tests {
         assert_eq!(layer_df.height(), 2);
 
         // Verify y values are sums: A=30 (10+20), B=30
-        // SUM returns f64, but stat column is always named "count" for consistency
-        let stat_count_col = naming::stat_column("count");
-        let y_col = layer_df
-            .column(&stat_count_col)
-            .expect("stat count column should exist");
+        // With new approach, stat count column is renamed to prefixed "__ggsql_aes_y__"
+        let y_col_name = naming::aesthetic_column("y");
+        let y_col = layer_df.column(&y_col_name).unwrap_or_else(|_| {
+            panic!(
+                "'{}' column should exist (stat count renamed to prefixed aesthetic)",
+                y_col_name
+            )
+        });
+        // SUM may return f64 depending on DB/type handling
         let y_values: Vec<f64> = y_col
             .f64()
-            .expect("stat count should be f64 (SUM result)")
+            .expect("y should be f64 (SUM result)")
             .into_iter()
             .flatten()
             .collect();
@@ -4899,11 +4465,13 @@ mod tests {
         // Sum of A should be 30, sum of B should be 30
         assert!(
             y_values.contains(&30.0),
-            "Should have sum of 30 for category A"
+            "Should have sum of 30 for category A, got: {:?}",
+            y_values
         );
         assert!(
             y_values.contains(&30.0),
-            "Should have sum of 30 for category B"
+            "Should have sum of 30 for category B, got: {:?}",
+            y_values
         );
     }
 
@@ -4942,13 +4510,17 @@ mod tests {
         assert_eq!(layer_df.height(), 2);
 
         // Verify y values are counts: A=2, B=1
-        let stat_count_col = naming::stat_column("count");
-        let y_col = layer_df
-            .column(&stat_count_col)
-            .expect("stat count column should exist");
+        // With new approach, stat count column is renamed to prefixed "__ggsql_aes_y__"
+        let y_col_name = naming::aesthetic_column("y");
+        let y_col = layer_df.column(&y_col_name).unwrap_or_else(|_| {
+            panic!(
+                "'{}' column should exist (stat count renamed to prefixed aesthetic)",
+                y_col_name
+            )
+        });
         let y_values: Vec<i64> = y_col
             .i64()
-            .expect("stat count should be i64")
+            .expect("y should be i64")
             .into_iter()
             .flatten()
             .collect();
@@ -4998,13 +4570,14 @@ mod tests {
         assert_eq!(layer_df.height(), 2);
 
         // Verify y values are counts: A=2, B=1
-        let stat_count_col = naming::stat_column("count");
+        // With prefixed aesthetic-named columns, stat count is renamed to "__ggsql_aes_y__"
+        let y_col_name = naming::aesthetic_column("y");
         let y_col = layer_df
-            .column(&stat_count_col)
-            .expect("stat count column should exist");
+            .column(&y_col_name)
+            .unwrap_or_else(|_| panic!("'{}' column (stat count) should exist", y_col_name));
         let y_values: Vec<i64> = y_col
             .i64()
-            .expect("stat count should be i64")
+            .expect("y should be i64")
             .into_iter()
             .flatten()
             .collect();
@@ -5121,14 +4694,14 @@ mod tests {
         assert_eq!(layer_df.height(), 2);
 
         // Verify y values are sums: A=30, B=30
-        // SUM returns f64, but stat column is always named "count" for consistency
-        let stat_count_col = naming::stat_column("count");
+        // With prefixed aesthetic-named columns, stat count is renamed to "__ggsql_aes_y__"
+        let y_col_name = naming::aesthetic_column("y");
         let y_col = layer_df
-            .column(&stat_count_col)
-            .expect("stat count column should exist");
+            .column(&y_col_name)
+            .unwrap_or_else(|_| panic!("'{}' column (stat count) should exist", y_col_name));
         let y_values: Vec<f64> = y_col
             .f64()
-            .expect("stat count should be f64 (SUM result)")
+            .expect("y should be f64 (SUM result)")
             .into_iter()
             .flatten()
             .collect();
@@ -5514,7 +5087,7 @@ mod tests {
         .unwrap();
 
         let mut data_map = HashMap::new();
-        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
+        data_map.insert(naming::layer_key(0), df);
 
         // Resolve scales
         resolve_scales(&mut spec, &mut data_map).unwrap();
@@ -5563,7 +5136,7 @@ mod tests {
         .unwrap();
 
         let mut data_map = HashMap::new();
-        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
+        data_map.insert(naming::layer_key(0), df);
 
         // Resolve scales
         resolve_scales(&mut spec, &mut data_map).unwrap();
@@ -5609,7 +5182,7 @@ mod tests {
         .unwrap();
 
         let mut data_map = HashMap::new();
-        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
+        data_map.insert(naming::layer_key(0), df);
 
         // Resolve scales
         resolve_scales(&mut spec, &mut data_map).unwrap();
@@ -5740,7 +5313,7 @@ mod tests {
         .unwrap();
 
         let mut data_map = HashMap::new();
-        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
+        data_map.insert(naming::layer_key(0), df);
 
         // Resolve scales
         resolve_scales(&mut spec, &mut data_map).unwrap();
@@ -5785,7 +5358,7 @@ mod tests {
         .unwrap();
 
         let mut data_map = HashMap::new();
-        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
+        data_map.insert(naming::layer_key(0), df);
 
         // Resolve scales
         resolve_scales(&mut spec, &mut data_map).unwrap();
@@ -5820,15 +5393,15 @@ mod tests {
         assert!(aes.contains_key("stroke"));
         assert!(aes.contains_key("fill"));
 
+        // With prefixed aesthetic-named columns, mappings are updated to use prefixed aesthetic names
         let stroke = aes.get("stroke").unwrap().column_name().unwrap();
-        assert_eq!(stroke, "species");
+        assert_eq!(stroke, naming::aesthetic_column("stroke")); // was "species", renamed to "__ggsql_aes_stroke__"
 
         let fill = aes.get("fill").unwrap().column_name().unwrap();
-        assert_eq!(fill, "island");
+        assert_eq!(fill, naming::aesthetic_column("fill")); // was "island", renamed to "__ggsql_aes_fill__"
 
         // Colors as global constant
-        // Note: split_color_aesthetic runs before replace_literals_with_columns,
-        // so the constant column is named after the target aesthetic (fill) not the source (color)
+        // With aesthetic-named columns, constants become columns named after the aesthetic
         let query = r#"
           VISUALISE bill_len AS x, bill_dep AS y, 'blue' AS color FROM ggsql:penguins
           DRAW point MAPPING island AS stroke
@@ -5838,10 +5411,16 @@ mod tests {
         let aes = &result.specs[0].layers[0].mappings.aesthetics;
 
         let stroke = aes.get("stroke").unwrap();
-        assert_eq!(stroke.column_name().unwrap(), "island");
+        assert_eq!(
+            stroke.column_name().unwrap(),
+            naming::aesthetic_column("stroke")
+        ); // was "island", renamed to "__ggsql_aes_stroke__"
 
         let fill = aes.get("fill").unwrap();
-        assert_eq!(fill.column_name().unwrap(), "__ggsql_const_fill_0__");
+        assert_eq!(
+            fill.column_name().unwrap(),
+            naming::aesthetic_column("fill")
+        ); // constant 'blue' -> column "__ggsql_aes_fill__"
 
         // Colors as layer constant
         let query = r#"
@@ -5853,10 +5432,16 @@ mod tests {
         let aes = &result.specs[0].layers[0].mappings.aesthetics;
 
         let stroke = aes.get("stroke").unwrap();
-        assert_eq!(stroke.column_name().unwrap(), "__ggsql_const_stroke_0__");
+        assert_eq!(
+            stroke.column_name().unwrap(),
+            naming::aesthetic_column("stroke")
+        ); // constant 'blue' -> column "__ggsql_aes_stroke__"
 
         let fill = aes.get("fill").unwrap();
-        assert_eq!(fill.column_name().unwrap(), "island");
+        assert_eq!(
+            fill.column_name().unwrap(),
+            naming::aesthetic_column("fill")
+        ); // was "island", renamed to "__ggsql_aes_fill__"
 
         // Verify color is removed after splitting
         assert!(
@@ -6125,7 +5710,13 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Check that the data was filtered (only 2 rows should remain)
-        let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
+        // With pre-stat OOB transform, data is in layer key; otherwise in global key
+        let layer_key = naming::layer_key(0);
+        let df = result
+            .data
+            .get(&layer_key)
+            .or_else(|| result.data.get(naming::GLOBAL_DATA_KEY))
+            .expect("Should have layer or global data");
         assert_eq!(df.height(), 2);
     }
 
@@ -6150,11 +5741,20 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Check that the data was clamped (all 3 rows should remain, y clamped to [0, 20])
-        let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
+        // With pre-stat OOB transform, data is in layer key; otherwise in global key
+        let layer_key = naming::layer_key(0);
+        let df = result
+            .data
+            .get(&layer_key)
+            .or_else(|| result.data.get(naming::GLOBAL_DATA_KEY))
+            .expect("Should have layer or global data");
         assert_eq!(df.height(), 3);
 
-        // Check clamped values
-        let y_col = df.column("y").unwrap();
+        // Check clamped values (column is now named with prefixed aesthetic name)
+        let y_col_name = naming::aesthetic_column("y");
+        let y_col = df
+            .column(&y_col_name)
+            .unwrap_or_else(|_| panic!("Should have '{}' column", y_col_name));
         let y_series = y_col
             .as_materialized_series()
             .cast(&polars::prelude::DataType::Float64)
@@ -6186,7 +5786,8 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // All rows should be present (default oob='keep' for positional)
-        let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
+        // With aesthetic-named columns, data is in layer_key(0)
+        let df = result.data.get(&naming::layer_key(0)).unwrap();
         assert_eq!(df.height(), 3);
     }
 
@@ -6196,7 +5797,7 @@ mod tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         // Create data with categories, some outside allowed range
-        // Discrete scales always censor OOB values (no explicit oob setting needed)
+        // Discrete scales censor OOB values to NULL, then NULL rows are filtered out
         let query = r#"
             SELECT * FROM (VALUES
                 (1, 10, 'A'),
@@ -6211,11 +5812,46 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // All rows should be preserved (censoring sets to null, doesn't filter)
-        let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(df.height(), 4);
+        // Only rows with allowed categories ('A', 'B') should remain
+        // Rows with 'C' and 'D' are censored to NULL, then filtered out
+        let layer_key = naming::layer_key(0);
+        let df = result
+            .data
+            .get(&layer_key)
+            .or_else(|| result.data.get(naming::GLOBAL_DATA_KEY))
+            .expect("Should have layer or global data");
 
-        // Verify x and y columns are preserved
+        // Debug: print column names and data
+        eprintln!(
+            "DEBUG censor_integration: Column names: {:?}",
+            df.get_column_names()
+        );
+        eprintln!(
+            "DEBUG censor_integration: DataFrame height: {}",
+            df.height()
+        );
+        eprintln!(
+            "DEBUG censor_integration: All scales: {:?}",
+            result.specs[0].scales
+        );
+        eprintln!(
+            "DEBUG censor_integration: stroke scale: {:?}",
+            result.specs[0]
+                .scales
+                .iter()
+                .find(|s| s.aesthetic == "stroke")
+        );
+        eprintln!(
+            "DEBUG censor_integration: fill scale: {:?}",
+            result.specs[0]
+                .scales
+                .iter()
+                .find(|s| s.aesthetic == "fill")
+        );
+
+        assert_eq!(df.height(), 2);
+
+        // Verify only rows with x=1,2 (categories A,B) remain
         let x_col = df.column("x").unwrap();
         let x_values: Vec<i32> = x_col
             .as_materialized_series()
@@ -6224,7 +5860,7 @@ mod tests {
             .into_iter()
             .flatten()
             .collect();
-        assert_eq!(x_values, vec![1, 2, 3, 4]);
+        assert_eq!(x_values, vec![1, 2]);
     }
 
     #[cfg(feature = "duckdb")]
@@ -6258,8 +5894,11 @@ mod tests {
             df.height()
         );
 
-        // Verify only A and B are present
-        let cat_col = df.column("category").unwrap();
+        // Verify only A and B are present (column is now named with prefixed aesthetic name)
+        let x_col = naming::aesthetic_column("x");
+        let cat_col = df
+            .column(&x_col)
+            .unwrap_or_else(|_| panic!("Should have '{}' column", x_col));
         let values: Vec<String> = cat_col
             .as_materialized_series()
             .str()
@@ -6277,7 +5916,8 @@ mod tests {
     fn test_oob_discrete_default_censor_for_non_positional() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
-        // Non-positional aesthetics (like color) should default to censor
+        // Non-positional aesthetics (like color) default to censor
+        // Rows with OOB values are filtered out after censoring to NULL
         let query = r#"
             SELECT * FROM (VALUES
                 (1, 10, 'A'),
@@ -6292,12 +5932,17 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // All rows should be preserved (censoring sets to null, doesn't filter)
-        // C and D should have null color, but row is still present
-        let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
-        assert_eq!(df.height(), 4);
+        // Only rows with allowed categories ('A', 'B') should remain
+        // Rows with 'C' and 'D' are censored to NULL, then filtered out
+        let layer_key = naming::layer_key(0);
+        let df = result
+            .data
+            .get(&layer_key)
+            .or_else(|| result.data.get(naming::GLOBAL_DATA_KEY))
+            .expect("Should have layer or global data");
+        assert_eq!(df.height(), 2);
 
-        // Verify x and y columns are preserved
+        // Verify only y values for rows with allowed categories remain
         let y_col = df.column("y").unwrap();
         let y_values: Vec<i32> = y_col
             .as_materialized_series()
@@ -6306,7 +5951,7 @@ mod tests {
             .into_iter()
             .flatten()
             .collect();
-        assert_eq!(y_values, vec![10, 20, 30, 40]);
+        assert_eq!(y_values, vec![10, 20]);
     }
 
     #[test]
@@ -6563,57 +6208,6 @@ mod tests {
     // Type Casting Tests
     // =========================================================================
 
-    #[test]
-    fn test_apply_column_casting_empty() {
-        // Empty requirements should return query unchanged
-        let query = "SELECT * FROM some_table";
-        let requirements: Vec<TypeRequirement> = vec![];
-
-        let result = apply_column_casting(query, &requirements);
-        assert_eq!(result, query);
-    }
-
-    #[test]
-    fn test_apply_column_casting_single_column() {
-        use crate::plot::CastTargetType;
-
-        let query = "SELECT * FROM some_table";
-        let requirements = vec![TypeRequirement {
-            column: "date_col".to_string(),
-            target_type: CastTargetType::Date,
-            sql_type_name: "DATE".to_string(),
-        }];
-
-        let result = apply_column_casting(query, &requirements);
-        assert!(result.contains("EXCLUDE (\"date_col\")"));
-        assert!(result.contains("CAST(\"date_col\" AS DATE) AS \"date_col\""));
-        assert!(result.ends_with(" FROM (SELECT * FROM some_table)"));
-    }
-
-    #[test]
-    fn test_apply_column_casting_multiple_columns() {
-        use crate::plot::CastTargetType;
-
-        let query = "SELECT * FROM data";
-        let requirements = vec![
-            TypeRequirement {
-                column: "date_col".to_string(),
-                target_type: CastTargetType::Date,
-                sql_type_name: "DATE".to_string(),
-            },
-            TypeRequirement {
-                column: "value".to_string(),
-                target_type: CastTargetType::Number,
-                sql_type_name: "DOUBLE".to_string(),
-            },
-        ];
-
-        let result = apply_column_casting(query, &requirements);
-        assert!(result.contains("EXCLUDE (\"date_col\", \"value\")"));
-        assert!(result.contains("CAST(\"date_col\" AS DATE) AS \"date_col\""));
-        assert!(result.contains("CAST(\"value\" AS DOUBLE) AS \"value\""));
-    }
-
     #[cfg(feature = "duckdb")]
     #[test]
     fn test_type_casting_integration_string_to_date() {
@@ -6634,7 +6228,8 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Verify the data was prepared successfully
-        let df = result.data.get(naming::GLOBAL_DATA_KEY).unwrap();
+        // With aesthetic-named columns, data is in layer_key(0)
+        let df = result.data.get(&naming::layer_key(0)).unwrap();
         assert_eq!(df.height(), 3);
 
         // The scale should be properly resolved
@@ -7629,5 +7224,128 @@ mod tests {
                 elem
             );
         }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_binned_date_scale_with_visualise_from() {
+        // Regression test: binned date scale should apply binning transformation to Date columns
+        // Bug: The StatResult::Identity branch was incorrectly returning None (use global directly)
+        // even when pre-stat transform (binning) was applied to the query.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
+            DRAW boxplot
+            SCALE BINNED x VIA date SETTING breaks => 'month'
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Verify the scale has breaks computed
+        let x_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "x")
+            .expect("Should have x scale");
+
+        let breaks = x_scale.properties.get("breaks");
+        assert!(
+            matches!(breaks, Some(ParameterValue::Array(_))),
+            "Breaks should be computed as Array, got: {:?}",
+            breaks
+        );
+
+        // Verify we have layer data with transformed x values (not using global directly)
+        // This is the key assertion - if binning is applied, layer data must be created
+        let layer_key = naming::layer_key(0);
+        assert!(
+            result.data.contains_key(&layer_key),
+            "Should have layer data from binning transformation. Available keys: {:?}",
+            result.data.keys().collect::<Vec<_>>()
+        );
+
+        // Verify the x column (was Date, renamed to prefixed x) has binned values (bin centers, not original dates)
+        let layer_data = result.data.get(&layer_key).unwrap();
+        let x_col_name = naming::aesthetic_column("x");
+        let date_col = layer_data.column(&x_col_name).unwrap_or_else(|_| {
+            panic!(
+                "Should have '{}' column (was Date, renamed to prefixed aesthetic)",
+                x_col_name
+            )
+        });
+        // Get unique values - should be fewer than original dates due to binning
+        let series = date_col.as_materialized_series();
+        let unique_count = series.n_unique().unwrap();
+        // airquality has ~150 rows spanning May-September 1973
+        // With monthly breaks, we should have at most 6 unique bin centers
+        assert!(
+            unique_count <= 6,
+            "Binned x column should have at most 6 unique values (monthly bins), got {}",
+            unique_count
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_query_deduplication_identical_layers() {
+        // Test that identical layers share the same query result (deduplication)
+        // This is a performance optimization - two layers with identical mappings
+        // should only execute the query once
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Two identical point layers - should deduplicate to one query execution
+        let query = r#"
+            SELECT * FROM (VALUES
+                (1, 10), (2, 20), (3, 30)
+            ) AS t(x, y)
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            DRAW point MAPPING x AS x, y AS y
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Both layers should have data
+        let layer0_key = naming::layer_key(0);
+        let layer1_key = naming::layer_key(1);
+
+        assert!(
+            result.data.contains_key(&layer0_key),
+            "Should have layer 0 data"
+        );
+        assert!(
+            result.data.contains_key(&layer1_key),
+            "Should have layer 1 data"
+        );
+
+        // Both layers should have the same data (3 rows each)
+        let layer0_data = result.data.get(&layer0_key).unwrap();
+        let layer1_data = result.data.get(&layer1_key).unwrap();
+
+        assert_eq!(layer0_data.height(), 3);
+        assert_eq!(layer1_data.height(), 3);
+
+        // Verify the data content is identical
+        let l0_x: Vec<i32> = layer0_data
+            .column("x")
+            .unwrap()
+            .as_materialized_series()
+            .i32()
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .collect();
+        let l1_x: Vec<i32> = layer1_data
+            .column("x")
+            .unwrap()
+            .as_materialized_series()
+            .i32()
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .collect();
+
+        assert_eq!(l0_x, l1_x);
     }
 }

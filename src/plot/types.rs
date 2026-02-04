@@ -151,6 +151,10 @@ pub enum AestheticValue {
     /// Column reference
     Column {
         name: String,
+        /// Original column name before internal renaming (for labels)
+        /// When columns are renamed to internal names like `__ggsql_aes_x__`,
+        /// this preserves the original column name (e.g., "bill_dep") for axis labels.
+        original_name: Option<String>,
         /// Whether this is a dummy/placeholder column (e.g., for bar charts without x mapped)
         is_dummy: bool,
     },
@@ -163,6 +167,7 @@ impl AestheticValue {
     pub fn standard_column(name: impl Into<String>) -> Self {
         Self::Column {
             name: name.into(),
+            original_name: None,
             is_dummy: false,
         }
     }
@@ -171,7 +176,20 @@ impl AestheticValue {
     pub fn dummy_column(name: impl Into<String>) -> Self {
         Self::Column {
             name: name.into(),
+            original_name: None,
             is_dummy: true,
+        }
+    }
+
+    /// Create a column mapping with an explicit original name.
+    ///
+    /// Used when renaming columns to internal names but preserving the original
+    /// column name for labels.
+    pub fn column_with_original(name: impl Into<String>, original_name: impl Into<String>) -> Self {
+        Self::Column {
+            name: name.into(),
+            original_name: Some(original_name.into()),
+            is_dummy: false,
         }
     }
 
@@ -179,6 +197,22 @@ impl AestheticValue {
     pub fn column_name(&self) -> Option<&str> {
         match self {
             Self::Column { name, .. } => Some(name),
+            _ => None,
+        }
+    }
+
+    /// Get the name to use for labels (axis titles, legend titles).
+    ///
+    /// Returns the original column name if available, otherwise the current name.
+    /// This ensures axis labels show user-friendly names like "bill_dep" instead
+    /// of internal names like "__ggsql_aes_x__".
+    pub fn label_name(&self) -> Option<&str> {
+        match self {
+            Self::Column {
+                name,
+                original_name,
+                ..
+            } => Some(original_name.as_deref().unwrap_or(name)),
             _ => None,
         }
     }

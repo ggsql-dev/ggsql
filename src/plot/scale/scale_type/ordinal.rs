@@ -206,10 +206,7 @@ impl ScaleTypeTrait for Ordinal {
             // Generate sequential ink-density palette sized to category count
             let sequential = palettes::generate_linetype_sequential(count);
             scale.output_range = Some(OutputRange::Array(
-                sequential
-                    .into_iter()
-                    .map(ArrayElement::String)
-                    .collect(),
+                sequential.into_iter().map(ArrayElement::String).collect(),
             ));
         } else {
             match &scale.output_range {

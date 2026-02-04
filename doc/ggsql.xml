@@ -117,6 +117,8 @@
       <item>CONTINUOUS</item>
       <item>DISCRETE</item>
       <item>BINNED</item>
+      <item>ORDINAL</item>
+      <item>IDENTITY</item>
     </list>
 
     <!-- Geom Types (only in DRAW context) -->
