@@ -1135,28 +1135,11 @@ impl Writer for VegaLiteWriter {
             }
 
             match layer.geom.geom_type() {
-                GeomType::Bar => {
-                    // For Bar geom, set mark with width parameter
-                    use crate::plot::ParameterValue;
-                    let width = layer
-                        .parameters
-                        .get("width")
-                        .and_then(|p| match p {
-                            ParameterValue::Number(n) => Some(*n),
-                            _ => None,
-                        })
-                        .unwrap_or(0.9);
-                    layer_spec["mark"] = json!({
-                        "type": "bar",
-                        "width": {"band": width}
-                    });
-                }
+                GeomType::Bar => layer_spec = render_bar(layer_spec, layer),
                 GeomType::Path => render_path(&mut encoding),
                 GeomType::Ribbon => render_ribbon(&mut encoding),
                 GeomType::Area => render_area(&mut encoding, layer)?,
-                GeomType::Polygon => {
-                    layer_spec = render_polygon(layer_spec, &mut encoding);
-                }
+                GeomType::Polygon => layer_spec = render_polygon(layer_spec, &mut encoding),
                 _ => {}
             }
 
@@ -1291,6 +1274,18 @@ impl Writer for VegaLiteWriter {
 
         Ok(())
     }
+}
+
+fn render_bar(mut spec: Value, layer: &Layer) -> Value {
+    let width = match layer.parameters.get("width") {
+        Some(ParameterValue::Number(w)) => *w,
+        _ => 0.9,
+    };
+    spec["mark"] = json!({
+        "type": "bar",
+        "width" : {"band": width}
+    });
+    spec
 }
 
 fn render_path(encoding: &mut Map<String, Value>) {
