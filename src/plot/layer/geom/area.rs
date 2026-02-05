@@ -18,8 +18,6 @@ impl GeomTrait for Area {
             supported: &[
                 "x",
                 "y",
-                "color",
-                "colour",
                 "fill",
                 "stroke",
                 "opacity",

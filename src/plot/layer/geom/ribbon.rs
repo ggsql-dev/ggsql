@@ -17,8 +17,6 @@ impl GeomTrait for Ribbon {
                 "x",
                 "ymin",
                 "ymax",
-                "color",
-                "colour",
                 "fill",
                 "stroke",
                 "opacity",
