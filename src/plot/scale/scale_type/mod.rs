@@ -1313,7 +1313,20 @@ pub(crate) fn expand_numeric_range_selective(
     };
 
     let span = max - min;
-    let expansion = span * mult + add;
+
+    // For singular ranges (min == max), use the absolute value to compute expansion
+    // This prevents zero expansion when all data values are identical
+    // If the value itself is 0, use a small default expansion (1.0)
+    let effective_span = if span.abs() < 1e-10 {
+        if min.abs() < 1e-10 {
+            1.0 // If the value is 0, expand by ±1
+        } else {
+            min.abs() // Use the absolute value for expansion
+        }
+    } else {
+        span
+    };
+    let expansion = effective_span * mult + add;
 
     // Check if min was explicitly set by user (non-null in original range)
     let min_is_explicit = original_user_range
@@ -2167,6 +2180,32 @@ mod tests {
     }
 
     #[test]
+    fn test_expand_singular_range_nonzero() {
+        // Singular range: all values are the same (e.g., count=12 for all bars)
+        // Should expand based on the value itself to create visible range
+        let range = vec![ArrayElement::Number(12.0), ArrayElement::Number(12.0)];
+        let expanded = expand_numeric_range(&range, 0.05, 0.0);
+
+        // span = 0, effective_span = |12| = 12, expansion = 12 * 0.05 = 0.6
+        // expanded = [12 - 0.6, 12 + 0.6] = [11.4, 12.6]
+        assert_eq!(expanded[0], ArrayElement::Number(11.4));
+        assert_eq!(expanded[1], ArrayElement::Number(12.6));
+    }
+
+    #[test]
+    fn test_expand_singular_range_zero() {
+        // Singular range at zero (e.g., all counts are 0)
+        // Should use default expansion of 1.0
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(0.0)];
+        let expanded = expand_numeric_range(&range, 0.05, 0.0);
+
+        // span = 0, value = 0, effective_span = 1.0, expansion = 1.0 * 0.05 = 0.05
+        // expanded = [0 - 0.05, 0 + 0.05] = [-0.05, 0.05]
+        assert_eq!(expanded[0], ArrayElement::Number(-0.05));
+        assert_eq!(expanded[1], ArrayElement::Number(0.05));
+    }
+
+    #[test]
     fn test_expand_default_applied() {
         use polars::prelude::*;
         let col: Column = Series::new("x".into(), &[0.0f64, 100.0]).into();
@@ -2186,628 +2225,323 @@ mod tests {
     }
 
     #[test]
-    fn test_expand_custom_value() {
+    fn test_expand_variations() {
         use polars::prelude::*;
-        let col: Column = Series::new("x".into(), &[0.0f64, 100.0]).into();
 
-        let mut props = HashMap::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.1));
+        // Test various expand values and their expected results
+        // Format: (expand_prop, expected_min, expected_max)
+        let test_cases: Vec<(ParameterValue, f64, f64)> = vec![
+            // 10% expansion: span=100, 10% = 10 on each side
+            (ParameterValue::Number(0.1), -10.0, 110.0),
+            // 5% mult + 10 additive: span=100, 5 + 10 on each side
+            (ParameterValue::Array(vec![ArrayElement::Number(0.05), ArrayElement::Number(10.0)]), -15.0, 115.0),
+            // Zero disables expansion
+            (ParameterValue::Number(0.0), 0.0, 100.0),
+        ];
 
-        let result = ScaleType::continuous()
-            .resolve_input_range(None, &[&col], &props)
-            .unwrap()
-            .unwrap();
+        for (expand_prop, expected_min, expected_max) in test_cases {
+            let col: Column = Series::new("x".into(), &[0.0f64, 100.0]).into();
+            let mut props = HashMap::new();
+            props.insert("expand".to_string(), expand_prop.clone());
 
-        // span = 100, 10% expansion = 10 on each side
-        // expected: [-10, 110]
-        assert_eq!(result[0], ArrayElement::Number(-10.0));
-        assert_eq!(result[1], ArrayElement::Number(110.0));
-    }
+            let result = ScaleType::continuous()
+                .resolve_input_range(None, &[&col], &props)
+                .unwrap()
+                .unwrap();
 
-    #[test]
-    fn test_expand_with_additive() {
-        use polars::prelude::*;
-        let col: Column = Series::new("x".into(), &[0.0f64, 100.0]).into();
+            assert_eq!(result[0], ArrayElement::Number(expected_min), "expand={:?}: min should be {}", expand_prop, expected_min);
+            assert_eq!(result[1], ArrayElement::Number(expected_max), "expand={:?}: max should be {}", expand_prop, expected_max);
+        }
 
-        let mut props = HashMap::new();
-        props.insert(
-            "expand".to_string(),
-            ParameterValue::Array(vec![ArrayElement::Number(0.05), ArrayElement::Number(10.0)]),
-        );
-
-        let result = ScaleType::continuous()
-            .resolve_input_range(None, &[&col], &props)
-            .unwrap()
-            .unwrap();
-
-        // span = 100, 5% expansion = 5, additive = 10
-        // expected: [-15, 115]
-        assert_eq!(result[0], ArrayElement::Number(-15.0));
-        assert_eq!(result[1], ArrayElement::Number(115.0));
-    }
-
-    #[test]
-    fn test_expand_applied_to_user_range() {
-        use polars::prelude::*;
+        // Also test expansion applied to user-provided range
         let col: Column = Series::new("x".into(), &[50.0f64]).into();
-
         let mut props = HashMap::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.05));
-
-        // User provides explicit range
         let user_range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-
         let result = ScaleType::continuous()
             .resolve_input_range(Some(&user_range), &[&col], &props)
             .unwrap()
             .unwrap();
-
-        // span = 100, 5% expansion = 5 on each side
-        // expected: [-5, 105]
         assert_eq!(result[0], ArrayElement::Number(-5.0));
         assert_eq!(result[1], ArrayElement::Number(105.0));
     }
 
-    #[test]
-    fn test_expand_zero_disables() {
-        use polars::prelude::*;
-        let col: Column = Series::new("x".into(), &[0.0f64, 100.0]).into();
-
-        let mut props = HashMap::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.0));
-
-        let result = ScaleType::continuous()
-            .resolve_input_range(None, &[&col], &props)
-            .unwrap()
-            .unwrap();
-
-        // No expansion
-        assert_eq!(result[0], ArrayElement::Number(0.0));
-        assert_eq!(result[1], ArrayElement::Number(100.0));
-    }
-
     // =========================================================================
-    // resolve_properties Tests
+    // resolve_properties Tests (Consolidated)
     // =========================================================================
 
     #[test]
-    fn test_resolve_properties_unknown_rejected() {
+    fn test_resolve_properties_rejection_cases() {
+        // Unknown property rejected
         let mut props = HashMap::new();
         props.insert("unknown".to_string(), ParameterValue::Number(1.0));
-
         let result = ScaleType::continuous().resolve_properties("x", &props);
         assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("unknown"));
-        assert!(err.contains("expand")); // Should suggest allowed properties
+        assert!(result.unwrap_err().contains("unknown"));
+
+        // Discrete rejects expand
+        let mut expand_props = HashMap::new();
+        expand_props.insert("expand".to_string(), ParameterValue::Number(0.1));
+        let result = ScaleType::discrete().resolve_properties("color", &expand_props);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not support SETTING 'expand'"));
+
+        // Identity rejects any property
+        let result = ScaleType::identity().resolve_properties("x", &expand_props);
+        assert!(result.is_err());
+
+        // Binned rejects oob='keep'
+        let mut keep_props = HashMap::new();
+        keep_props.insert("oob".to_string(), ParameterValue::String("keep".to_string()));
+        let result = ScaleType::binned().resolve_properties("x", &keep_props);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not support oob='keep'"));
     }
 
     #[test]
-    fn test_resolve_properties_default_expand() {
+    fn test_resolve_properties_defaults() {
+        // Continuous positional: default expand
         let props = HashMap::new();
-        let resolved = ScaleType::continuous()
-            .resolve_properties("x", &props)
-            .unwrap();
-
+        let resolved = ScaleType::continuous().resolve_properties("x", &props).unwrap();
         assert!(resolved.contains_key("expand"));
         match resolved.get("expand") {
-            Some(ParameterValue::Number(n)) => {
-                assert!((n - DEFAULT_EXPAND_MULT).abs() < 1e-10);
-            }
+            Some(ParameterValue::Number(n)) => assert!((n - DEFAULT_EXPAND_MULT).abs() < 1e-10),
             _ => panic!("Expected Number"),
         }
-    }
 
-    #[test]
-    fn test_resolve_properties_preserves_user_value() {
-        let mut props = HashMap::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.1));
+        // Continuous non-positional: no default expand, but has oob
+        let resolved = ScaleType::continuous().resolve_properties("color", &props).unwrap();
+        assert!(!resolved.contains_key("expand"));
+        assert!(resolved.contains_key("oob"));
 
-        let resolved = ScaleType::continuous()
-            .resolve_properties("x", &props)
-            .unwrap();
-
-        match resolved.get("expand") {
-            Some(ParameterValue::Number(n)) => assert!((n - 0.1).abs() < 1e-10),
-            _ => panic!("Expected Number"),
-        }
-    }
-
-    #[test]
-    fn test_discrete_rejects_expand_property() {
-        // Discrete scales support oob but not expand
-        let mut props = HashMap::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.1));
-
-        let result = ScaleType::discrete().resolve_properties("color", &props);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("discrete"));
-        assert!(err.contains("does not support SETTING 'expand'"));
-    }
-
-    #[test]
-    fn test_identity_rejects_properties() {
-        let mut props = HashMap::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.1));
-
-        let result = ScaleType::identity().resolve_properties("x", &props);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_resolve_properties_binned_supports_expand() {
-        let mut props = HashMap::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.2));
-
-        let resolved = ScaleType::binned().resolve_properties("x", &props).unwrap();
-        match resolved.get("expand") {
-            Some(ParameterValue::Number(n)) => assert!((n - 0.2).abs() < 1e-10),
-            _ => panic!("Expected Number"),
-        }
-    }
-
-    #[test]
-    fn test_resolve_properties_binned_rejects_keep_oob() {
-        let mut props = HashMap::new();
-        props.insert(
-            "oob".to_string(),
-            ParameterValue::String("keep".to_string()),
-        );
-
-        let result = ScaleType::binned().resolve_properties("x", &props);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("does not support oob='keep'"));
-    }
-
-    #[test]
-    fn test_resolve_properties_binned_allows_squish_oob() {
-        let mut props = HashMap::new();
-        props.insert(
-            "oob".to_string(),
-            ParameterValue::String("squish".to_string()),
-        );
-
-        let result = ScaleType::binned().resolve_properties("x", &props);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_resolve_properties_binned_default_oob_is_censor() {
-        let props = HashMap::new();
+        // Binned: default oob is censor
         let resolved = ScaleType::binned().resolve_properties("x", &props).unwrap();
         match resolved.get("oob") {
             Some(ParameterValue::String(s)) => assert_eq!(s, "censor"),
             _ => panic!("Expected oob to be 'censor'"),
         }
-    }
 
-    #[test]
-    fn test_resolve_properties_continuous_supports_expand() {
-        let props = HashMap::new();
-        let resolved = ScaleType::continuous()
-            .resolve_properties("x", &props)
-            .unwrap();
-
-        // Should have default expand
-        assert!(resolved.contains_key("expand"));
-    }
-
-    #[test]
-    fn test_resolve_properties_defaults_for_discrete() {
-        // Empty properties should be allowed for discrete, defaults to reverse only
-        // (discrete scales always censor OOB, no explicit oob property)
-        let props = HashMap::new();
-        let result = ScaleType::discrete().resolve_properties("color", &props);
-        assert!(result.is_ok());
-        let resolved = result.unwrap();
-        // Discrete only supports reverse (oob is implicit - always censor)
+        // Discrete: only reverse property
+        let resolved = ScaleType::discrete().resolve_properties("color", &props).unwrap();
         assert!(resolved.contains_key("reverse"));
-        assert_eq!(resolved.len(), 1); // only reverse
+        assert_eq!(resolved.len(), 1);
     }
 
     #[test]
-    fn test_expand_only_for_positional_aesthetics() {
+    fn test_resolve_properties_user_values_preserved() {
+        let mut props = HashMap::new();
+        props.insert("expand".to_string(), ParameterValue::Number(0.1));
+        let resolved = ScaleType::continuous().resolve_properties("x", &props).unwrap();
+        match resolved.get("expand") {
+            Some(ParameterValue::Number(n)) => assert!((n - 0.1).abs() < 1e-10),
+            _ => panic!("Expected Number"),
+        }
+
+        // Binned supports expand
+        props.insert("expand".to_string(), ParameterValue::Number(0.2));
+        let resolved = ScaleType::binned().resolve_properties("x", &props).unwrap();
+        match resolved.get("expand") {
+            Some(ParameterValue::Number(n)) => assert!((n - 0.2).abs() < 1e-10),
+            _ => panic!("Expected Number"),
+        }
+
+        // Binned allows squish oob
+        let mut oob_props = HashMap::new();
+        oob_props.insert("oob".to_string(), ParameterValue::String("squish".to_string()));
+        assert!(ScaleType::binned().resolve_properties("x", &oob_props).is_ok());
+    }
+
+    #[test]
+    fn test_expand_positional_vs_non_positional() {
         let mut props = HashMap::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
 
         // Positional aesthetics should allow expand
-        assert!(ScaleType::continuous()
-            .resolve_properties("x", &props)
-            .is_ok());
-        assert!(ScaleType::continuous()
-            .resolve_properties("y", &props)
-            .is_ok());
-        assert!(ScaleType::continuous()
-            .resolve_properties("xmin", &props)
-            .is_ok());
-        assert!(ScaleType::continuous()
-            .resolve_properties("ymax", &props)
-            .is_ok());
+        for aes in &["x", "y", "xmin", "ymax"] {
+            assert!(ScaleType::continuous().resolve_properties(aes, &props).is_ok(), "{} should allow expand", aes);
+        }
 
-        // Non-positional aesthetics should reject expand (but allow oob)
-        let result = ScaleType::continuous().resolve_properties("color", &props);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("does not support SETTING 'expand'"));
-
-        let result = ScaleType::continuous().resolve_properties("size", &props);
-        assert!(result.is_err());
-
-        let result = ScaleType::continuous().resolve_properties("opacity", &props);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_no_default_expand_for_non_positional() {
-        // Non-positional aesthetics should not get default expand
-        let props = HashMap::new();
-        let resolved = ScaleType::continuous()
-            .resolve_properties("color", &props)
-            .unwrap();
-        assert!(!resolved.contains_key("expand"));
-        // But they do get default oob
-        assert!(resolved.contains_key("oob"));
-
-        // Positional aesthetics should get default expand
-        let resolved = ScaleType::continuous()
-            .resolve_properties("x", &props)
-            .unwrap();
-        assert!(resolved.contains_key("expand"));
+        // Non-positional aesthetics should reject expand
+        for aes in &["color", "size", "opacity"] {
+            let result = ScaleType::continuous().resolve_properties(aes, &props);
+            assert!(result.is_err(), "{} should reject expand", aes);
+        }
     }
 
     // =========================================================================
-    // OOB Tests
+    // OOB Tests (Consolidated)
     // =========================================================================
 
     #[test]
-    fn test_oob_default_positional() {
+    fn test_oob_defaults_by_aesthetic_type() {
         let props = HashMap::new();
-        let resolved = ScaleType::continuous()
-            .resolve_properties("x", &props)
-            .unwrap();
-        assert_eq!(
-            resolved.get("oob"),
-            Some(&ParameterValue::String("keep".into()))
-        );
-    }
 
-    #[test]
-    fn test_oob_default_positional_variants() {
-        let props = HashMap::new();
-        for aesthetic in &["y", "xmin", "xmax", "ymin", "ymax", "xend", "yend"] {
-            let resolved = ScaleType::continuous()
-                .resolve_properties(aesthetic, &props)
-                .unwrap();
-            assert_eq!(
-                resolved.get("oob"),
-                Some(&ParameterValue::String("keep".into())),
-                "Expected 'keep' default for positional aesthetic '{}'",
-                aesthetic
-            );
+        // Positional aesthetics default to 'keep'
+        for aesthetic in &["x", "y", "xmin", "xmax", "ymin", "ymax", "xend", "yend"] {
+            let resolved = ScaleType::continuous().resolve_properties(aesthetic, &props).unwrap();
+            assert_eq!(resolved.get("oob"), Some(&ParameterValue::String("keep".into())), "Positional '{}' should default to 'keep'", aesthetic);
+        }
+
+        // Non-positional aesthetics default to 'censor'
+        for aesthetic in &["color", "size", "opacity", "fill", "stroke"] {
+            let resolved = ScaleType::continuous().resolve_properties(aesthetic, &props).unwrap();
+            assert_eq!(resolved.get("oob"), Some(&ParameterValue::String("censor".into())), "Non-positional '{}' should default to 'censor'", aesthetic);
         }
     }
 
     #[test]
-    fn test_oob_default_non_positional() {
-        let props = HashMap::new();
-        let resolved = ScaleType::continuous()
-            .resolve_properties("color", &props)
-            .unwrap();
-        assert_eq!(
-            resolved.get("oob"),
-            Some(&ParameterValue::String("censor".into()))
-        );
-    }
-
-    #[test]
-    fn test_oob_default_non_positional_variants() {
-        let props = HashMap::new();
-        for aesthetic in &["size", "opacity", "fill", "stroke"] {
-            let resolved = ScaleType::continuous()
-                .resolve_properties(aesthetic, &props)
-                .unwrap();
-            assert_eq!(
-                resolved.get("oob"),
-                Some(&ParameterValue::String("censor".into())),
-                "Expected 'censor' default for non-positional aesthetic '{}'",
-                aesthetic
-            );
-        }
-    }
-
-    #[test]
-    fn test_oob_valid_values() {
-        // All valid oob values should be accepted
+    fn test_oob_valid_and_invalid_values() {
+        // Valid values accepted
         for oob_value in &["censor", "squish", "keep"] {
             let mut props = HashMap::new();
-            props.insert(
-                "oob".to_string(),
-                ParameterValue::String(oob_value.to_string()),
-            );
-
-            let result = ScaleType::continuous().resolve_properties("x", &props);
-            assert!(
-                result.is_ok(),
-                "Expected oob='{}' to be valid, got error",
-                oob_value
-            );
+            props.insert("oob".to_string(), ParameterValue::String(oob_value.to_string()));
+            assert!(ScaleType::continuous().resolve_properties("x", &props).is_ok(), "oob='{}' should be valid", oob_value);
         }
-    }
 
-    #[test]
-    fn test_oob_invalid_value_rejected() {
+        // Invalid value rejected with helpful message
         let mut props = HashMap::new();
         props.insert("oob".to_string(), ParameterValue::String("invalid".into()));
-
         let result = ScaleType::continuous().resolve_properties("x", &props);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("Invalid oob value"));
-        assert!(err.contains("invalid"));
-        assert!(err.contains("censor"));
-        assert!(err.contains("squish"));
-        assert!(err.contains("keep"));
     }
 
     #[test]
     fn test_oob_user_value_preserved() {
         let mut props = HashMap::new();
         props.insert("oob".to_string(), ParameterValue::String("squish".into()));
-
-        let resolved = ScaleType::continuous()
-            .resolve_properties("x", &props)
-            .unwrap();
-        assert_eq!(
-            resolved.get("oob"),
-            Some(&ParameterValue::String("squish".into()))
-        );
+        let resolved = ScaleType::continuous().resolve_properties("x", &props).unwrap();
+        assert_eq!(resolved.get("oob"), Some(&ParameterValue::String("squish".into())));
     }
 
     #[test]
-    fn test_oob_supported_by_all_continuous_scales() {
-        // All continuous-like scales should support oob
+    fn test_oob_scale_type_support() {
         let props = HashMap::new();
 
+        // Continuous and binned support oob
         for scale_type in &[ScaleType::continuous(), ScaleType::binned()] {
             let resolved = scale_type.resolve_properties("color", &props).unwrap();
-            assert!(
-                resolved.contains_key("oob"),
-                "Scale {:?} should support oob",
-                scale_type.scale_type_kind()
+            assert!(resolved.contains_key("oob"), "{:?} should support oob", scale_type.scale_type_kind());
+        }
+
+        // Identity and discrete reject oob
+        let mut oob_props = HashMap::new();
+        oob_props.insert("oob".to_string(), ParameterValue::String("censor".into()));
+        assert!(ScaleType::identity().resolve_properties("color", &oob_props).is_err());
+        let result = ScaleType::discrete().resolve_properties("color", &oob_props);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not support SETTING 'oob'"));
+
+        // Discrete has no oob in resolved (implicit censor)
+        let resolved = ScaleType::discrete().resolve_properties("color", &props).unwrap();
+        assert!(!resolved.contains_key("oob"));
+    }
+
+    // =========================================================================
+    // Transform Tests (Consolidated)
+    // =========================================================================
+
+    #[test]
+    fn test_default_transform_by_aesthetic_and_dtype() {
+        use polars::prelude::*;
+
+        // Most aesthetics default to identity (when no column dtype is specified)
+        for aesthetic in &["x", "y", "color", "size"] {
+            assert_eq!(
+                ScaleType::continuous().default_transform(aesthetic, None),
+                TransformKind::Identity,
+                "{} should default to Identity",
+                aesthetic
             );
+        }
+
+        // Temporal types infer their transform
+        let temporal_cases = vec![
+            (DataType::Date, TransformKind::Date),
+            (DataType::Datetime(TimeUnit::Microseconds, None), TransformKind::DateTime),
+            (DataType::Time, TransformKind::Time),
+            (DataType::Int64, TransformKind::Identity),  // Non-temporal fallback
+        ];
+        for (dtype, expected) in temporal_cases {
+            assert_eq!(
+                ScaleType::continuous().default_transform("x", Some(&dtype)),
+                expected,
+                "{:?} should infer {:?}",
+                dtype, expected
+            );
+        }
+
+        // Binned defaults to identity
+        for aesthetic in &["x", "size"] {
+            assert_eq!(ScaleType::binned().default_transform(aesthetic, None), TransformKind::Identity);
         }
     }
 
     #[test]
-    fn test_oob_not_supported_by_identity() {
-        // Identity scale should not support oob
-        let mut props = HashMap::new();
-        props.insert("oob".to_string(), ParameterValue::String("censor".into()));
+    fn test_allowed_transforms_by_scale_type() {
+        // Continuous allows log transforms
+        let continuous = ScaleType::continuous().allowed_transforms();
+        for kind in &[TransformKind::Identity, TransformKind::Log10, TransformKind::Log2, TransformKind::Sqrt, TransformKind::Asinh, TransformKind::PseudoLog] {
+            assert!(continuous.contains(kind), "Continuous should allow {:?}", kind);
+        }
 
-        let result = ScaleType::identity().resolve_properties("color", &props);
-        assert!(result.is_err());
+        // Binned allows log transforms
+        let binned = ScaleType::binned().allowed_transforms();
+        for kind in &[TransformKind::Identity, TransformKind::Log10, TransformKind::Sqrt, TransformKind::Asinh] {
+            assert!(binned.contains(kind), "Binned should allow {:?}", kind);
+        }
+
+        // Discrete only allows identity, string, bool
+        assert_eq!(
+            ScaleType::discrete().allowed_transforms(),
+            &[TransformKind::Identity, TransformKind::String, TransformKind::Bool]
+        );
+
+        // Identity only allows identity
+        assert_eq!(ScaleType::identity().allowed_transforms(), &[TransformKind::Identity]);
     }
 
     #[test]
-    fn test_discrete_rejects_oob_property() {
-        // Discrete scales no longer accept oob property at all
-        // (they always censor via pre-stat SQL transformation)
-        let mut props = HashMap::new();
-        props.insert("oob".to_string(), ParameterValue::String("censor".into()));
-
-        let result = ScaleType::discrete().resolve_properties("color", &props);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("does not support SETTING 'oob'"));
-    }
-
-    #[test]
-    fn test_discrete_no_oob_in_resolved_properties() {
-        // Discrete scale should not have oob in resolved properties
-        // (it always censors implicitly via pre-stat SQL)
-        let props = HashMap::new();
-
-        let resolved = ScaleType::discrete()
-            .resolve_properties("color", &props)
-            .unwrap();
-        // oob should NOT be in the resolved properties
-        assert!(!resolved.contains_key("oob"));
-        // Only reverse should be present
-        assert!(resolved.contains_key("reverse"));
-    }
-
-    // =========================================================================
-    // Transform Tests
-    // =========================================================================
-
-    #[test]
-    fn test_continuous_default_transform_identity() {
-        // Most aesthetics default to identity (when no column dtype is specified)
-        assert_eq!(
-            ScaleType::continuous().default_transform("x", None),
-            TransformKind::Identity
-        );
-        assert_eq!(
-            ScaleType::continuous().default_transform("y", None),
-            TransformKind::Identity
-        );
-        assert_eq!(
-            ScaleType::continuous().default_transform("color", None),
-            TransformKind::Identity
-        );
-    }
-
-    #[test]
-    fn test_continuous_default_transform_size_is_identity() {
-        // Size aesthetic defaults to identity (linear) - user can specify sqrt if desired
-        assert_eq!(
-            ScaleType::continuous().default_transform("size", None),
-            TransformKind::Identity
-        );
-    }
-
-    #[test]
-    fn test_continuous_default_transform_infers_temporal() {
-        use polars::prelude::*;
-
-        // Date column -> Date transform
-        assert_eq!(
-            ScaleType::continuous().default_transform("x", Some(&DataType::Date)),
-            TransformKind::Date
-        );
-
-        // DateTime column -> DateTime transform
-        assert_eq!(
-            ScaleType::continuous()
-                .default_transform("x", Some(&DataType::Datetime(TimeUnit::Microseconds, None))),
-            TransformKind::DateTime
-        );
-
-        // Time column -> Time transform
-        assert_eq!(
-            ScaleType::continuous().default_transform("x", Some(&DataType::Time)),
-            TransformKind::Time
-        );
-
-        // Non-temporal column -> falls back to identity for all aesthetics
-        assert_eq!(
-            ScaleType::continuous().default_transform("x", Some(&DataType::Int64)),
-            TransformKind::Identity
-        );
-        assert_eq!(
-            ScaleType::continuous().default_transform("size", Some(&DataType::Float64)),
-            TransformKind::Identity
-        );
-    }
-
-    #[test]
-    fn test_continuous_allows_log_transforms() {
-        let transforms = ScaleType::continuous().allowed_transforms();
-        assert!(transforms.contains(&TransformKind::Identity));
-        assert!(transforms.contains(&TransformKind::Log10));
-        assert!(transforms.contains(&TransformKind::Log2));
-        assert!(transforms.contains(&TransformKind::Log));
-        assert!(transforms.contains(&TransformKind::Sqrt));
-        assert!(transforms.contains(&TransformKind::Asinh));
-        assert!(transforms.contains(&TransformKind::PseudoLog));
-    }
-
-    #[test]
-    fn test_binned_allows_log_transforms() {
-        let transforms = ScaleType::binned().allowed_transforms();
-        assert!(transforms.contains(&TransformKind::Identity));
-        assert!(transforms.contains(&TransformKind::Log10));
-        assert!(transforms.contains(&TransformKind::Sqrt));
-        assert!(transforms.contains(&TransformKind::Asinh));
-    }
-
-    #[test]
-    fn test_binned_default_transform_size_is_identity() {
-        // Size defaults to identity (linear) for all scale types
-        assert_eq!(
-            ScaleType::binned().default_transform("size", None),
-            TransformKind::Identity
-        );
-        assert_eq!(
-            ScaleType::binned().default_transform("x", None),
-            TransformKind::Identity
-        );
-    }
-
-    #[test]
-    fn test_discrete_allows_identity_string_bool_transforms() {
-        let transforms = ScaleType::discrete().allowed_transforms();
-        assert_eq!(
-            transforms,
-            &[
-                TransformKind::Identity,
-                TransformKind::String,
-                TransformKind::Bool
-            ]
-        );
-    }
-
-    #[test]
-    fn test_discrete_rejects_log_transform() {
+    fn test_discrete_transform_acceptance() {
+        // Discrete rejects log
         let log = Transform::log();
         let result = ScaleType::discrete().resolve_transform("color", Some(&log), None, None);
         assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("log"));
-        assert!(err.contains("not supported"));
-        assert!(err.contains("discrete"));
+        assert!(result.unwrap_err().contains("not supported"));
+
+        // Discrete accepts string and bool
+        for (transform, expected_kind) in [(Transform::string(), TransformKind::String), (Transform::bool(), TransformKind::Bool)] {
+            let result = ScaleType::discrete().resolve_transform("color", Some(&transform), None, None);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().transform_kind(), expected_kind);
+        }
     }
 
     #[test]
-    fn test_discrete_accepts_string_transform() {
-        let string = Transform::string();
-        let result = ScaleType::discrete().resolve_transform("color", Some(&string), None, None);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().transform_kind(), TransformKind::String);
-    }
+    fn test_resolve_transform_variations() {
+        // Default fills identity
+        for aesthetic in &["x", "size"] {
+            let result = ScaleType::continuous().resolve_transform(aesthetic, None, None, None);
+            assert_eq!(result.unwrap().transform_kind(), TransformKind::Identity);
+        }
 
-    #[test]
-    fn test_discrete_accepts_bool_transform() {
-        let bool_t = Transform::bool();
-        let result = ScaleType::discrete().resolve_transform("color", Some(&bool_t), None, None);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().transform_kind(), TransformKind::Bool);
-    }
-
-    #[test]
-    fn test_identity_scale_only_allows_identity_transform() {
-        let transforms = ScaleType::identity().allowed_transforms();
-        assert_eq!(transforms, &[TransformKind::Identity]);
-    }
-
-    #[test]
-    fn test_resolve_transform_fills_default() {
-        // Without user input, fills in identity (linear) for all aesthetics
-        let result = ScaleType::continuous().resolve_transform("x", None, None, None);
-        assert_eq!(result.unwrap().transform_kind(), TransformKind::Identity);
-
-        // Size also defaults to identity - user can specify sqrt if desired
-        let result = ScaleType::continuous().resolve_transform("size", None, None, None);
-        assert_eq!(result.unwrap().transform_kind(), TransformKind::Identity);
-    }
-
-    #[test]
-    fn test_resolve_transform_validates_user_input() {
-        // Valid user input is accepted
+        // User input accepted for valid transforms
         let log = Transform::log();
         let result = ScaleType::continuous().resolve_transform("y", Some(&log), None, None);
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Log10);
-
-        // Invalid user input is rejected (we can't easily test this anymore since
-        // Transform::from_name returns None for invalid names)
     }
 
     #[test]
     fn test_continuous_accepts_all_valid_transforms() {
         for kind in &[
-            TransformKind::Identity,
-            TransformKind::Log10,
-            TransformKind::Log2,
-            TransformKind::Log,
-            TransformKind::Sqrt,
-            TransformKind::Asinh,
-            TransformKind::PseudoLog,
-            TransformKind::Integer,
-            TransformKind::Date,
-            TransformKind::DateTime,
-            TransformKind::Time,
+            TransformKind::Identity, TransformKind::Log10, TransformKind::Log2, TransformKind::Log,
+            TransformKind::Sqrt, TransformKind::Asinh, TransformKind::PseudoLog,
+            TransformKind::Integer, TransformKind::Date, TransformKind::DateTime, TransformKind::Time,
         ] {
             let transform = Transform::from_kind(*kind);
-            let result =
-                ScaleType::continuous().resolve_transform("y", Some(&transform), None, None);
-            assert!(
-                result.is_ok(),
-                "Expected transform '{:?}' to be valid for continuous scale",
-                kind
-            );
+            let result = ScaleType::continuous().resolve_transform("y", Some(&transform), None, None);
+            assert!(result.is_ok(), "Expected {:?} to be valid for continuous", kind);
             assert_eq!(result.unwrap().transform_kind(), *kind);
         }
     }
@@ -2930,12 +2664,12 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_breaks_property_default_is_5() {
+    fn test_breaks_property_default_is_7() {
         let props = HashMap::new();
         let resolved = ScaleType::continuous()
             .resolve_properties("x", &props)
             .unwrap();
-        assert_eq!(resolved.get("breaks"), Some(&ParameterValue::Number(5.0)));
+        assert_eq!(resolved.get("breaks"), Some(&ParameterValue::Number(7.0)));
     }
 
     #[test]

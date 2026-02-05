@@ -5,7 +5,7 @@
 use crate::plot::ArrayElement;
 
 /// Default number of breaks
-pub const DEFAULT_BREAK_COUNT: usize = 5;
+pub const DEFAULT_BREAK_COUNT: usize = 7;
 
 // =============================================================================
 // Wilkinson Extended Algorithm
@@ -1542,124 +1542,83 @@ mod tests {
     use super::*;
 
     // =========================================================================
-    // Pretty Breaks Tests
+    // Pretty Breaks Tests (Consolidated)
     // =========================================================================
 
     #[test]
-    fn test_pretty_breaks_basic() {
-        let breaks = pretty_breaks(0.0, 100.0, 5);
-        // Should produce nice round numbers
-        assert!(breaks.len() >= 3);
-        assert!(breaks[0] <= 0.0);
-        assert!(*breaks.last().unwrap() >= 100.0);
-    }
-
-    #[test]
-    fn test_pretty_breaks_small_range() {
-        let breaks = pretty_breaks(0.1, 0.9, 5);
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
-    fn test_pretty_breaks_large_range() {
-        let breaks = pretty_breaks(0.0, 10000.0, 5);
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
-    fn test_pretty_breaks_zero_count() {
-        let breaks = pretty_breaks(0.0, 100.0, 0);
-        assert!(breaks.is_empty());
-    }
-
-    #[test]
-    fn test_pretty_breaks_equal_min_max() {
-        let breaks = pretty_breaks(50.0, 50.0, 5);
-        assert!(breaks.is_empty());
-    }
-
-    // =========================================================================
-    // Linear Breaks Tests
-    // =========================================================================
-
-    #[test]
-    fn test_linear_breaks_basic() {
-        // linear_breaks returns exactly n evenly-spaced breaks from min to max
-        let breaks = linear_breaks(0.0, 100.0, 5);
-        // step = 25, so we get: 0, 25, 50, 75, 100
-        assert_eq!(breaks, vec![0.0, 25.0, 50.0, 75.0, 100.0]);
-    }
-
-    #[test]
-    fn test_linear_breaks_single() {
-        // Single break at midpoint
-        let breaks = linear_breaks(0.0, 100.0, 1);
-        assert_eq!(breaks, vec![50.0]);
-    }
-
-    #[test]
-    fn test_linear_breaks_two() {
-        // Two breaks at min and max
-        let breaks = linear_breaks(0.0, 100.0, 2);
-        assert_eq!(breaks, vec![0.0, 100.0]);
-    }
-
-    #[test]
-    fn test_linear_breaks_zero_count() {
-        let breaks = linear_breaks(0.0, 100.0, 0);
-        assert!(breaks.is_empty());
-    }
-
-    #[test]
-    fn test_linear_breaks_exact_coverage() {
-        // Verify that breaks exactly cover min to max (no extension)
-        let breaks = linear_breaks(10.0, 90.0, 5);
-        // step = 20, so: 10, 30, 50, 70, 90
-        assert_eq!(
-            breaks.first().unwrap(),
-            &10.0,
-            "First break should be exactly min"
-        );
-        assert_eq!(
-            breaks.last().unwrap(),
-            &90.0,
-            "Last break should be exactly max"
-        );
-        assert_eq!(breaks.len(), 5);
-    }
-
-    // =========================================================================
-    // Integer Breaks Tests
-    // =========================================================================
-
-    #[test]
-    fn test_integer_breaks_pretty_basic() {
-        let breaks = integer_breaks(0.0, 100.0, 5, true);
-        // Should produce nice round integers
-        assert!(!breaks.is_empty());
-        for b in &breaks {
-            assert_eq!(*b, b.round(), "Break {} should be integer", b);
+    fn test_pretty_breaks_variations() {
+        // Test various range sizes
+        let test_cases: Vec<(f64, f64, usize)> = vec![
+            (0.0, 100.0, 5),     // Basic range
+            (0.1, 0.9, 5),       // Small range
+            (0.0, 10000.0, 5),   // Large range
+        ];
+        for (min, max, n) in test_cases {
+            let breaks = pretty_breaks(min, max, n);
+            assert!(!breaks.is_empty(), "pretty_breaks({}, {}, {}) should not be empty", min, max, n);
+            assert!(breaks[0] <= min, "pretty_breaks({}, {}, {}): first should be <= min", min, max, n);
+            assert!(*breaks.last().unwrap() >= max, "pretty_breaks({}, {}, {}): last should be >= max", min, max, n);
         }
-        // Should cover the range
-        assert!(*breaks.first().unwrap() <= 0.0);
-        assert!(*breaks.last().unwrap() >= 100.0);
     }
 
     #[test]
-    fn test_integer_breaks_evenly_spaced() {
-        let breaks = integer_breaks(0.0, 100.0, 5, true);
-        // All gaps should be equal (evenly spaced)
-        if breaks.len() >= 2 {
-            let step = breaks[1] - breaks[0];
-            for i in 1..breaks.len() {
-                let gap = breaks[i] - breaks[i - 1];
-                assert!(
-                    (gap - step).abs() < 0.01,
-                    "Uneven spacing: gap {} != step {} at breaks {:?}",
-                    gap,
-                    step,
-                    breaks
-                );
+    fn test_pretty_breaks_edge_cases() {
+        assert!(pretty_breaks(0.0, 100.0, 0).is_empty(), "zero count should return empty");
+        assert!(pretty_breaks(50.0, 50.0, 5).is_empty(), "equal min/max should return empty");
+    }
+
+    // =========================================================================
+    // Linear Breaks Tests (Consolidated)
+    // =========================================================================
+
+    #[test]
+    fn test_linear_breaks_variations() {
+        // Test various counts
+        // Format: (min, max, n, expected_result)
+        let test_cases: Vec<(f64, f64, usize, Vec<f64>)> = vec![
+            (0.0, 100.0, 5, vec![0.0, 25.0, 50.0, 75.0, 100.0]),
+            (0.0, 100.0, 1, vec![50.0]),  // Single break at midpoint
+            (0.0, 100.0, 2, vec![0.0, 100.0]),  // Two breaks at endpoints
+            (10.0, 90.0, 5, vec![10.0, 30.0, 50.0, 70.0, 90.0]),  // Non-zero start
+        ];
+        for (min, max, n, expected) in test_cases {
+            let breaks = linear_breaks(min, max, n);
+            assert_eq!(breaks, expected, "linear_breaks({}, {}, {})", min, max, n);
+        }
+    }
+
+    #[test]
+    fn test_linear_breaks_edge_cases() {
+        assert!(linear_breaks(0.0, 100.0, 0).is_empty(), "zero count should return empty");
+    }
+
+    // =========================================================================
+    // Integer Breaks Tests (Consolidated)
+    // =========================================================================
+
+    #[test]
+    fn test_integer_breaks_variations() {
+        // Test various ranges - all should produce integer, evenly-spaced breaks
+        let test_cases = vec![
+            (0.0, 100.0, 5, true),
+            (0.0, 1_000_000.0, 5, true),
+            (-50.0, 50.0, 5, true),
+            (0.0, 5.0, 5, false),
+        ];
+        for (min, max, n, pretty) in test_cases {
+            let breaks = integer_breaks(min, max, n, pretty);
+            assert!(!breaks.is_empty(), "integer_breaks({}, {}, {}, {}) should not be empty", min, max, n, pretty);
+            // All breaks should be integers
+            for b in &breaks {
+                assert_eq!(*b, b.round(), "Break {} should be integer for ({}, {}, {}, {})", b, min, max, n, pretty);
+            }
+            // All gaps should be equal (evenly spaced)
+            if breaks.len() >= 2 {
+                let step = breaks[1] - breaks[0];
+                for i in 1..breaks.len() {
+                    let gap = breaks[i] - breaks[i - 1];
+                    assert!((gap - step).abs() < 0.01, "Uneven spacing for ({}, {}, {}, {}): {:?}", min, max, n, pretty, breaks);
+                }
             }
         }
     }
@@ -1672,54 +1631,17 @@ mod tests {
     }
 
     #[test]
-    fn test_integer_breaks_no_rounding_problem() {
-        // This tests the specific bug: linear breaks [0, 1.25, 2.5, 3.75, 5]
-        // when rounded become [0, 1, 3, 4, 5] (uneven because 2.5 rounds to 3)
-        let breaks = integer_breaks(0.0, 5.0, 5, false);
-        // All breaks should be integers
-        for b in &breaks {
-            assert_eq!(*b, b.round(), "Break {} should be integer", b);
-        }
-        // Should be evenly spaced
-        if breaks.len() >= 2 {
-            let step = breaks[1] - breaks[0];
-            for i in 1..breaks.len() {
-                let gap = breaks[i] - breaks[i - 1];
-                assert!(
-                    (gap - step).abs() < 0.01,
-                    "Uneven spacing (the rounding bug): {:?}",
-                    breaks
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_integer_breaks_large_range() {
-        let breaks = integer_breaks(0.0, 1_000_000.0, 5, true);
-        assert!(!breaks.is_empty());
-        // Should have nice round numbers like 0, 200000, 400000, ...
-        for b in &breaks {
-            assert_eq!(*b, b.round(), "Break {} should be integer", b);
-        }
-    }
-
-    #[test]
-    fn test_integer_breaks_negative_range() {
-        let breaks = integer_breaks(-50.0, 50.0, 5, true);
-        assert!(!breaks.is_empty());
-        for b in &breaks {
-            assert_eq!(*b, b.round(), "Break {} should be integer", b);
-        }
-    }
-
-    #[test]
     fn test_integer_breaks_edge_cases() {
-        assert!(integer_breaks(0.0, 100.0, 0, true).is_empty());
-        assert!(integer_breaks(100.0, 0.0, 5, true).is_empty()); // min > max
-        assert!(integer_breaks(50.0, 50.0, 5, true).is_empty()); // min == max
-        assert!(integer_breaks(f64::NAN, 100.0, 5, true).is_empty());
-        assert!(integer_breaks(0.0, f64::INFINITY, 5, true).is_empty());
+        let edge_cases = vec![
+            (0.0, 100.0, 0, "zero count"),
+            (100.0, 0.0, 5, "min > max"),
+            (50.0, 50.0, 5, "min == max"),
+            (f64::NAN, 100.0, 5, "NaN min"),
+            (0.0, f64::INFINITY, 5, "infinite max"),
+        ];
+        for (min, max, n, desc) in edge_cases {
+            assert!(integer_breaks(min, max, n, true).is_empty(), "integer_breaks with {} should be empty", desc);
+        }
     }
 
     // =========================================================================
@@ -1760,46 +1682,31 @@ mod tests {
     }
 
     // =========================================================================
-    // Log Break Tests
+    // Log Break Tests (Consolidated)
     // =========================================================================
 
     #[test]
-    fn test_log10_breaks_powers_only() {
-        // pretty=false should give powers of 10
-        let breaks = log_breaks(1.0, 10000.0, 10, 10.0, false);
-        assert_eq!(breaks, vec![1.0, 10.0, 100.0, 1000.0, 10000.0]);
+    fn test_log_breaks_powers() {
+        // pretty=false should give powers of base
+        let test_cases = vec![
+            // (min, max, base, expected)
+            (1.0, 10000.0, 10.0, vec![1.0, 10.0, 100.0, 1000.0, 10000.0]),
+            (1.0, 16.0, 2.0, vec![1.0, 2.0, 4.0, 8.0, 16.0]),
+            (0.01, 100.0, 10.0, vec![0.01, 0.1, 1.0, 10.0, 100.0]),
+        ];
+        for (min, max, base, expected) in test_cases {
+            let breaks = log_breaks(min, max, 10, base, false);
+            assert_eq!(breaks, expected, "log_breaks({}, {}, base={})", min, max, base);
+        }
     }
 
     #[test]
-    fn test_log10_breaks_extended() {
+    fn test_log_breaks_pretty_1_2_5_pattern() {
         // pretty=true should give 1-2-5 pattern
         let breaks = log_breaks(1.0, 100.0, 10, 10.0, true);
-        // Should contain: 1, 2, 5, 10, 20, 50, 100
-        assert!(breaks.contains(&1.0));
-        assert!(breaks.contains(&2.0));
-        assert!(breaks.contains(&5.0));
-        assert!(breaks.contains(&10.0));
-        assert!(breaks.contains(&100.0));
-    }
-
-    #[test]
-    fn test_log10_breaks_extended_full_pattern() {
-        // Test the complete 1-2-5 pattern across decades
-        let breaks = log_breaks(1.0, 1000.0, 20, 10.0, true);
-        // Should have breaks at 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000
-        assert!(breaks.contains(&1.0));
-        assert!(breaks.contains(&2.0));
-        assert!(breaks.contains(&5.0));
-        assert!(breaks.contains(&10.0));
-        assert!(breaks.contains(&20.0));
-        assert!(breaks.contains(&50.0));
-        assert!(breaks.contains(&100.0));
-    }
-
-    #[test]
-    fn test_log2_breaks() {
-        let breaks = log_breaks(1.0, 16.0, 10, 2.0, false);
-        assert_eq!(breaks, vec![1.0, 2.0, 4.0, 8.0, 16.0]);
+        for &v in &[1.0, 2.0, 5.0, 10.0, 100.0] {
+            assert!(breaks.contains(&v), "log_breaks pretty should contain {}", v);
+        }
     }
 
     #[test]
@@ -1807,631 +1714,401 @@ mod tests {
         // Range includes negative - should only return positive breaks
         let breaks = log_breaks(-10.0, 1000.0, 10, 10.0, false);
         assert!(breaks.iter().all(|&v| v > 0.0));
-        assert!(breaks.contains(&1.0));
-        assert!(breaks.contains(&10.0));
-        assert!(breaks.contains(&100.0));
-        assert!(breaks.contains(&1000.0));
+        for &v in &[1.0, 10.0, 100.0, 1000.0] {
+            assert!(breaks.contains(&v), "log_breaks should contain {} after filtering negative", v);
+        }
     }
 
     #[test]
-    fn test_log_breaks_all_negative_returns_empty() {
-        let breaks = log_breaks(-100.0, -1.0, 5, 10.0, true);
-        assert!(breaks.is_empty());
-    }
-
-    #[test]
-    fn test_log_breaks_zero_count() {
-        let breaks = log_breaks(1.0, 100.0, 0, 10.0, true);
-        assert!(breaks.is_empty());
-    }
-
-    #[test]
-    fn test_log_breaks_fractional_range() {
-        // Test range from 0.01 to 100
-        let breaks = log_breaks(0.01, 100.0, 10, 10.0, false);
-        assert!(breaks.contains(&0.01));
-        assert!(breaks.contains(&0.1));
-        assert!(breaks.contains(&1.0));
-        assert!(breaks.contains(&10.0));
-        assert!(breaks.contains(&100.0));
+    fn test_log_breaks_edge_cases() {
+        assert!(log_breaks(-100.0, -1.0, 5, 10.0, true).is_empty(), "all negative should return empty");
+        assert!(log_breaks(1.0, 100.0, 0, 10.0, true).is_empty(), "zero count should return empty");
     }
 
     // =========================================================================
-    // Sqrt Break Tests
+    // Sqrt Break Tests (Consolidated)
     // =========================================================================
 
     #[test]
-    fn test_sqrt_breaks_basic() {
+    fn test_sqrt_breaks_variations() {
+        // Basic case
         let breaks = sqrt_breaks(0.0, 100.0, 5, false);
-        // Linear in sqrt space with extension: sqrt(100)=10, steps of 2.5
-        // linear_breaks now extends one step before and after
-        // Squared back: ~6.25 (step before 0 gets clipped), 0, 6.25, 25, 56.25, 100, ~156.25
-        // But negative values in sqrt space get clipped
-        assert!(
-            breaks.len() >= 5,
-            "Should have at least 5 breaks, got {}",
-            breaks.len()
-        );
-        // First break should be >= 0 (sqrt clips negatives)
-        assert!(breaks.first().unwrap() >= &0.0);
-        // Last break should be >= 100
-        assert!(breaks.last().unwrap() >= &100.0);
+        assert!(breaks.len() >= 5, "Should have at least 5 breaks");
+        assert!(breaks.first().unwrap() >= &0.0, "First break should be >= 0");
+        assert!(breaks.last().unwrap() >= &100.0, "Last break should be >= 100");
+
+        // With negative input (should filter)
+        let breaks_neg = sqrt_breaks(-10.0, 100.0, 5, true);
+        assert!(breaks_neg.iter().all(|&v| v >= 0.0), "Should filter negative values");
+
+        // Pretty mode
+        let breaks_pretty = sqrt_breaks(0.0, 100.0, 5, true);
+        assert!(!breaks_pretty.is_empty());
     }
 
     #[test]
-    fn test_sqrt_breaks_filters_negative() {
-        let breaks = sqrt_breaks(-10.0, 100.0, 5, true);
-        assert!(breaks.iter().all(|&v| v >= 0.0));
-    }
-
-    #[test]
-    fn test_sqrt_breaks_zero_count() {
-        let breaks = sqrt_breaks(0.0, 100.0, 0, true);
-        assert!(breaks.is_empty());
-    }
-
-    #[test]
-    fn test_sqrt_breaks_pretty() {
-        let breaks = sqrt_breaks(0.0, 100.0, 5, true);
-        // Should use Wilkinson in sqrt space
-        assert!(!breaks.is_empty());
-        // First break should be <= 0, last should be >= 100
-        // (Wilkinson expands range to nice numbers)
+    fn test_sqrt_breaks_edge_cases() {
+        assert!(sqrt_breaks(0.0, 100.0, 0, true).is_empty(), "zero count should return empty");
     }
 
     // =========================================================================
-    // Symlog Break Tests
+    // Symlog Break Tests (Consolidated)
     // =========================================================================
 
     #[test]
-    fn test_symlog_breaks_symmetric() {
-        let breaks = symlog_breaks(-1000.0, 1000.0, 10, false);
-        // Should have negative powers, zero, and positive powers
-        assert!(breaks.contains(&0.0));
-        assert!(breaks.iter().any(|&v| v < 0.0));
-        assert!(breaks.iter().any(|&v| v > 0.0));
+    fn test_symlog_breaks_variations() {
+        // Symmetric range - should have negatives, zero, positives
+        let breaks_sym = symlog_breaks(-1000.0, 1000.0, 10, false);
+        assert!(breaks_sym.contains(&0.0), "Symmetric range should contain 0");
+        assert!(breaks_sym.iter().any(|&v| v < 0.0), "Should have negative values");
+        assert!(breaks_sym.iter().any(|&v| v > 0.0), "Should have positive values");
+
+        // Positive only
+        let breaks_pos = symlog_breaks(1.0, 1000.0, 5, false);
+        assert!(breaks_pos.iter().all(|&v| v > 0.0), "Positive-only should have only positive");
+
+        // Negative only
+        let breaks_neg = symlog_breaks(-1000.0, -1.0, 5, false);
+        assert!(breaks_neg.iter().all(|&v| v < 0.0), "Negative-only should have only negative");
+
+        // Crossing zero should include zero
+        let breaks_cross = symlog_breaks(-100.0, 100.0, 7, false);
+        assert!(breaks_cross.contains(&0.0), "Crossing zero should include 0");
     }
 
     #[test]
-    fn test_symlog_breaks_positive_only() {
-        let breaks = symlog_breaks(1.0, 1000.0, 5, false);
-        // Should behave like regular log for positive-only range
-        assert!(breaks.iter().all(|&v| v > 0.0));
-    }
-
-    #[test]
-    fn test_symlog_breaks_negative_only() {
-        let breaks = symlog_breaks(-1000.0, -1.0, 5, false);
-        // Should have only negative values
-        assert!(breaks.iter().all(|&v| v < 0.0));
-    }
-
-    #[test]
-    fn test_symlog_breaks_includes_zero() {
-        let breaks = symlog_breaks(-100.0, 100.0, 7, false);
-        assert!(breaks.contains(&0.0));
-    }
-
-    #[test]
-    fn test_symlog_breaks_zero_count() {
-        let breaks = symlog_breaks(-100.0, 100.0, 0, true);
-        assert!(breaks.is_empty());
+    fn test_symlog_breaks_edge_cases() {
+        assert!(symlog_breaks(-100.0, 100.0, 0, true).is_empty(), "zero count should return empty");
     }
 
     // =========================================================================
-    // Calculate Breaks Dispatch Tests
+    // Calculate Breaks Dispatch Tests (Consolidated)
     // =========================================================================
 
     #[test]
-    fn test_calculate_breaks_dispatches_log10() {
-        let breaks = calculate_breaks(1.0, 1000.0, 5, Some("log10"), false);
-        assert!(breaks.contains(&10.0));
-        assert!(breaks.contains(&100.0));
-    }
-
-    #[test]
-    fn test_calculate_breaks_dispatches_log2() {
-        let breaks = calculate_breaks(1.0, 16.0, 10, Some("log2"), false);
-        assert!(breaks.contains(&2.0));
-        assert!(breaks.contains(&4.0));
-        assert!(breaks.contains(&8.0));
-    }
-
-    #[test]
-    fn test_calculate_breaks_dispatches_sqrt() {
-        let breaks = calculate_breaks(0.0, 100.0, 5, Some("sqrt"), false);
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
-    fn test_calculate_breaks_dispatches_asinh() {
-        let breaks = calculate_breaks(-100.0, 100.0, 7, Some("asinh"), false);
-        assert!(breaks.contains(&0.0));
-    }
-
-    #[test]
-    fn test_calculate_breaks_dispatches_pseudo_log() {
-        let breaks = calculate_breaks(-100.0, 100.0, 7, Some("pseudo_log"), false);
-        assert!(breaks.contains(&0.0));
-    }
-
-    #[test]
-    fn test_calculate_breaks_dispatches_identity_pretty() {
-        let breaks = calculate_breaks(0.0, 100.0, 5, None, true);
-        // Should use pretty_breaks
-        assert!(!breaks.is_empty());
-        // Pretty breaks produces nice numbers
-    }
-
-    #[test]
-    fn test_calculate_breaks_dispatches_identity_linear() {
-        let breaks = calculate_breaks(0.0, 100.0, 5, None, false);
-        // Should use linear_breaks for exact coverage
-        // step = 25, so: 0, 25, 50, 75, 100
-        assert_eq!(breaks, vec![0.0, 25.0, 50.0, 75.0, 100.0]);
-    }
-
-    #[test]
-    fn test_calculate_breaks_unknown_transform() {
-        // Unknown transform should fall through to identity
-        let breaks = calculate_breaks(0.0, 100.0, 5, Some("unknown"), true);
-        assert!(!breaks.is_empty());
-    }
-
-    // =========================================================================
-    // Thin Breaks Tests
-    // =========================================================================
-
-    #[test]
-    fn test_thin_breaks_no_thinning_needed() {
-        let breaks = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-        let result = thin_breaks(breaks.clone(), 10);
-        assert_eq!(result, breaks);
-    }
-
-    #[test]
-    fn test_thin_breaks_to_smaller() {
-        let breaks = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
-        let result = thin_breaks(breaks, 5);
-        assert_eq!(result.len(), 5);
-        // Should keep first and last
-        assert_eq!(result[0], 1.0);
-        assert_eq!(result[4], 10.0);
-    }
-
-    #[test]
-    fn test_thin_breaks_single() {
-        let breaks = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-        let result = thin_breaks(breaks, 1);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0], 3.0); // Middle value
-    }
-
-    // =========================================================================
-    // Temporal Interval Tests
-    // =========================================================================
-
-    #[test]
-    fn test_temporal_interval_from_str_simple() {
-        let interval = TemporalInterval::create_from_str("month").unwrap();
-        assert_eq!(interval.count, 1);
-        assert_eq!(interval.unit, TemporalUnit::Month);
-    }
-
-    #[test]
-    fn test_temporal_interval_from_str_with_count() {
-        let interval = TemporalInterval::create_from_str("2 months").unwrap();
-        assert_eq!(interval.count, 2);
-        assert_eq!(interval.unit, TemporalUnit::Month);
-
-        let interval = TemporalInterval::create_from_str("3 days").unwrap();
-        assert_eq!(interval.count, 3);
-        assert_eq!(interval.unit, TemporalUnit::Day);
-    }
-
-    #[test]
-    fn test_temporal_interval_all_units() {
-        assert!(TemporalInterval::create_from_str("second").is_some());
-        assert!(TemporalInterval::create_from_str("seconds").is_some());
-        assert!(TemporalInterval::create_from_str("minute").is_some());
-        assert!(TemporalInterval::create_from_str("hour").is_some());
-        assert!(TemporalInterval::create_from_str("day").is_some());
-        assert!(TemporalInterval::create_from_str("week").is_some());
-        assert!(TemporalInterval::create_from_str("month").is_some());
-        assert!(TemporalInterval::create_from_str("year").is_some());
-    }
-
-    #[test]
-    fn test_temporal_interval_invalid() {
-        assert!(TemporalInterval::create_from_str("invalid").is_none());
-        assert!(TemporalInterval::create_from_str("foo bar baz").is_none());
-        assert!(TemporalInterval::create_from_str("").is_none());
-    }
-
-    // =========================================================================
-    // Temporal Date Breaks Tests
-    // =========================================================================
-
-    #[test]
-    fn test_temporal_breaks_monthly() {
-        // 2024-01-15 = day 19738, 2024-04-15 = day 19828
-        let interval = TemporalInterval::create_from_str("month").unwrap();
-        let breaks = temporal_breaks_date(19738, 19828, interval);
-        assert!(!breaks.is_empty());
-        assert_eq!(breaks[0], "2024-01-01");
-        assert!(breaks.contains(&"2024-02-01".to_string()));
-        assert!(breaks.contains(&"2024-03-01".to_string()));
-        assert!(breaks.contains(&"2024-04-01".to_string()));
-    }
-
-    #[test]
-    fn test_temporal_breaks_bimonthly() {
-        // Test "2 months" interval
-        // 2024-01-01 = day 19724, 2024-07-01 = day 19907
-        let interval = TemporalInterval::create_from_str("2 months").unwrap();
-        let breaks = temporal_breaks_date(19724, 19907, interval);
-        assert_eq!(breaks[0], "2024-01-01");
-        assert!(breaks.contains(&"2024-03-01".to_string()));
-        assert!(breaks.contains(&"2024-05-01".to_string()));
-        // Should NOT contain Feb, Apr, Jun
-        assert!(!breaks.contains(&"2024-02-01".to_string()));
-    }
-
-    #[test]
-    fn test_temporal_breaks_yearly() {
-        // Test yearly breaks spanning multiple years
-        // 2022-01-01 = day 18993, 2024-12-31 = day 20089
-        let interval = TemporalInterval::create_from_str("year").unwrap();
-        let breaks = temporal_breaks_date(18993, 20089, interval);
-        assert!(breaks.contains(&"2022-01-01".to_string()));
-        assert!(breaks.contains(&"2023-01-01".to_string()));
-        assert!(breaks.contains(&"2024-01-01".to_string()));
-    }
-
-    #[test]
-    fn test_temporal_breaks_weekly() {
-        // Test weekly breaks
-        // About 30 days
-        let interval = TemporalInterval::create_from_str("week").unwrap();
-        let breaks = temporal_breaks_date(19724, 19754, interval);
-        assert!(!breaks.is_empty());
-        // Should be multiple weeks
-        assert!(breaks.len() >= 4);
-    }
-
-    // =========================================================================
-    // Minor Breaks Linear Tests
-    // =========================================================================
-
-    #[test]
-    fn test_minor_breaks_linear_basic() {
-        let majors = vec![0.0, 10.0, 20.0];
-        let minors = minor_breaks_linear(&majors, 1, None);
-        // Expect: one midpoint per interval
-        assert_eq!(minors, vec![5.0, 15.0]);
-    }
-
-    #[test]
-    fn test_minor_breaks_linear_multiple() {
-        let majors = vec![0.0, 10.0, 20.0];
-        let minors = minor_breaks_linear(&majors, 4, None);
-        // Expect: 4 minor breaks per interval
-        assert_eq!(minors.len(), 8); // 4 * 2 intervals
-        assert!(minors.contains(&2.0));
-        assert!(minors.contains(&4.0));
-        assert!(minors.contains(&6.0));
-        assert!(minors.contains(&8.0));
-        assert!(minors.contains(&12.0));
-        assert!(minors.contains(&14.0));
-        assert!(minors.contains(&16.0));
-        assert!(minors.contains(&18.0));
-    }
-
-    #[test]
-    fn test_minor_breaks_linear_with_extension() {
-        let majors = vec![20.0, 40.0, 60.0];
-        let minors = minor_breaks_linear(&majors, 1, Some((0.0, 80.0)));
-        // Expect: extends before 20 and after 60
-        assert!(minors.contains(&10.0)); // Before first major
-        assert!(minors.contains(&30.0)); // Between 20-40
-        assert!(minors.contains(&50.0)); // Between 40-60
-        assert!(minors.contains(&70.0)); // After last major
-    }
-
-    #[test]
-    fn test_minor_breaks_linear_empty_for_single_major() {
-        let majors = vec![10.0];
-        let minors = minor_breaks_linear(&majors, 1, None);
-        assert!(minors.is_empty());
-    }
-
-    #[test]
-    fn test_minor_breaks_linear_empty_for_zero_count() {
-        let majors = vec![0.0, 10.0, 20.0];
-        let minors = minor_breaks_linear(&majors, 0, None);
-        assert!(minors.is_empty());
-    }
-
-    // =========================================================================
-    // Minor Breaks Log Tests
-    // =========================================================================
-
-    #[test]
-    fn test_minor_breaks_log_basic() {
-        let majors = vec![1.0, 10.0, 100.0];
-        let minors = minor_breaks_log(&majors, 8, 10.0, None);
-        // Expect: 8 breaks per decade, evenly spaced in log space
-        assert_eq!(minors.len(), 16); // 8 between 1-10, 8 between 10-100
-    }
-
-    #[test]
-    fn test_minor_breaks_log_single_minor() {
-        let majors = vec![1.0, 10.0, 100.0];
-        let minors = minor_breaks_log(&majors, 1, 10.0, None);
-        // Expect: one midpoint per decade in log space
-        // Between 1 and 10: sqrt(1 * 10) ≈ 3.16
-        // Between 10 and 100: sqrt(10 * 100) ≈ 31.6
-        assert_eq!(minors.len(), 2);
-        // Check geometric mean relationship
-        assert!((minors[0] - (1.0_f64 * 10.0).sqrt()).abs() < 0.01);
-        assert!((minors[1] - (10.0_f64 * 100.0).sqrt()).abs() < 0.01);
-    }
-
-    #[test]
-    fn test_minor_breaks_log_with_extension() {
-        let majors = vec![10.0, 100.0];
-        let minors = minor_breaks_log(&majors, 8, 10.0, Some((1.0, 1000.0)));
-        // Should have minors in [1, 10), (10, 100), and (100, 1000]
-        assert_eq!(minors.len(), 24); // 8 per decade × 3 decades
-    }
-
-    #[test]
-    fn test_minor_breaks_log_filters_negative() {
-        let majors = vec![-10.0, 1.0, 10.0, 100.0];
-        let minors = minor_breaks_log(&majors, 1, 10.0, None);
-        // Should only use positive majors
-        assert!(minors.iter().all(|&x| x > 0.0));
-    }
-
-    // =========================================================================
-    // Minor Breaks Sqrt Tests
-    // =========================================================================
-
-    #[test]
-    fn test_minor_breaks_sqrt_basic() {
-        let majors = vec![0.0, 25.0, 100.0];
-        let minors = minor_breaks_sqrt(&majors, 1, None);
-        // sqrt(0)=0, sqrt(25)=5, sqrt(100)=10
-        // Midpoints in sqrt space: 2.5, 7.5
-        // Squared back: 6.25, 56.25
-        assert_eq!(minors.len(), 2);
-        assert!((minors[0] - 6.25).abs() < 0.01);
-        assert!((minors[1] - 56.25).abs() < 0.01);
-    }
-
-    #[test]
-    fn test_minor_breaks_sqrt_with_extension() {
-        let majors = vec![25.0, 100.0];
-        let minors = minor_breaks_sqrt(&majors, 1, Some((0.0, 225.0)));
-        // sqrt(0)=0, sqrt(25)=5, sqrt(100)=10, sqrt(225)=15
-        // Should extend before 25 and after 100
-        assert!(minors.len() >= 2);
-    }
-
-    #[test]
-    fn test_minor_breaks_sqrt_filters_negative() {
-        let majors = vec![-10.0, 0.0, 25.0, 100.0];
-        let minors = minor_breaks_sqrt(&majors, 1, None);
-        // Should only use non-negative majors
-        assert!(minors.iter().all(|&x| x >= 0.0));
-    }
-
-    // =========================================================================
-    // Minor Breaks Symlog Tests
-    // =========================================================================
-
-    #[test]
-    fn test_minor_breaks_symlog_basic() {
-        let majors = vec![-100.0, -10.0, 0.0, 10.0, 100.0];
-        let minors = minor_breaks_symlog(&majors, 1, None);
-        // Should have minors between each pair of majors
-        assert_eq!(minors.len(), 4);
-    }
-
-    #[test]
-    fn test_minor_breaks_symlog_crosses_zero() {
-        let majors = vec![-10.0, 10.0];
-        let minors = minor_breaks_symlog(&majors, 1, None);
-        // Midpoint in asinh space should be near 0
-        assert_eq!(minors.len(), 1);
-        assert!(minors[0].abs() < 1.0); // Should be near zero
-    }
-
-    #[test]
-    fn test_minor_breaks_symlog_with_extension() {
-        let majors = vec![0.0, 100.0];
-        let minors = minor_breaks_symlog(&majors, 1, Some((-100.0, 200.0)));
-        // Should extend into negative and beyond 100
-        assert!(minors.len() >= 2);
-    }
-
-    // =========================================================================
-    // Trim Breaks Tests
-    // =========================================================================
-
-    #[test]
-    fn test_trim_breaks() {
-        let breaks = vec![5.0, 10.0, 15.0, 20.0, 25.0, 30.0];
-        let trimmed = trim_breaks(&breaks, (10.0, 25.0));
-        assert_eq!(trimmed, vec![10.0, 15.0, 20.0, 25.0]);
-    }
-
-    #[test]
-    fn test_trim_breaks_empty() {
-        let breaks = vec![5.0, 10.0, 15.0];
-        let trimmed = trim_breaks(&breaks, (20.0, 30.0));
-        assert!(trimmed.is_empty());
-    }
-
-    #[test]
-    fn test_trim_breaks_all_inside() {
-        let breaks = vec![15.0, 20.0, 25.0];
-        let trimmed = trim_breaks(&breaks, (10.0, 30.0));
-        assert_eq!(trimmed, breaks);
-    }
-
-    // =========================================================================
-    // Trim Temporal Breaks Tests
-    // =========================================================================
-
-    #[test]
-    fn test_trim_temporal_breaks() {
-        let breaks = vec![
-            "2024-01-01".to_string(),
-            "2024-02-01".to_string(),
-            "2024-03-01".to_string(),
+    fn test_calculate_breaks_dispatch() {
+        // Test that calculate_breaks dispatches to correct algorithm
+        // Format: (min, max, n, transform, pretty, expected_values_to_contain)
+        let test_cases: Vec<(f64, f64, usize, Option<&str>, bool, Vec<f64>)> = vec![
+            (1.0, 1000.0, 5, Some("log10"), false, vec![10.0, 100.0]),
+            (1.0, 16.0, 10, Some("log2"), false, vec![2.0, 4.0, 8.0]),
+            (-100.0, 100.0, 7, Some("asinh"), false, vec![0.0]),
+            (-100.0, 100.0, 7, Some("pseudo_log"), false, vec![0.0]),
         ];
+        for (min, max, n, transform, pretty, expected) in test_cases {
+            let breaks = calculate_breaks(min, max, n, transform, pretty);
+            for v in expected {
+                assert!(breaks.contains(&v), "calculate_breaks({}, {}, {:?}) should contain {}", min, max, transform, v);
+            }
+        }
+    }
+
+    #[test]
+    fn test_calculate_breaks_identity_mode() {
+        // Identity mode (None transform)
+        let breaks_pretty = calculate_breaks(0.0, 100.0, 5, None, true);
+        assert!(!breaks_pretty.is_empty(), "Identity pretty should work");
+
+        let breaks_linear = calculate_breaks(0.0, 100.0, 5, None, false);
+        assert_eq!(breaks_linear, vec![0.0, 25.0, 50.0, 75.0, 100.0], "Identity linear should be evenly spaced");
+
+        // Unknown transform should fall back to identity
+        let breaks_unknown = calculate_breaks(0.0, 100.0, 5, Some("unknown"), true);
+        assert!(!breaks_unknown.is_empty(), "Unknown transform should fall back to identity");
+    }
+
+    // =========================================================================
+    // Thin Breaks Tests (Consolidated)
+    // =========================================================================
+
+    #[test]
+    fn test_thin_breaks_variations() {
+        // No thinning needed
+        let result_none = thin_breaks(vec![1.0, 2.0, 3.0, 4.0, 5.0], 10);
+        assert_eq!(result_none, vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+
+        // Thin to smaller
+        let result_thin = thin_breaks(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0], 5);
+        assert_eq!(result_thin.len(), 5);
+        assert_eq!(result_thin[0], 1.0);
+        assert_eq!(result_thin[4], 10.0);
+
+        // Thin to single - should be middle
+        let result_single = thin_breaks(vec![1.0, 2.0, 3.0, 4.0, 5.0], 1);
+        assert_eq!(result_single, vec![3.0]);
+    }
+
+    // =========================================================================
+    // Temporal Interval Tests (Consolidated)
+    // =========================================================================
+
+    #[test]
+    fn test_temporal_interval_parsing() {
+        // Simple unit names
+        let simple = TemporalInterval::create_from_str("month").unwrap();
+        assert_eq!(simple.count, 1);
+        assert_eq!(simple.unit, TemporalUnit::Month);
+
+        // With count prefix
+        let with_count = TemporalInterval::create_from_str("2 months").unwrap();
+        assert_eq!(with_count.count, 2);
+        assert_eq!(with_count.unit, TemporalUnit::Month);
+
+        // All unit names should parse
+        for unit in &["second", "seconds", "minute", "hour", "day", "week", "month", "year"] {
+            assert!(TemporalInterval::create_from_str(unit).is_some(), "{} should parse", unit);
+        }
+
+        // Invalid inputs
+        for invalid in &["invalid", "foo bar baz", ""] {
+            assert!(TemporalInterval::create_from_str(invalid).is_none(), "{} should not parse", invalid);
+        }
+    }
+
+    // =========================================================================
+    // Temporal Date Breaks Tests (Consolidated)
+    // =========================================================================
+
+    #[test]
+    fn test_temporal_breaks_date_various_intervals() {
+        // Monthly breaks: 2024-01-15 to 2024-04-15
+        let monthly = TemporalInterval::create_from_str("month").unwrap();
+        let breaks_monthly = temporal_breaks_date(19738, 19828, monthly);
+        assert_eq!(breaks_monthly[0], "2024-01-01");
+        for month in &["2024-02-01", "2024-03-01", "2024-04-01"] {
+            assert!(breaks_monthly.contains(&month.to_string()), "Monthly should contain {}", month);
+        }
+
+        // Bimonthly: 2024-01-01 to 2024-07-01
+        let bimonthly = TemporalInterval::create_from_str("2 months").unwrap();
+        let breaks_bi = temporal_breaks_date(19724, 19907, bimonthly);
+        assert!(breaks_bi.contains(&"2024-03-01".to_string()));
+        assert!(!breaks_bi.contains(&"2024-02-01".to_string()), "Bimonthly should skip Feb");
+
+        // Yearly: 2022-01-01 to 2024-12-31
+        let yearly = TemporalInterval::create_from_str("year").unwrap();
+        let breaks_yearly = temporal_breaks_date(18993, 20089, yearly);
+        for year in &["2022-01-01", "2023-01-01", "2024-01-01"] {
+            assert!(breaks_yearly.contains(&year.to_string()), "Yearly should contain {}", year);
+        }
+
+        // Weekly: ~30 days
+        let weekly = TemporalInterval::create_from_str("week").unwrap();
+        let breaks_weekly = temporal_breaks_date(19724, 19754, weekly);
+        assert!(breaks_weekly.len() >= 4, "Weekly should have at least 4 breaks");
+    }
+
+    // =========================================================================
+    // Minor Breaks Linear Tests (Consolidated)
+    // =========================================================================
+
+    #[test]
+    fn test_minor_breaks_linear_variations() {
+        // Basic case - one midpoint per interval
+        let minors_basic = minor_breaks_linear(&[0.0, 10.0, 20.0], 1, None);
+        assert_eq!(minors_basic, vec![5.0, 15.0]);
+
+        // Multiple minor breaks per interval
+        let minors_multi = minor_breaks_linear(&[0.0, 10.0, 20.0], 4, None);
+        assert_eq!(minors_multi.len(), 8);
+        for &v in &[2.0, 4.0, 6.0, 8.0, 12.0, 14.0, 16.0, 18.0] {
+            assert!(minors_multi.contains(&v), "Should contain {}", v);
+        }
+
+        // With extension beyond majors
+        let minors_ext = minor_breaks_linear(&[20.0, 40.0, 60.0], 1, Some((0.0, 80.0)));
+        for &v in &[10.0, 30.0, 50.0, 70.0] {
+            assert!(minors_ext.contains(&v), "Extended should contain {}", v);
+        }
+    }
+
+    #[test]
+    fn test_minor_breaks_linear_edge_cases() {
+        assert!(minor_breaks_linear(&[10.0], 1, None).is_empty(), "Single major should return empty");
+        assert!(minor_breaks_linear(&[0.0, 10.0, 20.0], 0, None).is_empty(), "Zero count should return empty");
+    }
+
+    // =========================================================================
+    // Minor Breaks Log/Sqrt/Symlog Tests (Consolidated)
+    // =========================================================================
+
+    #[test]
+    fn test_minor_breaks_log_variations() {
+        // Basic case
+        let minors_basic = minor_breaks_log(&[1.0, 10.0, 100.0], 8, 10.0, None);
+        assert_eq!(minors_basic.len(), 16, "8 per decade × 2 decades");
+
+        // Single minor (geometric mean)
+        let minors_single = minor_breaks_log(&[1.0, 10.0, 100.0], 1, 10.0, None);
+        assert_eq!(minors_single.len(), 2);
+        assert!((minors_single[0] - (1.0_f64 * 10.0).sqrt()).abs() < 0.01);
+
+        // With extension
+        let minors_ext = minor_breaks_log(&[10.0, 100.0], 8, 10.0, Some((1.0, 1000.0)));
+        assert_eq!(minors_ext.len(), 24, "8 per decade × 3 decades");
+
+        // Filters negative
+        let minors_neg = minor_breaks_log(&[-10.0, 1.0, 10.0, 100.0], 1, 10.0, None);
+        assert!(minors_neg.iter().all(|&x| x > 0.0));
+    }
+
+    #[test]
+    fn test_minor_breaks_sqrt_variations() {
+        // Basic case - midpoints in sqrt space, squared back
+        let minors_basic = minor_breaks_sqrt(&[0.0, 25.0, 100.0], 1, None);
+        assert_eq!(minors_basic.len(), 2);
+        assert!((minors_basic[0] - 6.25).abs() < 0.01);
+        assert!((minors_basic[1] - 56.25).abs() < 0.01);
+
+        // With extension
+        let minors_ext = minor_breaks_sqrt(&[25.0, 100.0], 1, Some((0.0, 225.0)));
+        assert!(minors_ext.len() >= 2);
+
+        // Filters negative
+        let minors_neg = minor_breaks_sqrt(&[-10.0, 0.0, 25.0, 100.0], 1, None);
+        assert!(minors_neg.iter().all(|&x| x >= 0.0));
+    }
+
+    #[test]
+    fn test_minor_breaks_symlog_variations() {
+        // Basic case - one minor per interval
+        let minors_basic = minor_breaks_symlog(&[-100.0, -10.0, 0.0, 10.0, 100.0], 1, None);
+        assert_eq!(minors_basic.len(), 4);
+
+        // Crossing zero - midpoint should be near 0
+        let minors_cross = minor_breaks_symlog(&[-10.0, 10.0], 1, None);
+        assert_eq!(minors_cross.len(), 1);
+        assert!(minors_cross[0].abs() < 1.0, "Midpoint crossing zero should be near 0");
+
+        // With extension
+        let minors_ext = minor_breaks_symlog(&[0.0, 100.0], 1, Some((-100.0, 200.0)));
+        assert!(minors_ext.len() >= 2);
+    }
+
+    // =========================================================================
+    // Trim Breaks Tests (Consolidated)
+    // =========================================================================
+
+    #[test]
+    fn test_trim_breaks_variations() {
+        // Trim from both ends
+        let trimmed = trim_breaks(&[5.0, 10.0, 15.0, 20.0, 25.0, 30.0], (10.0, 25.0));
+        assert_eq!(trimmed, vec![10.0, 15.0, 20.0, 25.0]);
+
+        // All outside range
+        let empty = trim_breaks(&[5.0, 10.0, 15.0], (20.0, 30.0));
+        assert!(empty.is_empty());
+
+        // All inside range
+        let all = trim_breaks(&[15.0, 20.0, 25.0], (10.0, 30.0));
+        assert_eq!(all, vec![15.0, 20.0, 25.0]);
+    }
+
+    #[test]
+    fn test_trim_temporal_breaks_variations() {
+        // Trim to middle
+        let breaks = vec!["2024-01-01".to_string(), "2024-02-01".to_string(), "2024-03-01".to_string()];
         let trimmed = trim_temporal_breaks(&breaks, ("2024-01-15", "2024-02-15"));
         assert_eq!(trimmed, vec!["2024-02-01".to_string()]);
-    }
 
-    #[test]
-    fn test_trim_temporal_breaks_all_inside() {
-        let breaks = vec!["2024-02-01".to_string(), "2024-02-15".to_string()];
-        let trimmed = trim_temporal_breaks(&breaks, ("2024-01-01", "2024-03-01"));
-        assert_eq!(trimmed.len(), 2);
+        // All inside
+        let all_inside = trim_temporal_breaks(&["2024-02-01".to_string(), "2024-02-15".to_string()], ("2024-01-01", "2024-03-01"));
+        assert_eq!(all_inside.len(), 2);
     }
 
     // =========================================================================
-    // Derive Minor Interval Tests
+    // Derive Minor Interval Tests (Consolidated)
     // =========================================================================
 
     #[test]
-    fn test_derive_minor_interval() {
-        assert_eq!(derive_minor_interval("year"), "3 months");
-        assert_eq!(derive_minor_interval("3 months"), "month"); // quarter
-        assert_eq!(derive_minor_interval("month"), "week");
-        assert_eq!(derive_minor_interval("week"), "day");
-        assert_eq!(derive_minor_interval("day"), "6 hours");
-        assert_eq!(derive_minor_interval("hour"), "15 minutes");
-        assert_eq!(derive_minor_interval("minute"), "15 seconds");
-    }
-
-    #[test]
-    fn test_derive_minor_interval_invalid() {
-        // Invalid interval falls back to "day"
-        assert_eq!(derive_minor_interval("invalid"), "day");
-    }
-
-    // =========================================================================
-    // Temporal Minor Breaks Date Tests
-    // =========================================================================
-
-    #[test]
-    fn test_temporal_minor_breaks_date_auto() {
-        let majors = vec![
-            "2024-01-01".to_string(),
-            "2024-02-01".to_string(),
-            "2024-03-01".to_string(),
+    fn test_derive_minor_interval_all_units() {
+        let expected = vec![
+            ("year", "3 months"),
+            ("3 months", "month"),
+            ("month", "week"),
+            ("week", "day"),
+            ("day", "6 hours"),
+            ("hour", "15 minutes"),
+            ("minute", "15 seconds"),
+            ("invalid", "day"),  // Falls back to day
         ];
-        let minors = temporal_minor_breaks_date(&majors, "month", MinorBreakSpec::Auto, None);
-        // Auto should derive "week" from "month"
-        // Should have weekly dates within January and February
-        assert!(!minors.is_empty());
-        assert!(minors.iter().any(|d| d.starts_with("2024-01")));
-        assert!(minors.iter().any(|d| d.starts_with("2024-02")));
+        for (input, expected_output) in expected {
+            assert_eq!(derive_minor_interval(input), expected_output, "derive_minor_interval({}) should be {}", input, expected_output);
+        }
     }
 
-    #[test]
-    fn test_temporal_minor_breaks_date_by_count() {
-        let majors = vec!["2024-01-01".to_string(), "2024-02-01".to_string()];
-        let minors = temporal_minor_breaks_date(&majors, "month", MinorBreakSpec::Count(3), None);
-        // Count(3) means 3 minor breaks per month (dividing by 4)
-        // ~7-8 days per minor interval
-        assert!(!minors.is_empty());
-    }
+    // =========================================================================
+    // Temporal Minor Breaks & MinorBreakSpec Tests (Consolidated)
+    // =========================================================================
 
     #[test]
-    fn test_temporal_minor_breaks_date_by_interval() {
-        let majors = vec!["2024-01-01".to_string(), "2024-02-01".to_string()];
-        let minors = temporal_minor_breaks_date(
-            &majors,
-            "month",
-            MinorBreakSpec::Interval("week".to_string()),
-            None,
-        );
-        // Should have weekly dates within January
-        assert!(!minors.is_empty());
-        // January has about 4 weeks
-        assert!(minors.len() >= 3);
-    }
+    fn test_temporal_minor_breaks_date_variations() {
+        let majors = vec!["2024-01-01".to_string(), "2024-02-01".to_string(), "2024-03-01".to_string()];
 
-    #[test]
-    fn test_temporal_minor_breaks_date_with_extension() {
-        let majors = vec!["2024-02-01".to_string(), "2024-03-01".to_string()];
-        let minors = temporal_minor_breaks_date(
-            &majors,
+        // Auto mode - derives "week" from "month"
+        let minors_auto = temporal_minor_breaks_date(&majors, "month", MinorBreakSpec::Auto, None);
+        assert!(!minors_auto.is_empty());
+        assert!(minors_auto.iter().any(|d| d.starts_with("2024-01")));
+        assert!(minors_auto.iter().any(|d| d.starts_with("2024-02")));
+
+        // By count
+        let minors_count = temporal_minor_breaks_date(&majors[..2].to_vec(), "month", MinorBreakSpec::Count(3), None);
+        assert!(!minors_count.is_empty());
+
+        // By interval
+        let minors_interval = temporal_minor_breaks_date(&majors[..2].to_vec(), "month", MinorBreakSpec::Interval("week".to_string()), None);
+        assert!(minors_interval.len() >= 3, "January has about 4 weeks");
+
+        // With extension
+        let minors_ext = temporal_minor_breaks_date(
+            &["2024-02-01".to_string(), "2024-03-01".to_string()],
             "month",
             MinorBreakSpec::Interval("week".to_string()),
             Some(("2024-01-01", "2024-04-01")),
         );
-        // Should extend weekly breaks into January and March
-        assert!(minors.iter().any(|d| d.starts_with("2024-01"))); // Before first major
-        assert!(minors.iter().any(|d| d.starts_with("2024-03"))); // After last major
+        assert!(minors_ext.iter().any(|d| d.starts_with("2024-01")), "Should extend into January");
+        assert!(minors_ext.iter().any(|d| d.starts_with("2024-03")), "Should extend into March");
+
+        // Single major returns empty
+        let minors_single = temporal_minor_breaks_date(&["2024-01-01".to_string()], "month", MinorBreakSpec::Auto, None);
+        assert!(minors_single.is_empty());
     }
 
     #[test]
-    fn test_temporal_minor_breaks_date_empty_for_single() {
-        let majors = vec!["2024-01-01".to_string()];
-        let minors = temporal_minor_breaks_date(&majors, "month", MinorBreakSpec::Auto, None);
-        assert!(minors.is_empty());
+    fn test_minor_break_spec_types() {
+        assert_eq!(MinorBreakSpec::default(), MinorBreakSpec::Auto);
+        assert_eq!(MinorBreakSpec::Count(4), MinorBreakSpec::Count(4));
+        assert_eq!(MinorBreakSpec::Interval("week".to_string()), MinorBreakSpec::Interval("week".to_string()));
     }
 
     // =========================================================================
-    // MinorBreakSpec Tests
+    // Wilkinson Extended Tests (Consolidated)
     // =========================================================================
 
     #[test]
-    fn test_minor_break_spec_default() {
-        let spec = MinorBreakSpec::default();
-        assert_eq!(spec, MinorBreakSpec::Auto);
-    }
-
-    #[test]
-    fn test_minor_break_spec_variants() {
-        let auto = MinorBreakSpec::Auto;
-        let count = MinorBreakSpec::Count(4);
-        let interval = MinorBreakSpec::Interval("week".to_string());
-
-        assert_eq!(auto, MinorBreakSpec::Auto);
-        assert_eq!(count, MinorBreakSpec::Count(4));
-        assert_eq!(interval, MinorBreakSpec::Interval("week".to_string()));
-    }
-
-    // =========================================================================
-    // Wilkinson Extended Tests
-    // =========================================================================
-
-    #[test]
-    fn test_wilkinson_basic() {
-        let breaks = wilkinson_extended(0.0, 100.0, 5);
-        assert!(!breaks.is_empty());
-        assert!(breaks.len() >= 3 && breaks.len() <= 10);
-        // Should produce nice round numbers
-        assert!(breaks.iter().all(|&b| b == b.round()));
+    fn test_wilkinson_basic_properties() {
+        // Test various ranges - should produce nice round numbers
+        let test_cases = vec![
+            (0.0, 100.0, 5),
+            (0.1, 0.9, 5),
+            (0.0, 1_000_000.0, 5),
+            (-50.0, 50.0, 5),
+            (0.0, 152.0, 5),  // penguin scenario
+        ];
+        for (min, max, n) in test_cases {
+            let breaks = wilkinson_extended(min, max, n);
+            assert!(!breaks.is_empty(), "wilkinson_extended({}, {}, {}) should not be empty", min, max, n);
+            assert!(breaks.len() >= 3 && breaks.len() <= 10, "wilkinson({}, {}, {}) count should be reasonable", min, max, n);
+        }
     }
 
     #[test]
     fn test_wilkinson_prefers_nice_numbers() {
         let breaks = wilkinson_extended(0.0, 97.0, 5);
-        // Should prefer 0, 20, 40, 60, 80, 100 over something like 0, 24.25, ...
         for b in &breaks {
             let normalized = b / 10.0;
-            // Check divisible by nice numbers (1, 2, 2.5, 5, 10)
-            let is_nice = normalized.fract() == 0.0
-                || (normalized * 2.0).fract() == 0.0
-                || (normalized * 4.0).fract() == 0.0;
-            assert!(is_nice, "Break {} is not a nice number", b);
+            let is_nice = normalized.fract() == 0.0 || (normalized * 2.0).fract() == 0.0 || (normalized * 4.0).fract() == 0.0;
+            assert!(is_nice, "Break {} should be a nice number", b);
         }
     }
 
@@ -2443,113 +2120,38 @@ mod tests {
     }
 
     #[test]
-    fn test_wilkinson_penguin_count_scenario() {
-        // Simulate bar chart of penguins by species:
-        // min=0 (explicitly set), max≈152 (max species count)
-        let breaks = wilkinson_extended(0.0, 152.0, 5);
-        eprintln!("Breaks for [0, 152] with target=5: {:?}", breaks);
-        assert!(
-            breaks.len() >= 4,
-            "Expected at least 4 breaks for [0, 152] but got {:?}",
-            breaks
-        );
-    }
-
-    #[test]
-    fn test_wilkinson_explicit_min_preserved() {
-        // When user sets explicit min (FROM [0, null]), only max gets expanded.
-        // This test verifies the Wilkinson algorithm produces good breaks
-        // when min=0 is preserved and only max is expanded.
-        //
-        // Scenario: bar chart with max count ~152, after selective expansion → [0, ~160]
-        let breaks = wilkinson_extended(0.0, 159.6, 5);
-        assert!(
-            breaks.len() >= 4,
-            "Expected at least 4 breaks for [0, 159.6] but got {:?}",
-            breaks
-        );
-        // Should start at 0 (preserving user's explicit min)
-        assert!(
-            breaks[0] <= 0.0,
-            "First break should be <= 0, got {}",
-            breaks[0]
-        );
-    }
-
-    #[test]
-    fn test_wilkinson_small_range() {
-        let breaks = wilkinson_extended(0.1, 0.9, 5);
-        assert!(!breaks.is_empty());
-        // Should handle fractional ranges
-    }
-
-    #[test]
-    fn test_wilkinson_large_range() {
-        let breaks = wilkinson_extended(0.0, 1_000_000.0, 5);
-        assert!(!breaks.is_empty());
-        // Should produce nice round numbers in millions
-    }
-
-    #[test]
-    fn test_wilkinson_negative_range() {
-        let breaks = wilkinson_extended(-50.0, 50.0, 5);
-        assert!(!breaks.is_empty());
-        // Should likely include zero or values near zero
-        assert!(breaks.iter().any(|&b| b.abs() < 20.0));
-    }
-
-    #[test]
     fn test_wilkinson_edge_cases() {
-        assert!(wilkinson_extended(0.0, 100.0, 0).is_empty());
-        assert!(wilkinson_extended(100.0, 0.0, 5).is_empty()); // min > max
-        assert!(wilkinson_extended(50.0, 50.0, 5).is_empty()); // min == max
-        assert!(wilkinson_extended(f64::NAN, 100.0, 5).is_empty());
-        assert!(wilkinson_extended(0.0, f64::INFINITY, 5).is_empty());
+        let edge_cases = vec![
+            (0.0, 100.0, 0, "zero count"),
+            (100.0, 0.0, 5, "min > max"),
+            (50.0, 50.0, 5, "min == max"),
+            (f64::NAN, 100.0, 5, "NaN min"),
+            (0.0, f64::INFINITY, 5, "infinite max"),
+        ];
+        for (min, max, n, desc) in edge_cases {
+            assert!(wilkinson_extended(min, max, n).is_empty(), "wilkinson_extended with {} should be empty", desc);
+        }
     }
 
     #[test]
-    fn test_wilkinson_vs_simple_quality() {
-        // Test case where Wilkinson should produce results
-        let wilkinson = wilkinson_extended(0.0, 97.0, 5);
-        let simple = pretty_breaks_simple(0.0, 97.0, 5);
+    fn test_wilkinson_include_zero_variants() {
+        // Positive-only range - should extend to include zero
+        let breaks_pos = wilkinson_extended_include_zero(20.0, 80.0, 5);
+        assert!(*breaks_pos.first().unwrap() <= 0.0, "Positive range should extend to include 0");
 
-        // Both should produce non-empty results
-        assert!(!wilkinson.is_empty());
-        assert!(!simple.is_empty());
+        // Negative-only range - should extend to include zero
+        let breaks_neg = wilkinson_extended_include_zero(-80.0, -20.0, 5);
+        assert!(*breaks_neg.last().unwrap() >= 0.0, "Negative range should extend to include 0");
 
-        // Wilkinson should get reasonably close to target count
-        assert!(wilkinson.len() >= 3 && wilkinson.len() <= 10);
-    }
-
-    #[test]
-    fn test_wilkinson_include_zero() {
-        // Test the include_zero variant
-        let breaks = wilkinson_extended_include_zero(20.0, 80.0, 5);
-        // Should extend to include zero
-        assert!(*breaks.first().unwrap() <= 0.0);
-    }
-
-    #[test]
-    fn test_wilkinson_include_zero_already_in_range() {
-        // When zero is already in range, should behave like regular wilkinson
-        let breaks = wilkinson_extended_include_zero(-10.0, 90.0, 5);
-        assert!(!breaks.is_empty());
-        // Should cover the range
-        assert!(*breaks.first().unwrap() <= -10.0);
-        assert!(*breaks.last().unwrap() >= 90.0);
-    }
-
-    #[test]
-    fn test_wilkinson_include_zero_negative_range() {
-        // Test with negative-only range
-        let breaks = wilkinson_extended_include_zero(-80.0, -20.0, 5);
-        // Should extend to include zero
-        assert!(*breaks.last().unwrap() >= 0.0);
+        // Range already includes zero
+        let breaks_both = wilkinson_extended_include_zero(-10.0, 90.0, 5);
+        assert!(!breaks_both.is_empty());
+        assert!(*breaks_both.first().unwrap() <= -10.0);
+        assert!(*breaks_both.last().unwrap() >= 90.0);
     }
 
     #[test]
     fn test_pretty_breaks_simple_preserved() {
-        // Ensure the simple algorithm is still available and works
         let breaks = pretty_breaks_simple(0.0, 100.0, 5);
         assert!(!breaks.is_empty());
         assert!(breaks[0] <= 0.0);

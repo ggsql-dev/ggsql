@@ -77,6 +77,11 @@ pub const GLOBAL_DATA_KEY: &str = concatcp!(GGSQL_PREFIX, "global", GGSQL_SUFFIX
 /// Column name for row ordering in Vega-Lite (used by Path geom)
 pub const ORDER_COLUMN: &str = concatcp!(GGSQL_PREFIX, "order", GGSQL_SUFFIX);
 
+/// Column name for source identification in unified datasets
+/// Added to each row to identify which layer's data the row belongs to.
+/// Used with Vega-Lite filter transforms to select per-layer data.
+pub const SOURCE_COLUMN: &str = concatcp!(GGSQL_PREFIX, "source", GGSQL_SUFFIX);
+
 /// Alias for schema extraction queries
 pub const SCHEMA_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "schema", GGSQL_SUFFIX);
 
@@ -264,13 +269,20 @@ pub fn is_synthetic_column(name: &str) -> bool {
 /// Used by the Vega-Lite writer to store the upper bound of a bin
 /// when using `bin: "binned"` encoding with x2/y2 channels.
 ///
+/// If the column is an aesthetic column (e.g., `__ggsql_aes_x__`), returns
+/// the corresponding `2` aesthetic (e.g., `__ggsql_aes_x2__`).
+///
 /// # Example
 /// ```
 /// use ggsql::naming;
 /// assert_eq!(naming::bin_end_column("temperature"), "__ggsql_bin_end_temperature__");
-/// assert_eq!(naming::bin_end_column("x"), "__ggsql_bin_end_x__");
+/// assert_eq!(naming::bin_end_column("__ggsql_aes_x__"), "__ggsql_aes_x2__");
 /// ```
 pub fn bin_end_column(column: &str) -> String {
+    // If it's an aesthetic column, use the x2/y2 naming convention
+    if let Some(aesthetic) = extract_aesthetic_name(column) {
+        return aesthetic_column(&format!("{}2", aesthetic));
+    }
     format!("{}bin_end_{}{}", GGSQL_PREFIX, column, GGSQL_SUFFIX)
 }
 
@@ -408,17 +420,23 @@ mod tests {
     fn test_constants() {
         assert_eq!(GLOBAL_DATA_KEY, "__ggsql_global__");
         assert_eq!(ORDER_COLUMN, "__ggsql_order__");
+        assert_eq!(SOURCE_COLUMN, "__ggsql_source__");
         assert_eq!(SCHEMA_ALIAS, "__schema__");
     }
 
     #[test]
     fn test_bin_end_column() {
+        // Regular columns use bin_end prefix
         assert_eq!(
             bin_end_column("temperature"),
             "__ggsql_bin_end_temperature__"
         );
         assert_eq!(bin_end_column("x"), "__ggsql_bin_end_x__");
         assert_eq!(bin_end_column("value"), "__ggsql_bin_end_value__");
+
+        // Aesthetic columns use the x2/y2 convention
+        assert_eq!(bin_end_column("__ggsql_aes_x__"), "__ggsql_aes_x2__");
+        assert_eq!(bin_end_column("__ggsql_aes_y__"), "__ggsql_aes_y2__");
     }
 
     #[test]

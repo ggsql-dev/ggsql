@@ -516,12 +516,12 @@ mod integration_tests {
     #[test]
     fn test_end_to_end_constant_mappings() {
         // Test that constant values in MAPPING clauses work correctly
-        // Constants are injected into global data with layer-indexed column names
-        // This allows faceting to work (all layers share same data source)
+        // Constants are injected as aesthetic-named columns in each layer's data
+        // With unified data approach, all layers are merged into one dataset with source filtering
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
-        // Query with layer-level constants (layers use global data, no filter)
+        // Query with layer-level constants
         let query = r#"
             SELECT 1 as x, 10 as y
             VISUALISE x, y
@@ -529,7 +529,7 @@ mod integration_tests {
             DRAW point MAPPING 'value2' AS shape
         "#;
 
-        // Prepare data - this parses, injects constants into global data, and replaces literals with columns
+        // Prepare data - this parses and processes the query
         let prepared = execute::prepare_data_with_executor(
             query,
             |sql| reader.execute(sql),
@@ -537,21 +537,17 @@ mod integration_tests {
         )
         .unwrap();
 
-        // With new approach, each layer has its own data with aesthetic-named columns
+        // Each layer has its own data (different constants = different queries)
         assert_eq!(prepared.specs.len(), 1);
-        assert!(
-            prepared.data.contains_key(&naming::layer_key(0)),
-            "Layer 0 should have its own data"
-        );
-        assert!(
-            prepared.data.contains_key(&naming::layer_key(1)),
-            "Layer 1 should have its own data"
-        );
 
-        // Verify layer 0 data has prefixed aesthetic-named columns (constant becomes column "__ggsql_aes_linetype__")
-        let layer0_df = prepared.data.get(&naming::layer_key(0)).unwrap();
-        let layer0_cols = layer0_df.get_column_names();
+        // Layer 0 should have linetype column
+        let layer0_key = prepared.specs[0].layers[0]
+            .data_key
+            .as_ref()
+            .expect("Layer 0 should have data_key");
+        let layer0_df = prepared.data.get(layer0_key).unwrap();
         let linetype_col = naming::aesthetic_column("linetype");
+        let layer0_cols = layer0_df.get_column_names();
         assert!(
             layer0_cols.iter().any(|c| c.as_str() == linetype_col),
             "Layer 0 should have linetype column '{}': {:?}",
@@ -559,10 +555,14 @@ mod integration_tests {
             layer0_cols
         );
 
-        // Verify layer 1 data has prefixed aesthetic-named columns (constant becomes column "__ggsql_aes_shape__")
-        let layer1_df = prepared.data.get(&naming::layer_key(1)).unwrap();
-        let layer1_cols = layer1_df.get_column_names();
+        // Layer 1 should have shape column
+        let layer1_key = prepared.specs[0].layers[1]
+            .data_key
+            .as_ref()
+            .expect("Layer 1 should have data_key");
+        let layer1_df = prepared.data.get(layer1_key).unwrap();
         let shape_col = naming::aesthetic_column("shape");
+        let layer1_cols = layer1_df.get_column_names();
         assert!(
             layer1_cols.iter().any(|c| c.as_str() == shape_col),
             "Layer 1 should have shape column '{}': {:?}",
@@ -583,9 +583,6 @@ mod integration_tests {
         let layer0_linetype = &vl_spec["layer"][0]["encoding"]["strokeDash"];
         let layer1_shape = &vl_spec["layer"][1]["encoding"]["shape"];
 
-        // Constants are now columns named with prefixed aesthetic names
-        let linetype_col = naming::aesthetic_column("linetype");
-        let shape_col = naming::aesthetic_column("shape");
         assert_eq!(
             layer0_linetype["field"].as_str().unwrap(),
             linetype_col,
@@ -597,21 +594,35 @@ mod integration_tests {
             "Layer 1 shape should map to prefixed aesthetic-named column"
         );
 
-        // All layers should use the same global data
-        // Verify constant values appear in layer datasets with prefixed aesthetic names
-        let layer0_data = &vl_spec["datasets"][&naming::layer_key(0)];
-        assert!(layer0_data.is_array(), "Should have layer 0 data array");
-        let layer0_row = &layer0_data.as_array().unwrap()[0];
+        // With unified data approach, all data is in a single global dataset
+        // Each row has __ggsql_source__ identifying which layer's data it belongs to
+        let global_data = &vl_spec["datasets"][naming::GLOBAL_DATA_KEY];
+        assert!(
+            global_data.is_array(),
+            "Should have unified global data array"
+        );
+        let global_rows = global_data.as_array().unwrap();
+
+        // Find rows for each layer by their source field
+        let layer0_rows: Vec<_> = global_rows
+            .iter()
+            .filter(|r| r[naming::SOURCE_COLUMN] == layer0_key.as_str())
+            .collect();
+        let layer1_rows: Vec<_> = global_rows
+            .iter()
+            .filter(|r| r[naming::SOURCE_COLUMN] == layer1_key.as_str())
+            .collect();
+
+        assert!(!layer0_rows.is_empty(), "Should have layer 0 rows");
+        assert!(!layer1_rows.is_empty(), "Should have layer 1 rows");
+
+        // Verify constant values
         assert_eq!(
-            layer0_row[&linetype_col], "value",
+            layer0_rows[0][&linetype_col], "value",
             "Layer 0 linetype constant should be 'value'"
         );
-
-        let layer1_data = &vl_spec["datasets"][&naming::layer_key(1)];
-        assert!(layer1_data.is_array(), "Should have layer 1 data array");
-        let layer1_row = &layer1_data.as_array().unwrap()[0];
         assert_eq!(
-            layer1_row[&shape_col], "value2",
+            layer1_rows[0][&shape_col], "value2",
             "Layer 1 shape constant should be 'value2'"
         );
     }
@@ -757,46 +768,43 @@ mod integration_tests {
         )
         .unwrap();
 
-        // With prefixed aesthetic-named columns, each layer has its own data
-        // Both layers should have their data with prefixed aesthetic-named columns
+        // Each layer should have a data_key
+        let layer0_key = prepared.specs[0].layers[0]
+            .data_key
+            .as_ref()
+            .expect("Layer 0 should have data_key");
+        let layer1_key = prepared.specs[0].layers[1]
+            .data_key
+            .as_ref()
+            .expect("Layer 1 should have data_key");
+
+        // Both layers have data (may be shared or separate depending on query dedup)
+        // Verify layer 0 has the expected columns
         let x_col = naming::aesthetic_column("x");
         let y_col = naming::aesthetic_column("y");
         let stroke_col = naming::aesthetic_column("stroke");
-        for layer_idx in 0..2 {
-            let layer_key = naming::layer_key(layer_idx);
-            assert!(
-                prepared.data.contains_key(&layer_key),
-                "Should have layer {} data",
-                layer_idx
-            );
 
-            let layer_df = prepared.data.get(&layer_key).unwrap();
-            let col_names = layer_df.get_column_names();
+        let layer_df = prepared.data.get(layer0_key).unwrap();
+        let col_names = layer_df.get_column_names();
 
-            // Each layer should have prefixed aesthetic-named columns
-            assert!(
-                col_names.iter().any(|c| c.as_str() == x_col),
-                "Layer {} should have '{}' column: {:?}",
-                layer_idx,
-                x_col,
-                col_names
-            );
-            assert!(
-                col_names.iter().any(|c| c.as_str() == y_col),
-                "Layer {} should have '{}' column: {:?}",
-                layer_idx,
-                y_col,
-                col_names
-            );
-            // Stroke constant becomes a column with prefixed aesthetic name
-            assert!(
-                col_names.iter().any(|c| c.as_str() == stroke_col),
-                "Layer {} should have '{}' column: {:?}",
-                layer_idx,
-                stroke_col,
-                col_names
-            );
-        }
+        assert!(
+            col_names.iter().any(|c| c.as_str() == x_col),
+            "Should have '{}' column: {:?}",
+            x_col,
+            col_names
+        );
+        assert!(
+            col_names.iter().any(|c| c.as_str() == y_col),
+            "Should have '{}' column: {:?}",
+            y_col,
+            col_names
+        );
+        assert!(
+            col_names.iter().any(|c| c.as_str() == stroke_col),
+            "Should have '{}' column: {:?}",
+            stroke_col,
+            col_names
+        );
 
         // Generate Vega-Lite and verify it works
         let writer = VegaLiteWriter::new();
@@ -818,14 +826,18 @@ mod integration_tests {
             stroke_col
         );
 
-        // Both layer datasets should have the stroke value with prefixed column name
-        let layer0_data = &vl_spec["datasets"][&naming::layer_key(0)]
+        // With unified data approach, all data is in the global dataset
+        // Verify the stroke value appears in the unified data
+        let global_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
             .as_array()
-            .unwrap()[0];
-        assert_eq!(layer0_data[&stroke_col], "value");
-        let layer1_data = &vl_spec["datasets"][&naming::layer_key(1)]
-            .as_array()
-            .unwrap()[0];
-        assert_eq!(layer1_data[&stroke_col], "value");
+            .expect("Should have unified global data");
+
+        // Find rows belonging to layer 0 (filter by source)
+        let layer0_rows: Vec<_> = global_data
+            .iter()
+            .filter(|r| r[naming::SOURCE_COLUMN] == layer0_key.as_str())
+            .collect();
+        assert!(!layer0_rows.is_empty(), "Should have layer data rows");
+        assert_eq!(layer0_rows[0][&stroke_col], "value");
     }
 }

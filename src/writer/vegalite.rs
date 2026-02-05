@@ -97,6 +97,14 @@ fn build_label_expr(
 }
 
 /// Vega-Lite JSON writer
+/// Temporal type for binned date/datetime/time columns
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum TemporalType {
+    Date,
+    DateTime,
+    Time,
+}
+
 ///
 /// Generates Vega-Lite v6 specifications from ggsql specs and data.
 pub struct VegaLiteWriter {
@@ -280,6 +288,24 @@ impl VegaLiteWriter {
         None
     }
 
+    /// Find bin edges for a value that may be a truncated center (e.g., Date columns).
+    ///
+    /// This is more flexible than `center_to_bin_edges` - it matches a value to a bin
+    /// if the value is the floor of the expected center. Used for Date columns where
+    /// the SQL produces `floor(center)` due to date truncation.
+    fn value_to_bin_edges(value: f64, breaks: &[f64]) -> Option<(f64, f64)> {
+        for i in 0..breaks.len().saturating_sub(1) {
+            let lower = breaks[i];
+            let upper = breaks[i + 1];
+            let expected_center = (lower + upper) / 2.0;
+            // Match if value equals the floor of the expected center
+            if (value - expected_center.floor()).abs() < 1e-9 {
+                return Some((lower, upper));
+            }
+        }
+        None
+    }
+
     /// Convert Polars DataFrame to Vega-Lite data values with bin columns.
     ///
     /// For columns with binned scales, this replaces the center value with bin_start
@@ -307,12 +333,40 @@ impl VegaLiteWriter {
                 // Check if this column has binned data
                 let col_name_str = col_name.to_string();
                 if let Some(breaks) = binned_columns.get(&col_name_str) {
-                    if let Some(center) = value.as_f64() {
-                        if let Some((start, end)) = Self::center_to_bin_edges(center, breaks) {
-                            // Replace center with bin_start
-                            row_obj.insert(col_name_str.clone(), json!(start));
-                            // Add bin_end column
-                            row_obj.insert(naming::bin_end_column(&col_name_str), json!(end));
+                    // Check if this is a temporal string (date/datetime/time may have truncated centers)
+                    let temporal_info = value.as_str().and_then(Self::parse_temporal_string);
+
+                    // Try to get center as f64 - works for numeric columns
+                    let center_opt = value.as_f64().or_else(|| {
+                        // For temporal strings, use the parsed numeric value
+                        temporal_info.map(|(val, _)| val)
+                    });
+
+                    if let Some(center) = center_opt {
+                        // Try exact center match first, then fallback to truncated match for temporals
+                        let bin_edges = Self::center_to_bin_edges(center, breaks).or_else(|| {
+                            if temporal_info.is_some() {
+                                // Temporal columns may have truncated centers (floor)
+                                Self::value_to_bin_edges(center, breaks)
+                            } else {
+                                None
+                            }
+                        });
+
+                        if let Some((start, end)) = bin_edges {
+                            // Replace center with bin_start, preserving original value type
+                            if let Some((_, temporal_type)) = temporal_info {
+                                // Temporal column - format bin edges as ISO strings
+                                let start_str = Self::format_temporal(start, temporal_type);
+                                let end_str = Self::format_temporal(end, temporal_type);
+                                row_obj.insert(col_name_str.clone(), json!(start_str));
+                                row_obj
+                                    .insert(naming::bin_end_column(&col_name_str), json!(end_str));
+                            } else {
+                                // Numeric column - use raw values
+                                row_obj.insert(col_name_str.clone(), json!(start));
+                                row_obj.insert(naming::bin_end_column(&col_name_str), json!(end));
+                            }
                             continue;
                         }
                     }
@@ -328,9 +382,106 @@ impl VegaLiteWriter {
         Ok(values)
     }
 
+    /// Parse a date string (YYYY-MM-DD) to days since Unix epoch.
+    fn parse_date_to_days(s: &str) -> Option<f64> {
+        let date = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()?;
+        let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1)?;
+        Some((date - epoch).num_days() as f64)
+    }
+
+    /// Convert days since Unix epoch to ISO date string (YYYY-MM-DD).
+    fn days_to_iso_date(days: f64) -> String {
+        let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+        let date = epoch + chrono::Duration::days(days as i64);
+        date.format("%Y-%m-%d").to_string()
+    }
+
+    /// Parse a datetime string to microseconds since Unix epoch.
+    /// Accepts formats: "YYYY-MM-DDTHH:MM:SS.sssZ" or "YYYY-MM-DDTHH:MM:SS"
+    fn parse_datetime_to_micros(s: &str) -> Option<f64> {
+        // Try with milliseconds and Z suffix first
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+            return Some(dt.timestamp_micros() as f64);
+        }
+        // Try without timezone
+        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f") {
+            return Some(dt.and_utc().timestamp_micros() as f64);
+        }
+        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+            return Some(dt.and_utc().timestamp_micros() as f64);
+        }
+        None
+    }
+
+    /// Convert microseconds since Unix epoch to ISO datetime string.
+    fn micros_to_iso_datetime(micros: f64) -> String {
+        chrono::DateTime::from_timestamp_micros(micros as i64)
+            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
+            .unwrap_or_else(|| format!("{}", micros))
+    }
+
+    /// Parse a time string (HH:MM:SS or HH:MM:SS.sss) to nanoseconds since midnight.
+    fn parse_time_to_nanos(s: &str) -> Option<f64> {
+        use chrono::Timelike;
+        // Try with fractional seconds
+        if let Ok(t) = chrono::NaiveTime::parse_from_str(s, "%H:%M:%S%.f") {
+            let total_secs = t.hour() as i64 * 3600 + t.minute() as i64 * 60 + t.second() as i64;
+            let nanos = t.nanosecond() as i64;
+            return Some((total_secs * 1_000_000_000 + nanos) as f64);
+        }
+        // Try without fractional seconds
+        if let Ok(t) = chrono::NaiveTime::parse_from_str(s, "%H:%M:%S") {
+            let total_secs = t.hour() as i64 * 3600 + t.minute() as i64 * 60 + t.second() as i64;
+            return Some((total_secs * 1_000_000_000) as f64);
+        }
+        None
+    }
+
+    /// Convert nanoseconds since midnight to ISO time string.
+    fn nanos_to_iso_time(nanos: f64) -> String {
+        let nanos = nanos as i64;
+        let total_secs = nanos / 1_000_000_000;
+        let nano_part = (nanos % 1_000_000_000) as u32;
+        let hours = (total_secs / 3600) as u32;
+        let mins = ((total_secs % 3600) / 60) as u32;
+        let secs = (total_secs % 60) as u32;
+        chrono::NaiveTime::from_hms_nano_opt(hours, mins, secs, nano_part)
+            .map(|t| t.format("%H:%M:%S%.3f").to_string())
+            .unwrap_or_else(|| format!("{}ns", nanos))
+    }
+
+    /// Detect the temporal type of a string value.
+    /// Returns the parsed numeric value and the type.
+    fn parse_temporal_string(s: &str) -> Option<(f64, TemporalType)> {
+        // Try date first (YYYY-MM-DD)
+        if let Some(days) = Self::parse_date_to_days(s) {
+            return Some((days, TemporalType::Date));
+        }
+        // Try datetime (YYYY-MM-DDTHH:MM:SS...)
+        if let Some(micros) = Self::parse_datetime_to_micros(s) {
+            return Some((micros, TemporalType::DateTime));
+        }
+        // Try time (HH:MM:SS...)
+        if let Some(nanos) = Self::parse_time_to_nanos(s) {
+            return Some((nanos, TemporalType::Time));
+        }
+        None
+    }
+
+    /// Format a numeric temporal value back to ISO string.
+    fn format_temporal(value: f64, temporal_type: TemporalType) -> String {
+        match temporal_type {
+            TemporalType::Date => Self::days_to_iso_date(value),
+            TemporalType::DateTime => Self::micros_to_iso_datetime(value),
+            TemporalType::Time => Self::nanos_to_iso_time(value),
+        }
+    }
+
     /// Collect binned column information from spec.
     ///
     /// Returns a map of column name -> breaks array for all columns with binned scales.
+    /// The column name uses the aesthetic-prefixed format (e.g., `__ggsql_aes_x__`) since
+    /// that's what appears in the DataFrame after query execution.
     fn collect_binned_columns(&self, spec: &Plot) -> HashMap<String, Vec<f64>> {
         let mut binned_columns: HashMap<String, Vec<f64>> = HashMap::new();
 
@@ -351,7 +502,12 @@ impl VegaLiteWriter {
                 let break_values: Vec<f64> = breaks.iter().filter_map(|e| e.to_f64()).collect();
 
                 if break_values.len() >= 2 {
-                    // Find column name for this aesthetic from all layers
+                    // Insert the aesthetic column name (what's in the DataFrame after execution)
+                    let aes_col_name = naming::aesthetic_column(&scale.aesthetic);
+                    binned_columns.insert(aes_col_name, break_values.clone());
+
+                    // Also insert mappings for original column names (for unit tests and
+                    // cases where the full pipeline isn't used)
                     for layer in &spec.layers {
                         if let Some(AestheticValue::Column { name: col, .. }) =
                             layer.mappings.aesthetics.get(&scale.aesthetic)
@@ -373,6 +529,61 @@ impl VegaLiteWriter {
             .and_then(|s| s.scale_type.as_ref())
             .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
             .unwrap_or(false)
+    }
+
+    /// Unify multiple datasets into a single dataset with source identification.
+    ///
+    /// This concatenates all layer datasets into one unified dataset, adding a
+    /// `__ggsql_source__` field to each row that identifies which layer's data
+    /// the row belongs to. Each layer then uses a Vega-Lite transform filter
+    /// to select its data.
+    ///
+    /// # Arguments
+    /// * `datasets` - Map of dataset key to Vega-Lite JSON values array
+    ///
+    /// # Returns
+    /// Unified array of all rows with source identification
+    fn unify_datasets(&self, datasets: &Map<String, Value>) -> Result<Vec<Value>> {
+        // 1. Collect all unique column names across all datasets
+        let mut all_columns: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (_key, values) in datasets {
+            if let Some(arr) = values.as_array() {
+                for row in arr {
+                    if let Some(obj) = row.as_object() {
+                        for col_name in obj.keys() {
+                            all_columns.insert(col_name.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. For each dataset, for each row:
+        //    - Include all columns (null for missing)
+        //    - Add __ggsql_source__ field with dataset key
+        let mut unified = Vec::new();
+        for (key, values) in datasets {
+            if let Some(arr) = values.as_array() {
+                for row in arr {
+                    if let Some(obj) = row.as_object() {
+                        let mut new_row = Map::new();
+
+                        // Include all columns from union schema (null for missing)
+                        for col_name in &all_columns {
+                            let value = obj.get(col_name).cloned().unwrap_or(Value::Null);
+                            new_row.insert(col_name.clone(), value);
+                        }
+
+                        // Add source identifier
+                        new_row.insert(naming::SOURCE_COLUMN.to_string(), json!(key));
+
+                        unified.push(Value::Object(new_row));
+                    }
+                }
+            }
+        }
+
+        Ok(unified)
     }
 
     /// Map ggsql Geom to Vega-Lite mark type
@@ -1361,20 +1572,22 @@ impl Writer for VegaLiteWriter {
         self.validate(spec)?;
 
         // Determine which dataset key each layer should use
-        // A layer uses __layer_{idx}__ if:
-        // - It has an explicit source (FROM clause), OR
-        // - It has constants injected (no source but constants were added)
-        // Otherwise, use __global__
+        // Use layer.data_key if set (from execute.rs), otherwise fallback to legacy behavior
         let layer_data_keys: Vec<String> = spec
             .layers
             .iter()
             .enumerate()
-            .map(|(idx, _layer)| {
-                let layer_key = naming::layer_key(idx);
-                if data.contains_key(&layer_key) {
-                    layer_key
+            .map(|(idx, layer)| {
+                if let Some(ref key) = layer.data_key {
+                    key.clone()
                 } else {
-                    naming::GLOBAL_DATA_KEY.to_string()
+                    // Fallback: check if layer-specific data exists, otherwise use global
+                    let layer_key = naming::layer_key(idx);
+                    if data.contains_key(&layer_key) {
+                        layer_key
+                    } else {
+                        naming::GLOBAL_DATA_KEY.to_string()
+                    }
                 }
             })
             .collect();
@@ -1411,51 +1624,41 @@ impl Writer for VegaLiteWriter {
         // Collect binned column information from spec
         let binned_columns = self.collect_binned_columns(spec);
 
-        // Build datasets - convert all DataFrames to Vega-Lite format
+        // Build individual datasets - convert all DataFrames to Vega-Lite format
         // For binned columns, replace center values with bin_start and add bin_end columns
-        let mut datasets = Map::new();
+        let mut individual_datasets = Map::new();
         for (key, df) in data {
             let values = if binned_columns.is_empty() {
                 self.dataframe_to_values(df)?
             } else {
                 self.dataframe_to_values_with_bins(df, &binned_columns)?
             };
-            datasets.insert(key.clone(), json!(values));
+            individual_datasets.insert(key.clone(), json!(values));
         }
+
+        // Unify all datasets into a single dataset with source identification
+        // Each row gets a __ggsql_source__ field identifying which layer it belongs to
+        let unified_data = self.unify_datasets(&individual_datasets)?;
+
+        // Store unified dataset at GLOBAL_DATA_KEY
+        let mut datasets = Map::new();
+        datasets.insert(naming::GLOBAL_DATA_KEY.to_string(), json!(unified_data));
         vl_spec["datasets"] = Value::Object(datasets);
 
-        // Determine if faceting requires unified data (no per-layer data entries)
-        let faceting_mode = spec.facet.is_some();
-
-        // If faceting, validate all layers use the same data source
-        if faceting_mode {
-            let unique_keys: std::collections::HashSet<_> = layer_data_keys.iter().collect();
-            if unique_keys.len() > 1 {
-                return Err(GgsqlError::ValidationError(
-                    "Faceting requires all layers to use the same data source. \
-                     Layers with different FROM sources cannot be faceted."
-                        .to_string(),
-                ));
-            }
-        }
+        // Set top-level data reference to unified dataset
+        vl_spec["data"] = json!({"name": naming::GLOBAL_DATA_KEY});
 
         // Build layers array
+        // Each layer gets a filter transform to select its data from the unified dataset
         let mut layers = Vec::new();
         for (layer_idx, layer) in spec.layers.iter().enumerate() {
             let data_key = &layer_data_keys[layer_idx];
             let df = data.get(data_key).unwrap();
 
-            let mut layer_spec = if faceting_mode {
-                // No per-layer data when faceting - uses top-level data
-                json!({
-                    "mark": self.geom_to_mark(&layer.geom)
-                })
-            } else {
-                json!({
-                    "data": {"name": data_key},
-                    "mark": self.geom_to_mark(&layer.geom)
-                })
-            };
+            // Layer spec without per-layer data reference (uses unified top-level data)
+            let mut layer_spec = json!({
+                "mark": self.geom_to_mark(&layer.geom)
+            });
 
             // For Bar geom, set mark with width parameter
             if layer.geom.geom_type() == GeomType::Bar {
@@ -1475,6 +1678,19 @@ impl Writer for VegaLiteWriter {
                 });
             }
 
+            // Build transform array for this layer
+            // Always starts with a filter to select this layer's data from unified dataset
+            let mut transforms: Vec<Value> = Vec::new();
+
+            // Add source filter transform
+            // Filter: {"field": "__ggsql_source__", "equal": "<data_key>"}
+            transforms.push(json!({
+                "filter": {
+                    "field": naming::SOURCE_COLUMN,
+                    "equal": data_key
+                }
+            }));
+
             // Add window transform for Path geoms to preserve data order
             // (Line geom uses Vega-Lite's default x-axis sorting)
             if layer.geom.geom_type() == GeomType::Path {
@@ -1487,8 +1703,11 @@ impl Writer for VegaLiteWriter {
                     window_transform["groupby"] = json!(layer.partition_by);
                 }
 
-                layer_spec["transform"] = json!([window_transform]);
+                transforms.push(window_transform);
             }
+
+            // Set transform array on layer spec
+            layer_spec["transform"] = json!(transforms);
 
             // Build encoding for this layer
             // Track which aesthetic families have been titled to ensure only one title per family
@@ -1571,14 +1790,10 @@ impl Writer for VegaLiteWriter {
         self.apply_coord_transforms(spec, first_df, &mut vl_spec)?;
 
         // Handle faceting if present
+        // With unified data, faceting works regardless of layer data sources
         if let Some(facet) = &spec.facet {
-            // Determine the data key for faceting (prefer global data, fallback to first layer's data)
-            let facet_data_key = if data.contains_key(naming::GLOBAL_DATA_KEY) {
-                naming::GLOBAL_DATA_KEY.to_string()
-            } else {
-                layer_data_keys[0].clone()
-            };
-            let facet_data = data.get(&facet_data_key).unwrap();
+            // Use the unified global dataset for faceting
+            let facet_data = data.get(&layer_data_keys[0]).unwrap();
 
             use crate::plot::Facet;
             match facet {
@@ -1590,10 +1805,7 @@ impl Writer for VegaLiteWriter {
                             "type": field_type,
                         });
 
-                        // Set top-level data reference for faceting
-                        vl_spec["data"] = json!({"name": facet_data_key});
-
-                        // Move layer into spec, keep datasets at top level
+                        // Move layer into spec (data reference stays at top level)
                         let mut spec_inner = json!({});
                         if let Some(layer) = vl_spec.get("layer") {
                             spec_inner["layer"] = layer.clone();
@@ -1621,10 +1833,7 @@ impl Writer for VegaLiteWriter {
                     }
                     vl_spec["facet"] = Value::Object(facet_spec);
 
-                    // Set top-level data reference for faceting
-                    vl_spec["data"] = json!({"name": facet_data_key});
-
-                    // Move layer into spec, keep datasets at top level
+                    // Move layer into spec (data reference stays at top level)
                     let mut spec_inner = json!({});
                     if let Some(layer) = vl_spec.get("layer") {
                         spec_inner["layer"] = layer.clone();
@@ -4073,11 +4282,27 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        // Path layer should have transform with row_number
+        // Path layer should have transforms array
+        // First transform is filter (for unified data), second is window
         let layer_spec = &vl_spec["layer"][0];
-        let transform = &layer_spec["transform"][0];
-        assert_eq!(transform["window"][0]["op"], "row_number");
-        assert_eq!(transform["window"][0]["as"], "__ggsql_order__");
+        let transforms = layer_spec["transform"]
+            .as_array()
+            .expect("Should have transforms");
+        assert!(
+            transforms.len() >= 2,
+            "Path should have at least 2 transforms (filter + window)"
+        );
+
+        // First transform should be filter
+        assert!(
+            transforms[0].get("filter").is_some(),
+            "First transform should be filter"
+        );
+
+        // Second transform should be window with row_number
+        let window_transform = &transforms[1];
+        assert_eq!(window_transform["window"][0]["op"], "row_number");
+        assert_eq!(window_transform["window"][0]["as"], "__ggsql_order__");
 
         // Path should have order encoding
         let encoding = &layer_spec["encoding"];
@@ -4116,12 +4341,21 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        // Transform should have groupby for partition
-        let transform = &vl_spec["layer"][0]["transform"][0];
+        // Path layer has transforms: filter first, then window
+        let transforms = vl_spec["layer"][0]["transform"]
+            .as_array()
+            .expect("Should have transforms");
+        assert!(
+            transforms.len() >= 2,
+            "Should have at least filter + window transforms"
+        );
+
+        // Window transform (second) should have groupby for partition
+        let window_transform = &transforms[1];
         assert_eq!(
-            transform["groupby"],
+            window_transform["groupby"],
             json!(["trip_id"]),
-            "Transform should have groupby for partition_by columns"
+            "Window transform should have groupby for partition_by columns"
         );
     }
 
@@ -4150,11 +4384,20 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        // Line should NOT have transform
+        // Line layer should only have filter transform (no window)
         let layer_spec = &vl_spec["layer"][0];
+        let transforms = layer_spec["transform"]
+            .as_array()
+            .expect("Should have transforms");
+        // Only filter transform, no window
+        assert_eq!(
+            transforms.len(),
+            1,
+            "Line geom should only have filter transform"
+        );
         assert!(
-            layer_spec.get("transform").is_none() || layer_spec["transform"].is_null(),
-            "Line geom should not have transform"
+            transforms[0].get("filter").is_some(),
+            "Line geom transform should be filter only"
         );
 
         // Line should NOT have order encoding
@@ -5543,5 +5786,236 @@ mod tests {
             vl_spec["layer"][0]["encoding"]["opacity"]["value"], 0.75,
             "Opacity literal should pass through unchanged"
         );
+    }
+
+    // ========================================
+    // Unified Dataset Tests
+    // ========================================
+
+    #[test]
+    fn test_unified_data_structure() {
+        // Test that the writer produces a unified dataset with source column
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[4, 5, 6],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Should have a single unified dataset at GLOBAL_DATA_KEY
+        assert!(
+            vl_spec["datasets"][naming::GLOBAL_DATA_KEY].is_array(),
+            "Should have unified dataset at global key"
+        );
+
+        // Unified data should have __ggsql_source__ column
+        let unified_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
+        assert!(!unified_data.is_empty(), "Unified data should not be empty");
+        assert!(
+            unified_data[0].get(naming::SOURCE_COLUMN).is_some(),
+            "Each row should have source column"
+        );
+
+        // Top-level data should reference the unified dataset
+        assert_eq!(
+            vl_spec["data"]["name"],
+            naming::GLOBAL_DATA_KEY,
+            "Top-level data should reference unified dataset"
+        );
+    }
+
+    #[test]
+    fn test_layer_has_filter_transform() {
+        // Test that each layer has a filter transform for source selection
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[4, 5, 6],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Layer should have transform array with filter
+        let layer_spec = &vl_spec["layer"][0];
+        let transforms = layer_spec["transform"].as_array();
+        assert!(transforms.is_some(), "Layer should have transforms");
+
+        let transforms = transforms.unwrap();
+        assert!(!transforms.is_empty(), "Transforms should not be empty");
+
+        // First transform should be a filter on __ggsql_source__
+        let filter_transform = &transforms[0];
+        assert!(
+            filter_transform.get("filter").is_some(),
+            "First transform should be a filter"
+        );
+        assert_eq!(
+            filter_transform["filter"]["field"],
+            naming::SOURCE_COLUMN,
+            "Filter should be on source column"
+        );
+    }
+
+    #[test]
+    fn test_multi_layer_unified_data() {
+        // Test that multiple layers are unified into a single dataset
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+
+        // Layer 1: point geom
+        let layer1 = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer1);
+
+        // Layer 2: line geom
+        let layer2 = Layer::new(Geom::line())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer2);
+
+        // Create data with two layer entries
+        let mut data_map = HashMap::new();
+        let df1 = df! {
+            "x" => &[1, 2],
+            "y" => &[10, 20],
+        }
+        .unwrap();
+        let df2 = df! {
+            "x" => &[3, 4],
+            "y" => &[30, 40],
+        }
+        .unwrap();
+        data_map.insert(naming::layer_key(0), df1);
+        data_map.insert(naming::layer_key(1), df2);
+
+        let json_str = writer.write(&spec, &data_map).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Unified data should have all 4 rows (2 from each layer)
+        let unified_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
+        assert_eq!(unified_data.len(), 4, "Unified data should have 4 rows");
+
+        // Each layer should have distinct filter value
+        let layer0_filter = &vl_spec["layer"][0]["transform"][0]["filter"]["equal"];
+        let layer1_filter = &vl_spec["layer"][1]["transform"][0]["filter"]["equal"];
+
+        assert_eq!(
+            layer0_filter,
+            &naming::layer_key(0),
+            "Layer 0 filter should use layer_key(0)"
+        );
+        assert_eq!(
+            layer1_filter,
+            &naming::layer_key(1),
+            "Layer 1 filter should use layer_key(1)"
+        );
+    }
+
+    #[test]
+    fn test_unified_data_preserves_layer_separation() {
+        // Test that filter transforms correctly isolate layer data
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Create two layer datasets with different data
+        let mut data_map = HashMap::new();
+        let df1 = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 20, 30],
+        }
+        .unwrap();
+        let df2 = df! {
+            "x" => &[100, 200],
+            "y" => &[1000, 2000],
+        }
+        .unwrap();
+        data_map.insert(naming::layer_key(0), df1);
+        data_map.insert(naming::layer_key(1), df2);
+
+        let json_str = writer.write(&spec, &data_map).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Unified data should have all 5 rows
+        let unified_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
+        assert_eq!(
+            unified_data.len(),
+            5,
+            "Unified data should have 5 rows total"
+        );
+
+        // Count rows by source
+        let layer0_count = unified_data
+            .iter()
+            .filter(|r| r[naming::SOURCE_COLUMN] == naming::layer_key(0))
+            .count();
+        let layer1_count = unified_data
+            .iter()
+            .filter(|r| r[naming::SOURCE_COLUMN] == naming::layer_key(1))
+            .count();
+
+        assert_eq!(layer0_count, 3, "Layer 0 should have 3 rows");
+        assert_eq!(layer1_count, 2, "Layer 1 should have 2 rows");
     }
 }

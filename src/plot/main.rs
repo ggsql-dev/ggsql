@@ -169,13 +169,26 @@ impl Plot {
                     // This returns original_name if available, otherwise falls back to name
                     let label_source = value.label_name().unwrap_or(name);
 
-                    // Compute the label from the column name
-                    let column_name =
-                        if let Some(stat_name) = naming::extract_stat_name(label_source) {
-                            stat_name.to_string()
+                    // Compute the label from the column name, stripping synthetic prefixes:
+                    // 1. Stat columns: __ggsql_stat_count -> count
+                    // 2. Aesthetic columns: __ggsql_aes_color__ -> color
+                    //    Special case: stroke/fill aesthetics should show "color" since
+                    //    that's what users typically specify (color gets split internally)
+                    let column_name = if let Some(stat_name) =
+                        naming::extract_stat_name(label_source)
+                    {
+                        stat_name.to_string()
+                    } else if let Some(aes_name) = naming::extract_aesthetic_name(label_source) {
+                        // For stroke/fill with synthetic columns, use "color" as the label
+                        // since users typically write "color" not "stroke"/"fill"
+                        if matches!(aes_name, "stroke" | "fill") {
+                            "color".to_string()
                         } else {
-                            label_source.to_string()
-                        };
+                            aes_name.to_string()
+                        }
+                    } else {
+                        label_source.to_string()
+                    };
 
                     labels.labels.insert(primary.to_string(), column_name);
                 }
@@ -545,5 +558,59 @@ mod tests {
         let labels = spec.labels.as_ref().unwrap();
         // First layer's x mapping should win
         assert_eq!(labels.labels.get("x"), Some(&"date".to_string()));
+    }
+
+    #[test]
+    fn test_aesthetic_column_prefix_stripped_in_labels() {
+        // Test that __ggsql_aes_ prefix is stripped from labels
+        // This happens when literals are converted to aesthetic columns
+        let mut spec = Plot::new();
+
+        // Simulate a layer where a literal was converted to an aesthetic column
+        // e.g., 'Ozone' AS color becomes __ggsql_aes_stroke__ column (for line geoms)
+        // The label should be "color" since that's what users typically specify
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value"))
+            .with_aesthetic(
+                "stroke".to_string(),
+                AestheticValue::standard_column(naming::aesthetic_column("stroke")),
+            );
+        spec.layers.push(layer);
+
+        spec.compute_aesthetic_labels();
+
+        let labels = spec.labels.as_ref().unwrap();
+        // The stroke label should be "color", since stroke/fill come from color splitting
+        assert_eq!(
+            labels.labels.get("stroke"),
+            Some(&"color".to_string()),
+            "Stroke aesthetic should use 'color' label for user-friendliness"
+        );
+    }
+
+    #[test]
+    fn test_non_color_aesthetic_column_keeps_name() {
+        // Test that non-color aesthetic columns preserve their name
+        let mut spec = Plot::new();
+
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value"))
+            .with_aesthetic(
+                "size".to_string(),
+                AestheticValue::standard_column(naming::aesthetic_column("size")),
+            );
+        spec.layers.push(layer);
+
+        spec.compute_aesthetic_labels();
+
+        let labels = spec.labels.as_ref().unwrap();
+        // The size label should be "size", not "color"
+        assert_eq!(
+            labels.labels.get("size"),
+            Some(&"size".to_string()),
+            "Non-color aesthetic should keep its name"
+        );
     }
 }

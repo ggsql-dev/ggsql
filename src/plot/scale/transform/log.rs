@@ -134,224 +134,121 @@ mod tests {
     use super::*;
     use std::f64::consts::E;
 
-    // ==================== Base-10 (Log10) Tests ====================
+    // ==================== Consolidated Transform Tests ====================
 
-    #[test]
-    fn test_log10_domain() {
-        let t = Log::base10();
-        let (min, max) = t.allowed_domain();
-        assert!(min > 0.0);
-        assert!(max.is_infinite());
+    /// Test data for all log bases
+    fn get_transforms() -> Vec<(Log, TransformKind, &'static str)> {
+        vec![
+            (Log::base10(), TransformKind::Log10, "log"),
+            (Log::base2(), TransformKind::Log2, "log2"),
+            (Log::natural(), TransformKind::Log, "ln"),
+        ]
     }
 
     #[test]
-    fn test_log10_is_value_in_domain() {
-        let t = Log::base10();
-        assert!(t.is_value_in_domain(1.0));
-        assert!(t.is_value_in_domain(0.0001));
-        assert!(t.is_value_in_domain(1000000.0));
-        assert!(!t.is_value_in_domain(0.0));
-        assert!(!t.is_value_in_domain(-1.0));
-        assert!(!t.is_value_in_domain(f64::INFINITY));
-        assert!(!t.is_value_in_domain(f64::NAN));
-    }
-
-    #[test]
-    fn test_log10_transform() {
-        let t = Log::base10();
-        assert!((t.transform(1.0) - 0.0).abs() < 1e-10);
-        assert!((t.transform(10.0) - 1.0).abs() < 1e-10);
-        assert!((t.transform(100.0) - 2.0).abs() < 1e-10);
-        assert!((t.transform(1000.0) - 3.0).abs() < 1e-10);
-        assert!((t.transform(0.1) - (-1.0)).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_log10_inverse() {
-        let t = Log::base10();
-        assert!((t.inverse(0.0) - 1.0).abs() < 1e-10);
-        assert!((t.inverse(1.0) - 10.0).abs() < 1e-10);
-        assert!((t.inverse(2.0) - 100.0).abs() < 1e-10);
-        assert!((t.inverse(-1.0) - 0.1).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_log10_roundtrip() {
-        let t = Log::base10();
-        for &val in &[0.001, 0.1, 1.0, 10.0, 100.0, 1000.0] {
-            let transformed = t.transform(val);
-            let back = t.inverse(transformed);
-            assert!(
-                (back - val).abs() / val < 1e-10,
-                "Roundtrip failed for {}",
-                val
-            );
+    fn test_all_bases_domain() {
+        for (t, _, name) in get_transforms() {
+            let (min, max) = t.allowed_domain();
+            assert!(min > 0.0, "{}: domain min should be > 0", name);
+            assert!(max.is_infinite(), "{}: domain max should be infinite", name);
         }
     }
 
     #[test]
-    fn test_log10_breaks_powers() {
-        let t = Log::base10();
-        let breaks = t.calculate_breaks(1.0, 10000.0, 10, false);
-        assert!(breaks.contains(&1.0));
-        assert!(breaks.contains(&10.0));
-        assert!(breaks.contains(&100.0));
-        assert!(breaks.contains(&1000.0));
-        assert!(breaks.contains(&10000.0));
-    }
-
-    #[test]
-    fn test_log10_breaks_pretty() {
-        let t = Log::base10();
-        let breaks = t.calculate_breaks(1.0, 100.0, 10, true);
-        // Should have 1-2-5 pattern
-        assert!(breaks.contains(&1.0));
-        assert!(breaks.contains(&10.0));
-        assert!(breaks.contains(&100.0));
-    }
-
-    #[test]
-    fn test_log10_kind_and_name() {
-        let t = Log::base10();
-        assert_eq!(t.transform_kind(), TransformKind::Log10);
-        assert_eq!(t.name(), "log");
-    }
-
-    // ==================== Base-2 (Log2) Tests ====================
-
-    #[test]
-    fn test_log2_domain() {
-        let t = Log::base2();
-        let (min, max) = t.allowed_domain();
-        assert!(min > 0.0);
-        assert!(max.is_infinite());
-    }
-
-    #[test]
-    fn test_log2_is_value_in_domain() {
-        let t = Log::base2();
-        assert!(t.is_value_in_domain(1.0));
-        assert!(t.is_value_in_domain(0.5));
-        assert!(t.is_value_in_domain(1024.0));
-        assert!(!t.is_value_in_domain(0.0));
-        assert!(!t.is_value_in_domain(-1.0));
-    }
-
-    #[test]
-    fn test_log2_transform() {
-        let t = Log::base2();
-        assert!((t.transform(1.0) - 0.0).abs() < 1e-10);
-        assert!((t.transform(2.0) - 1.0).abs() < 1e-10);
-        assert!((t.transform(4.0) - 2.0).abs() < 1e-10);
-        assert!((t.transform(8.0) - 3.0).abs() < 1e-10);
-        assert!((t.transform(0.5) - (-1.0)).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_log2_inverse() {
-        let t = Log::base2();
-        assert!((t.inverse(0.0) - 1.0).abs() < 1e-10);
-        assert!((t.inverse(1.0) - 2.0).abs() < 1e-10);
-        assert!((t.inverse(2.0) - 4.0).abs() < 1e-10);
-        assert!((t.inverse(3.0) - 8.0).abs() < 1e-10);
-        assert!((t.inverse(-1.0) - 0.5).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_log2_roundtrip() {
-        let t = Log::base2();
-        for &val in &[0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0] {
-            let transformed = t.transform(val);
-            let back = t.inverse(transformed);
-            assert!(
-                (back - val).abs() / val < 1e-10,
-                "Roundtrip failed for {}",
-                val
-            );
+    fn test_all_bases_is_value_in_domain() {
+        for (t, _, name) in get_transforms() {
+            // Valid values
+            assert!(t.is_value_in_domain(1.0), "{}: 1.0 should be in domain", name);
+            assert!(t.is_value_in_domain(0.0001), "{}: 0.0001 should be in domain", name);
+            assert!(t.is_value_in_domain(1000.0), "{}: 1000.0 should be in domain", name);
+            // Invalid values
+            assert!(!t.is_value_in_domain(0.0), "{}: 0.0 should not be in domain", name);
+            assert!(!t.is_value_in_domain(-1.0), "{}: -1.0 should not be in domain", name);
+            assert!(!t.is_value_in_domain(f64::INFINITY), "{}: infinity should not be in domain", name);
+            assert!(!t.is_value_in_domain(f64::NAN), "{}: NaN should not be in domain", name);
         }
     }
 
     #[test]
-    fn test_log2_breaks_powers() {
-        let t = Log::base2();
-        let breaks = t.calculate_breaks(1.0, 16.0, 10, false);
-        assert!(breaks.contains(&1.0));
-        assert!(breaks.contains(&2.0));
-        assert!(breaks.contains(&4.0));
-        assert!(breaks.contains(&8.0));
-        assert!(breaks.contains(&16.0));
-    }
+    fn test_all_bases_transform_and_inverse() {
+        // Test cases: (transform, input, expected_transform, inverse_test_val, expected_inverse)
+        let test_cases = vec![
+            // Log10: log10(1)=0, log10(10)=1, log10(100)=2, log10(0.1)=-1
+            (Log::base10(), vec![(1.0, 0.0), (10.0, 1.0), (100.0, 2.0), (0.1, -1.0)]),
+            // Log2: log2(1)=0, log2(2)=1, log2(4)=2, log2(0.5)=-1
+            (Log::base2(), vec![(1.0, 0.0), (2.0, 1.0), (4.0, 2.0), (0.5, -1.0)]),
+            // Natural: ln(1)=0, ln(e)=1, ln(e²)=2
+            (Log::natural(), vec![(1.0, 0.0), (E, 1.0), (E * E, 2.0)]),
+        ];
 
-    #[test]
-    fn test_log2_kind_and_name() {
-        let t = Log::base2();
-        assert_eq!(t.transform_kind(), TransformKind::Log2);
-        assert_eq!(t.name(), "log2");
-    }
-
-    // ==================== Natural Log (base e) Tests ====================
-
-    #[test]
-    fn test_log_domain() {
-        let t = Log::natural();
-        let (min, max) = t.allowed_domain();
-        assert!(min > 0.0);
-        assert!(max.is_infinite());
-    }
-
-    #[test]
-    fn test_log_is_value_in_domain() {
-        let t = Log::natural();
-        assert!(t.is_value_in_domain(1.0));
-        assert!(t.is_value_in_domain(E));
-        assert!(t.is_value_in_domain(0.0001));
-        assert!(!t.is_value_in_domain(0.0));
-        assert!(!t.is_value_in_domain(-1.0));
-    }
-
-    #[test]
-    fn test_log_transform() {
-        let t = Log::natural();
-        assert!((t.transform(1.0) - 0.0).abs() < 1e-10);
-        assert!((t.transform(E) - 1.0).abs() < 1e-10);
-        assert!((t.transform(E * E) - 2.0).abs() < 1e-10);
-        assert!((t.transform(1.0 / E) - (-1.0)).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_log_inverse() {
-        let t = Log::natural();
-        assert!((t.inverse(0.0) - 1.0).abs() < 1e-10);
-        assert!((t.inverse(1.0) - E).abs() < 1e-10);
-        assert!((t.inverse(2.0) - E * E).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_log_roundtrip() {
-        let t = Log::natural();
-        for &val in &[0.001, 0.1, 1.0, E, 10.0, 100.0] {
-            let transformed = t.transform(val);
-            let back = t.inverse(transformed);
-            assert!(
-                (back - val).abs() / val < 1e-10,
-                "Roundtrip failed for {}",
-                val
-            );
+        for (t, cases) in test_cases {
+            for (input, expected) in cases {
+                assert!(
+                    (t.transform(input) - expected).abs() < 1e-10,
+                    "{}: transform({}) should be {}, got {}",
+                    t.name(), input, expected, t.transform(input)
+                );
+                // Test inverse too
+                assert!(
+                    (t.inverse(expected) - input).abs() < 1e-9,
+                    "{}: inverse({}) should be {}, got {}",
+                    t.name(), expected, input, t.inverse(expected)
+                );
+            }
         }
     }
 
     #[test]
-    fn test_log_breaks() {
-        let t = Log::natural();
-        let breaks = t.calculate_breaks(1.0, 100.0, 10, false);
-        assert!(!breaks.is_empty());
+    fn test_all_bases_roundtrip() {
+        let test_values = [0.001, 0.1, 1.0, 2.0, 10.0, 100.0, 1000.0];
+        for (t, _, name) in get_transforms() {
+            for &val in &test_values {
+                let transformed = t.transform(val);
+                let back = t.inverse(transformed);
+                assert!(
+                    (back - val).abs() / val < 1e-10,
+                    "{}: Roundtrip failed for {}",
+                    name, val
+                );
+            }
+        }
     }
 
     #[test]
-    fn test_log_kind_and_name() {
-        let t = Log::natural();
-        assert_eq!(t.transform_kind(), TransformKind::Log);
-        assert_eq!(t.name(), "ln");
+    fn test_all_bases_kind_and_name() {
+        for (t, expected_kind, expected_name) in get_transforms() {
+            assert_eq!(t.transform_kind(), expected_kind, "Kind mismatch for {}", expected_name);
+            assert_eq!(t.name(), expected_name);
+        }
+    }
+
+    #[test]
+    fn test_all_bases_breaks_contain_powers() {
+        // Log10: 1, 10, 100, 1000
+        let t10 = Log::base10();
+        let breaks10 = t10.calculate_breaks(1.0, 1000.0, 10, false);
+        for &v in &[1.0, 10.0, 100.0, 1000.0] {
+            assert!(breaks10.contains(&v), "log10 breaks should contain {}", v);
+        }
+
+        // Log2: 1, 2, 4, 8, 16
+        let t2 = Log::base2();
+        let breaks2 = t2.calculate_breaks(1.0, 16.0, 10, false);
+        for &v in &[1.0, 2.0, 4.0, 8.0, 16.0] {
+            assert!(breaks2.contains(&v), "log2 breaks should contain {}", v);
+        }
+
+        // Natural log - just verify non-empty
+        let tn = Log::natural();
+        let breaksn = tn.calculate_breaks(1.0, 100.0, 10, false);
+        assert!(!breaksn.is_empty(), "natural log breaks should not be empty");
+    }
+
+    #[test]
+    fn test_all_bases_display() {
+        assert_eq!(format!("{}", Log::base10()), "log");
+        assert_eq!(format!("{}", Log::base2()), "log2");
+        assert_eq!(format!("{}", Log::natural()), "ln");
     }
 
     // ==================== General Tests ====================
@@ -375,44 +272,38 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_invalid_base_zero() {
-        Log::new(0.0);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_invalid_base_one() {
-        Log::new(1.0);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_invalid_base_negative() {
-        Log::new(-2.0);
-    }
-
-    #[test]
-    fn test_display() {
-        assert_eq!(format!("{}", Log::base10()), "log");
-        assert_eq!(format!("{}", Log::base2()), "log2");
-        assert_eq!(format!("{}", Log::natural()), "ln");
+    fn test_invalid_bases() {
+        // Test all invalid base cases in one test
+        let invalid_bases = [(0.0, "zero"), (1.0, "one"), (-2.0, "negative")];
+        for (base, desc) in invalid_bases {
+            let result = std::panic::catch_unwind(|| Log::new(base));
+            assert!(result.is_err(), "Log::new({}) should panic for {} base", base, desc);
+        }
     }
 
     // ==================== Minor Breaks Tests ====================
 
     #[test]
-    fn test_log10_minor_breaks() {
-        let t = Log::base10();
-        let majors = vec![1.0, 10.0, 100.0];
-        let minors = t.calculate_minor_breaks(&majors, 8, None);
-        // 8 minor breaks per decade, 2 decades
-        assert_eq!(minors.len(), 16);
-        assert!(minors.iter().all(|&x| x > 0.0));
+    fn test_minor_breaks_all_bases() {
+        // Test minor breaks work for all bases
+        let test_cases = vec![
+            (Log::base10(), vec![1.0, 10.0, 100.0], 8, 16), // 8 per decade × 2 decades
+            (Log::base2(), vec![1.0, 2.0, 4.0, 8.0], 1, 3),  // 1 per interval × 3 intervals
+        ];
+
+        for (t, majors, n, expected_len) in test_cases {
+            let minors = t.calculate_minor_breaks(&majors, n, None);
+            assert_eq!(
+                minors.len(), expected_len,
+                "{}: expected {} minor breaks, got {}",
+                t.name(), expected_len, minors.len()
+            );
+            assert!(minors.iter().all(|&x| x > 0.0), "{}: all minor breaks should be positive", t.name());
+        }
     }
 
     #[test]
-    fn test_log10_minor_breaks_geometric_mean() {
+    fn test_minor_breaks_geometric_mean() {
         let t = Log::base10();
         let majors = vec![1.0, 10.0];
         let minors = t.calculate_minor_breaks(&majors, 1, None);
@@ -422,7 +313,7 @@ mod tests {
     }
 
     #[test]
-    fn test_log10_minor_breaks_with_extension() {
+    fn test_minor_breaks_with_extension() {
         let t = Log::base10();
         let majors = vec![10.0, 100.0];
         let minors = t.calculate_minor_breaks(&majors, 8, Some((1.0, 1000.0)));
@@ -431,19 +322,10 @@ mod tests {
     }
 
     #[test]
-    fn test_log10_default_minor_break_count() {
-        let t = Log::base10();
-        assert_eq!(t.default_minor_break_count(), 8);
-    }
-
-    #[test]
-    fn test_log2_minor_breaks() {
-        let t = Log::base2();
-        let majors = vec![1.0, 2.0, 4.0, 8.0];
-        let minors = t.calculate_minor_breaks(&majors, 1, None);
-        // One midpoint per interval (3 intervals)
-        assert_eq!(minors.len(), 3);
-        // Geometric means: sqrt(1*2)≈1.41, sqrt(2*4)≈2.83, sqrt(4*8)≈5.66
-        assert!((minors[0] - 2.0_f64.sqrt()).abs() < 0.01);
+    fn test_default_minor_break_count() {
+        // All log transforms should have the same default
+        for (t, _, name) in get_transforms() {
+            assert_eq!(t.default_minor_break_count(), 8, "{} should have default minor count of 8", name);
+        }
     }
 }

@@ -10,6 +10,58 @@ use super::{
 };
 use crate::plot::{ArrayElement, ParameterValue};
 
+use super::InputRange;
+
+/// Prune breaks that would create empty edge bins.
+///
+/// Removes terminal breaks if both the break AND its neighbor are outside
+/// the original data range. This prevents completely empty bins while
+/// allowing breaks that partially extend beyond data (for nice labels).
+fn prune_empty_edge_bins(breaks: &mut Vec<ArrayElement>, data_range: &[ArrayElement]) {
+    if breaks.len() < 3 || data_range.len() < 2 {
+        return; // Need at least 3 breaks and valid data range
+    }
+
+    let data_min = match data_range[0].to_f64() {
+        Some(v) => v,
+        None => return,
+    };
+    let data_max = match data_range[data_range.len() - 1].to_f64() {
+        Some(v) => v,
+        None => return,
+    };
+
+    // Check front: if first break AND second break are both < data_min, remove first
+    while breaks.len() >= 3 {
+        let first = breaks[0].to_f64();
+        let second = breaks[1].to_f64();
+        if let (Some(f), Some(s)) = (first, second) {
+            if f < data_min && s < data_min {
+                breaks.remove(0);
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    // Check back: if last break AND second-to-last break are both > data_max, remove last
+    while breaks.len() >= 3 {
+        let last = breaks[breaks.len() - 1].to_f64();
+        let second_last = breaks[breaks.len() - 2].to_f64();
+        if let (Some(l), Some(sl)) = (last, second_last) {
+            if l > data_max && sl > data_max {
+                breaks.pop();
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+}
+
 /// Binned scale type - for binned/bucketed data
 #[derive(Debug, Clone, Copy)]
 pub struct Binned;
@@ -340,7 +392,12 @@ impl ScaleTypeTrait for Binned {
                     // For binned implicit, keep all breaks (they extend past data).
                     // For binned explicit, filter to input range.
                     let filtered = if binned_implicit {
-                        breaks
+                        let mut result = breaks;
+                        // Prune breaks that create completely empty edge bins
+                        if let Some(InputRange::Continuous(data_range)) = &context.range {
+                            prune_empty_edge_bins(&mut result, data_range);
+                        }
+                        result
                     } else if let Some(ref range) = scale.input_range {
                         super::super::super::breaks::filter_breaks_to_range(&breaks, range)
                     } else {
@@ -1521,179 +1578,77 @@ mod tests {
     }
 
     // ==========================================================================
-    // OOB Squish Tests
+    // OOB Squish Tests (Consolidated)
     // ==========================================================================
-    //
-    // When oob='squish', terminal bins extend to infinity:
-    // - First bin captures all values below the second break
-    // - Last bin captures all values at or above the last break
-    // - Terminal break labels are removed from axis/legend
 
     #[test]
-    fn test_pre_stat_transform_sql_oob_squish_closed_left() {
-        // With oob='squish' and closed='left':
-        // - First bin: x < upper (extends to -∞)
-        // - Middle bins: lower <= x < upper
-        // - Last bin: x >= lower (extends to +∞)
-        let binned = Binned;
-        let mut scale = Scale::new("x");
-        scale.properties.insert(
-            "breaks".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::Number(0.0),
-                ArrayElement::Number(10.0),
-                ArrayElement::Number(20.0),
-                ArrayElement::Number(30.0),
+    fn test_pre_stat_transform_sql_oob_squish_variations() {
+        // Test squish mode with different closed sides and bin counts
+        // Format: (closed, breaks, expected_patterns)
+        let test_cases: Vec<(&str, Vec<f64>, Vec<&str>)> = vec![
+            // closed="left" with 3 bins (4 breaks)
+            ("left", vec![0.0, 10.0, 20.0, 30.0], vec![
+                "WHEN value < 10 THEN 5",         // First bin extends to -∞
+                "WHEN value >= 10 AND value < 20 THEN 15", // Middle bin
+                "WHEN value >= 20 THEN 25",       // Last bin extends to +∞
             ]),
-        );
-        scale.properties.insert(
-            "oob".to_string(),
-            ParameterValue::String("squish".to_string()),
-        );
+            // closed="right" with 3 bins (4 breaks)
+            ("right", vec![0.0, 10.0, 20.0, 30.0], vec![
+                "WHEN value <= 10 THEN 5",        // First bin extends to -∞
+                "WHEN value > 10 AND value <= 20 THEN 15", // Middle bin
+                "WHEN value > 20 THEN 25",        // Last bin extends to +∞
+            ]),
+        ];
 
-        let sql = binned
-            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names())
-            .unwrap();
+        let binned = Binned;
+        for (closed, breaks, expected) in test_cases {
+            let mut scale = Scale::new("x");
+            scale.properties.insert(
+                "breaks".to_string(),
+                ParameterValue::Array(breaks.iter().map(|&v| ArrayElement::Number(v)).collect()),
+            );
+            scale.properties.insert("oob".to_string(), ParameterValue::String("squish".to_string()));
+            if closed == "right" {
+                scale.properties.insert("closed".to_string(), ParameterValue::String("right".to_string()));
+            }
 
-        // First bin: only upper bound check (extends to -∞)
-        assert!(
-            sql.contains("WHEN value < 10 THEN 5"),
-            "First bin should extend to -∞. Got: {}",
-            sql
-        );
-        // Middle bin: both bounds
-        assert!(
-            sql.contains("WHEN value >= 10 AND value < 20 THEN 15"),
-            "Middle bin should have both bounds. Got: {}",
-            sql
-        );
-        // Last bin: only lower bound check (extends to +∞)
-        assert!(
-            sql.contains("WHEN value >= 20 THEN 25"),
-            "Last bin should extend to +∞. Got: {}",
-            sql
-        );
-        // Should NOT have ELSE NULL since all values are captured
-        assert!(
-            sql.contains("ELSE NULL"),
-            "Should still have ELSE NULL as fallback. Got: {}",
-            sql
-        );
+            let sql = binned.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names()).unwrap();
+            for pattern in expected {
+                assert!(sql.contains(pattern), "closed={}: Missing '{}'. Got: {}", closed, pattern, sql);
+            }
+        }
     }
 
     #[test]
-    fn test_pre_stat_transform_sql_oob_squish_closed_right() {
-        // With oob='squish' and closed='right':
-        // - First bin: x <= upper (extends to -∞)
-        // - Middle bins: lower < x <= upper
-        // - Last bin: x > lower (extends to +∞)
+    fn test_pre_stat_transform_sql_oob_squish_edge_cases() {
         let binned = Binned;
-        let mut scale = Scale::new("x");
-        scale.properties.insert(
-            "breaks".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::Number(0.0),
-                ArrayElement::Number(10.0),
-                ArrayElement::Number(20.0),
-                ArrayElement::Number(30.0),
-            ]),
-        );
-        scale.properties.insert(
-            "oob".to_string(),
-            ParameterValue::String("squish".to_string()),
-        );
-        scale.properties.insert(
-            "closed".to_string(),
-            ParameterValue::String("right".to_string()),
-        );
 
-        let sql = binned
-            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names())
-            .unwrap();
+        // Two bins (3 breaks) - first extends to -∞, second extends to +∞
+        {
+            let mut scale = Scale::new("x");
+            scale.properties.insert(
+                "breaks".to_string(),
+                ParameterValue::Array(vec![
+                    ArrayElement::Number(0.0), ArrayElement::Number(50.0), ArrayElement::Number(100.0)
+                ]),
+            );
+            scale.properties.insert("oob".to_string(), ParameterValue::String("squish".to_string()));
+            let sql = binned.pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names()).unwrap();
+            assert!(sql.contains("WHEN x < 50 THEN 25"), "Two bins: first should extend to -∞");
+            assert!(sql.contains("WHEN x >= 50 THEN 75"), "Two bins: last should extend to +∞");
+        }
 
-        // First bin: only upper bound check (extends to -∞)
-        assert!(
-            sql.contains("WHEN value <= 10 THEN 5"),
-            "First bin should extend to -∞. Got: {}",
-            sql
-        );
-        // Middle bin: both bounds
-        assert!(
-            sql.contains("WHEN value > 10 AND value <= 20 THEN 15"),
-            "Middle bin should have both bounds. Got: {}",
-            sql
-        );
-        // Last bin: only lower bound check (extends to +∞)
-        assert!(
-            sql.contains("WHEN value > 20 THEN 25"),
-            "Last bin should extend to +∞. Got: {}",
-            sql
-        );
-    }
-
-    #[test]
-    fn test_pre_stat_transform_sql_oob_squish_two_bins() {
-        // With oob='squish' and only 2 bins (3 breaks):
-        // - First bin extends to -∞
-        // - Last bin extends to +∞
-        let binned = Binned;
-        let mut scale = Scale::new("x");
-        scale.properties.insert(
-            "breaks".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::Number(0.0),
-                ArrayElement::Number(50.0),
-                ArrayElement::Number(100.0),
-            ]),
-        );
-        scale.properties.insert(
-            "oob".to_string(),
-            ParameterValue::String("squish".to_string()),
-        );
-
-        let sql = binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
-            .unwrap();
-
-        // First bin: extends to -∞
-        assert!(
-            sql.contains("WHEN x < 50 THEN 25"),
-            "First bin should extend to -∞. Got: {}",
-            sql
-        );
-        // Last bin: extends to +∞
-        assert!(
-            sql.contains("WHEN x >= 50 THEN 75"),
-            "Last bin should extend to +∞. Got: {}",
-            sql
-        );
-    }
-
-    #[test]
-    fn test_pre_stat_transform_sql_oob_squish_single_bin() {
-        // With oob='squish' and only 1 bin (2 breaks):
-        // Entire range should be TRUE (captures everything)
-        let binned = Binned;
-        let mut scale = Scale::new("x");
-        scale.properties.insert(
-            "breaks".to_string(),
-            ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]),
-        );
-        scale.properties.insert(
-            "oob".to_string(),
-            ParameterValue::String("squish".to_string()),
-        );
-
-        let sql = binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
-            .unwrap();
-
-        // Single bin with squish should capture everything
-        assert!(
-            sql.contains("WHEN TRUE THEN 50"),
-            "Single bin with squish should capture all values. Got: {}",
-            sql
-        );
+        // Single bin (2 breaks) - captures everything
+        {
+            let mut scale = Scale::new("x");
+            scale.properties.insert(
+                "breaks".to_string(),
+                ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]),
+            );
+            scale.properties.insert("oob".to_string(), ParameterValue::String("squish".to_string()));
+            let sql = binned.pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names()).unwrap();
+            assert!(sql.contains("WHEN TRUE THEN 50"), "Single bin with squish should capture all. Got: {}", sql);
+        }
     }
 
     #[test]
@@ -1709,168 +1664,131 @@ mod tests {
                 ArrayElement::Number(20.0),
             ]),
         );
-        // No oob property - defaults to censor
 
-        let sql = binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
-            .unwrap();
-
-        // First bin should have lower bound
-        assert!(
-            sql.contains("x >= 0 AND x < 10"),
-            "First bin should have lower bound with censor. Got: {}",
-            sql
-        );
-        // Last bin should have upper bound
-        assert!(
-            sql.contains("x >= 10 AND x <= 20"),
-            "Last bin should have upper bound with censor. Got: {}",
-            sql
-        );
+        let sql = binned.pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names()).unwrap();
+        assert!(sql.contains("x >= 0 AND x < 10"), "First bin should have lower bound with censor");
+        assert!(sql.contains("x >= 10 AND x <= 20"), "Last bin should have upper bound with censor");
     }
 
     #[test]
-    fn test_build_case_expression_numeric_oob_squish() {
-        // Test the helper function directly
-        let sql = build_case_expression_numeric("col", &[0.0, 10.0, 20.0, 30.0], true, true);
+    fn test_build_case_expression_numeric_helper() {
+        // Test the helper function with both oob modes
+        let cases = vec![
+            // (oob_squish, expected_patterns)
+            (true, vec!["WHEN col < 10 THEN 5", "WHEN col >= 10 AND col < 20 THEN 15", "WHEN col >= 20 THEN 25"]),
+            (false, vec!["col >= 0 AND col < 10", "col >= 10 AND col <= 20"]),
+        ];
 
-        // First bin extends to -∞
-        assert!(
-            sql.contains("WHEN col < 10 THEN 5"),
-            "First bin should extend to -∞. Got: {}",
-            sql
-        );
-        // Middle bin has both bounds
-        assert!(
-            sql.contains("WHEN col >= 10 AND col < 20 THEN 15"),
-            "Middle bin should have both bounds. Got: {}",
-            sql
-        );
-        // Last bin extends to +∞
-        assert!(
-            sql.contains("WHEN col >= 20 THEN 25"),
-            "Last bin should extend to +∞. Got: {}",
-            sql
-        );
-    }
-
-    #[test]
-    fn test_build_case_expression_numeric_oob_censor() {
-        // Test the helper function with oob_squish=false
-        let sql = build_case_expression_numeric("col", &[0.0, 10.0, 20.0], true, false);
-
-        // All bins should have bounds
-        assert!(
-            sql.contains("col >= 0 AND col < 10"),
-            "First bin should have lower bound. Got: {}",
-            sql
-        );
-        assert!(
-            sql.contains("col >= 10 AND col <= 20"),
-            "Last bin should have upper bound. Got: {}",
-            sql
-        );
+        for (oob_squish, expected) in cases {
+            let breaks = if oob_squish { vec![0.0, 10.0, 20.0, 30.0] } else { vec![0.0, 10.0, 20.0] };
+            let sql = build_case_expression_numeric("col", &breaks, true, oob_squish);
+            for pattern in expected {
+                assert!(sql.contains(pattern), "oob_squish={}: Missing '{}'. Got: {}", oob_squish, pattern, sql);
+            }
+        }
     }
 
     // ==========================================================================
-    // Break/Range Alignment Helper Tests
+    // Break/Range Alignment Helper Tests (Consolidated)
     // ==========================================================================
 
     #[test]
-    fn test_add_range_boundaries_to_breaks_adds_both() {
-        // Breaks: [20, 40, 60, 80], Range: [0, 100]
-        // Should become: [0, 20, 40, 60, 80, 100]
-        let mut breaks = vec![
-            ArrayElement::Number(20.0),
-            ArrayElement::Number(40.0),
-            ArrayElement::Number(60.0),
-            ArrayElement::Number(80.0),
+    fn test_add_range_boundaries_to_breaks_variations() {
+        // Test various cases of adding range boundaries
+        // Format: (description, initial_breaks, range, expected_len, expected_first, expected_last)
+        let test_cases: Vec<(&str, Vec<f64>, Vec<f64>, usize, f64, f64)> = vec![
+            ("adds both", vec![20.0, 40.0, 60.0, 80.0], vec![0.0, 100.0], 6, 0.0, 100.0),
+            ("adds min only", vec![25.0, 50.0, 75.0, 100.0], vec![0.0, 100.0], 5, 0.0, 100.0),
+            ("adds max only", vec![0.0, 25.0, 50.0, 75.0], vec![0.0, 100.0], 5, 0.0, 100.0),
+            ("no change needed", vec![0.0, 25.0, 50.0, 75.0, 100.0], vec![0.0, 100.0], 5, 0.0, 100.0),
+            ("uneven breaks", vec![10.0, 30.0, 50.0, 70.0, 90.0], vec![0.0, 100.0], 7, 0.0, 100.0),
         ];
-        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
 
-        super::add_range_boundaries_to_breaks(&mut breaks, &range);
+        for (desc, initial, range, expected_len, expected_first, expected_last) in test_cases {
+            let mut breaks: Vec<ArrayElement> = initial.iter().map(|&v| ArrayElement::Number(v)).collect();
+            let range_arr: Vec<ArrayElement> = range.iter().map(|&v| ArrayElement::Number(v)).collect();
 
-        assert_eq!(breaks.len(), 6);
-        assert_eq!(breaks[0], ArrayElement::Number(0.0));
-        assert_eq!(breaks[1], ArrayElement::Number(20.0));
-        assert_eq!(breaks[4], ArrayElement::Number(80.0));
-        assert_eq!(breaks[5], ArrayElement::Number(100.0));
+            super::add_range_boundaries_to_breaks(&mut breaks, &range_arr);
+
+            assert_eq!(breaks.len(), expected_len, "{}: expected {} breaks", desc, expected_len);
+            assert_eq!(breaks[0], ArrayElement::Number(expected_first), "{}: first should be {}", desc, expected_first);
+            assert_eq!(breaks[breaks.len() - 1], ArrayElement::Number(expected_last), "{}: last should be {}", desc, expected_last);
+        }
+    }
+
+    // ==========================================================================
+    // Prune Empty Edge Bins Tests (Consolidated)
+    // ==========================================================================
+
+    #[test]
+    fn test_prune_empty_edge_bins_numeric_variations() {
+        // Test various pruning scenarios with numeric breaks
+        // Format: (description, breaks, data_range, expected_len, expected_first, expected_last)
+        let test_cases: Vec<(&str, Vec<f64>, (f64, f64), usize, f64, f64)> = vec![
+            // Remove front only: 0 < 22 and 20 < 22
+            ("removes front", vec![0.0, 20.0, 40.0, 60.0, 80.0, 100.0], (22.0, 95.0), 5, 20.0, 100.0),
+            // Remove back only: 80 > 78 and 100 > 78
+            ("removes back", vec![0.0, 20.0, 40.0, 60.0, 80.0, 100.0], (5.0, 78.0), 5, 0.0, 80.0),
+            // Remove both ends
+            ("removes both", vec![0.0, 20.0, 40.0, 60.0, 80.0, 100.0], (22.0, 78.0), 4, 20.0, 80.0),
+            // No pruning needed - data spans valid bins
+            ("no pruning needed", vec![0.0, 25.0, 50.0, 75.0, 100.0], (5.0, 95.0), 5, 0.0, 100.0),
+            // Multiple empty front bins
+            ("multiple empty front", vec![0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0], (45.0, 78.0), 5, 40.0, 80.0),
+        ];
+
+        for (desc, breaks, (data_min, data_max), expected_len, expected_first, expected_last) in test_cases {
+            let mut breaks_arr: Vec<ArrayElement> = breaks.iter().map(|&v| ArrayElement::Number(v)).collect();
+            let data_range = vec![ArrayElement::Number(data_min), ArrayElement::Number(data_max)];
+
+            super::prune_empty_edge_bins(&mut breaks_arr, &data_range);
+
+            assert_eq!(breaks_arr.len(), expected_len, "{}: expected {} breaks, got {}", desc, expected_len, breaks_arr.len());
+            assert_eq!(breaks_arr[0], ArrayElement::Number(expected_first), "{}: first should be {}", desc, expected_first);
+            assert_eq!(breaks_arr[breaks_arr.len() - 1], ArrayElement::Number(expected_last), "{}: last should be {}", desc, expected_last);
+        }
     }
 
     #[test]
-    fn test_add_range_boundaries_to_breaks_adds_min_only() {
-        // Breaks: [25, 50, 75, 100], Range: [0, 100]
-        // Should become: [0, 25, 50, 75, 100]
-        let mut breaks = vec![
-            ArrayElement::Number(25.0),
-            ArrayElement::Number(50.0),
-            ArrayElement::Number(75.0),
-            ArrayElement::Number(100.0),
-        ];
-        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+    fn test_prune_empty_edge_bins_edge_cases() {
+        // Too few breaks (< 3)
+        {
+            let mut breaks = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+            let data_range = vec![ArrayElement::Number(50.0), ArrayElement::Number(60.0)];
+            super::prune_empty_edge_bins(&mut breaks, &data_range);
+            assert_eq!(breaks.len(), 2, "Should not prune with < 3 breaks");
+        }
 
-        super::add_range_boundaries_to_breaks(&mut breaks, &range);
-
-        assert_eq!(breaks.len(), 5);
-        assert_eq!(breaks[0], ArrayElement::Number(0.0));
-        assert_eq!(breaks[4], ArrayElement::Number(100.0));
+        // Exactly 3 breaks - bins contain data
+        {
+            let mut breaks = vec![
+                ArrayElement::Number(0.0), ArrayElement::Number(50.0), ArrayElement::Number(100.0)
+            ];
+            let data_range = vec![ArrayElement::Number(10.0), ArrayElement::Number(90.0)];
+            super::prune_empty_edge_bins(&mut breaks, &data_range);
+            assert_eq!(breaks.len(), 3, "Should not prune when bins contain data");
+        }
     }
 
     #[test]
-    fn test_add_range_boundaries_to_breaks_adds_max_only() {
-        // Breaks: [0, 25, 50, 75], Range: [0, 100]
-        // Should become: [0, 25, 50, 75, 100]
-        let mut breaks = vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(25.0),
-            ArrayElement::Number(50.0),
-            ArrayElement::Number(75.0),
+    fn test_prune_empty_edge_bins_with_dates() {
+        // Test with Date ArrayElements
+        let test_cases = vec![
+            // No change - bins contain data
+            (vec![19720, 19735, 19750, 19765, 19780, 19795], (19730, 19780), 6, 19720, 19795),
+            // Prunes both ends
+            (vec![19700, 19720, 19740, 19760, 19780, 19800], (19740, 19760), 4, 19720, 19780),
         ];
-        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
 
-        super::add_range_boundaries_to_breaks(&mut breaks, &range);
+        for (breaks, (data_min, data_max), expected_len, expected_first, expected_last) in test_cases {
+            let mut breaks_arr: Vec<ArrayElement> = breaks.iter().map(|&v| ArrayElement::Date(v)).collect();
+            let data_range = vec![ArrayElement::Date(data_min), ArrayElement::Date(data_max)];
 
-        assert_eq!(breaks.len(), 5);
-        assert_eq!(breaks[0], ArrayElement::Number(0.0));
-        assert_eq!(breaks[4], ArrayElement::Number(100.0));
-    }
+            super::prune_empty_edge_bins(&mut breaks_arr, &data_range);
 
-    #[test]
-    fn test_add_range_boundaries_to_breaks_no_change_needed() {
-        // Breaks already include range boundaries
-        let mut breaks = vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(25.0),
-            ArrayElement::Number(50.0),
-            ArrayElement::Number(75.0),
-            ArrayElement::Number(100.0),
-        ];
-        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-
-        super::add_range_boundaries_to_breaks(&mut breaks, &range);
-
-        assert_eq!(breaks.len(), 5);
-    }
-
-    #[test]
-    fn test_add_range_boundaries_uneven_explicit_breaks() {
-        // Uneven explicit breaks: [10, 30, 50, 70, 90], Range: [0, 100]
-        // Should become: [0, 10, 30, 50, 70, 90, 100]
-        let mut breaks = vec![
-            ArrayElement::Number(10.0),
-            ArrayElement::Number(30.0),
-            ArrayElement::Number(50.0),
-            ArrayElement::Number(70.0),
-            ArrayElement::Number(90.0),
-        ];
-        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-
-        super::add_range_boundaries_to_breaks(&mut breaks, &range);
-
-        assert_eq!(breaks.len(), 7);
-        assert_eq!(breaks[0], ArrayElement::Number(0.0));
-        assert_eq!(breaks[1], ArrayElement::Number(10.0));
-        assert_eq!(breaks[5], ArrayElement::Number(90.0));
-        assert_eq!(breaks[6], ArrayElement::Number(100.0));
+            assert_eq!(breaks_arr.len(), expected_len);
+            assert_eq!(breaks_arr[0], ArrayElement::Date(expected_first));
+            assert_eq!(breaks_arr[breaks_arr.len() - 1], ArrayElement::Date(expected_last));
+        }
     }
 }

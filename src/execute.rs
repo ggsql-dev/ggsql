@@ -777,8 +777,15 @@ fn build_aesthetic_schema(layer: &Layer, schema: &Schema) -> Schema {
         let aes_col_name = naming::aesthetic_column(aesthetic);
         match value {
             AestheticValue::Column { name, .. } => {
-                // Find the original column's type in schema
-                if let Some(original_col) = schema.iter().find(|c| c.name == *name) {
+                // The schema already has aesthetic-prefixed column names from build_layer_base_query,
+                // so we look up by aesthetic name, not the original column name.
+                // Fall back to original name for backwards compatibility with older schemas.
+                let col_info = schema
+                    .iter()
+                    .find(|c| c.name == aes_col_name)
+                    .or_else(|| schema.iter().find(|c| c.name == *name));
+
+                if let Some(original_col) = col_info {
                     aesthetic_schema.push(ColumnInfo {
                         name: aes_col_name,
                         dtype: original_col.dtype.clone(),
@@ -1236,26 +1243,25 @@ fn apply_pre_stat_transform(
     // Check layer mappings for aesthetics with scales that need pre-stat transformation
     // Handles both column mappings and literal mappings (which are injected as synthetic columns)
     for (aesthetic, value) in &layer.mappings.aesthetics {
-        // Get the column name - either the mapped column or the synthetic constant column
-        let col_name = if let Some(col) = value.column_name() {
-            col.to_string()
-        } else if value.is_literal() {
-            // Literals are injected as synthetic columns like __ggsql_const_{aesthetic}__
-            naming::const_column(aesthetic)
-        } else {
-            continue;
-        };
+        // The query has already renamed columns to aesthetic names via build_layer_base_query,
+        // so we use the aesthetic column name for SQL generation and schema lookup.
+        let aes_col_name = naming::aesthetic_column(aesthetic);
 
-        // Skip if we already have a transform for this column
+        // Skip if we already have a transform for this aesthetic column
         // (can happen when fill and stroke both map to the same column)
-        if transformed_columns.contains(&col_name) {
+        if transformed_columns.contains(&aes_col_name) {
             continue;
         }
 
-        // Find column dtype from schema
+        // Skip if this aesthetic is not mapped to a column or literal
+        if value.column_name().is_none() && !value.is_literal() {
+            continue;
+        }
+
+        // Find column dtype from schema using aesthetic column name
         let col_dtype = schema
             .iter()
-            .find(|c| c.name == col_name)
+            .find(|c| c.name == aes_col_name)
             .map(|c| c.dtype.clone())
             .unwrap_or(DataType::String); // Default to String if not found
 
@@ -1265,12 +1271,15 @@ fn apply_pre_stat_transform(
                 // Get pre-stat SQL transformation from scale type (if applicable)
                 // Each scale type's pre_stat_transform_sql() returns None if not applicable
                 if let Some(sql) =
-                    scale_type.pre_stat_transform_sql(&col_name, &col_dtype, scale, type_names)
+                    scale_type.pre_stat_transform_sql(&aes_col_name, &col_dtype, scale, type_names)
                 {
-                    transformed_columns.insert(col_name.clone());
-                    transform_exprs.push((col_name, sql));
+                    transformed_columns.insert(aes_col_name.clone());
+                    transform_exprs.push((aes_col_name, sql));
+                } else {
                 }
+            } else {
             }
+        } else {
         }
     }
 
@@ -1309,12 +1318,13 @@ fn apply_pre_stat_transform(
         )
     };
 
-    format!(
+    let final_query = format!(
         "SELECT * {}, {} FROM ({})",
         exclude_clause,
         col_exprs.join(", "),
         query
-    )
+    );
+    final_query
 }
 
 /// Part 1: Build the initial layer query with SELECT, casts, filters, and aesthetic renames.
@@ -1962,22 +1972,44 @@ where
         }
     }
 
-    // Phase 3: Map results to layers (clone shared results)
+    // Phase 3: Assign data to layers (clone only when needed)
+    // Key by (query, serialized_remappings) to detect when layers can share data
+    // Layers with identical query AND remappings share data via data_key
+    let mut config_to_key: HashMap<(String, String), String> = HashMap::new();
+
     for (idx, query) in layer_queries.iter().enumerate() {
-        let df = query_to_result.get(query).unwrap().clone();
-        data_map.insert(naming::layer_key(idx), df);
+        let layer = &mut specs[0].layers[idx];
+        let remappings_key = serde_json::to_string(&layer.remappings).unwrap_or_default();
+        let config_key = (query.clone(), remappings_key);
+
+        if let Some(existing_key) = config_to_key.get(&config_key) {
+            // Same query AND same remappings - share data
+            layer.data_key = Some(existing_key.clone());
+        } else {
+            // Need own data entry (either first occurrence or different remappings)
+            let layer_key = naming::layer_key(idx);
+            let df = query_to_result.get(query).unwrap().clone();
+            data_map.insert(layer_key.clone(), df);
+            config_to_key.insert(config_key, layer_key.clone());
+            layer.data_key = Some(layer_key);
+        }
     }
 
     // Phase 4: Apply remappings (rename stat columns to prefixed aesthetic names)
     // e.g., __ggsql_stat_count → __ggsql_aes_y__
     // Note: Prefixed aesthetic names persist through the entire pipeline
-    for (idx, layer) in specs[0].layers.iter_mut().enumerate() {
-        let layer_key = naming::layer_key(idx);
-        if let Some(df) = data_map.remove(&layer_key) {
-            let df_with_remappings = apply_remappings_post_query(df, layer)?;
-            data_map.insert(layer_key, df_with_remappings);
-
-            // Update layer mappings to include remapped aesthetics
+    // Track processed keys to avoid duplicate work on shared datasets
+    let mut processed_keys: HashSet<String> = HashSet::new();
+    for layer in specs[0].layers.iter_mut() {
+        if let Some(ref key) = layer.data_key {
+            if processed_keys.insert(key.clone()) {
+                // First time seeing this data - process it
+                if let Some(df) = data_map.remove(key) {
+                    let df_with_remappings = apply_remappings_post_query(df, layer)?;
+                    data_map.insert(key.clone(), df_with_remappings);
+                }
+            }
+            // Update layer mappings for all layers (even if data shared)
             update_mappings_for_remappings(layer);
         }
     }
@@ -2020,6 +2052,9 @@ where
     for spec in &specs {
         apply_scale_oob(spec, &mut data_map)?;
     }
+
+    // Prune unnecessary columns from each layer's DataFrame
+    prune_dataframes_per_layer(&specs, &mut data_map)?;
 
     Ok(PreparedData {
         data: data_map,
@@ -2130,6 +2165,10 @@ fn create_missing_scales_post_stat(spec: &mut Plot) {
 /// (e.g., binning histogram's count output if remapped to fill).
 ///
 /// Called after resolve_scales() so that breaks have been calculated.
+///
+/// This handles binning for aesthetics that get their values from stat transforms
+/// (e.g., SCALE BINNED fill when fill is remapped from count). Aesthetics that
+/// are directly mapped from source columns are pre-stat binned via SQL transforms.
 fn apply_post_stat_binning(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Result<()> {
     for scale in &spec.scales {
         // Only process Binned scales
@@ -2166,6 +2205,13 @@ fn apply_post_stat_binning(spec: &Plot, data_map: &mut HashMap<String, DataFrame
             if let Some(df) = data_map.get(&data_key) {
                 // Skip if column doesn't exist in this data source
                 if df.column(&col_name).is_err() {
+                    continue;
+                }
+
+                // Skip post-stat binning for aesthetic columns (like __ggsql_aes_x__)
+                // because pre_stat_transform already binned them via SQL.
+                // Post-stat binning only applies to stat columns or remapped aesthetics.
+                if naming::is_aesthetic_column(&col_name) {
                     continue;
                 }
 
@@ -3030,11 +3076,31 @@ fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Re
         let column_sources =
             find_columns_for_aesthetic_with_sources(&spec.layers, &scale.aesthetic, data_map);
 
+        // Helper to check if element is numeric-like (Number, Date, DateTime, Time)
+        fn is_numeric_element(elem: &ArrayElement) -> bool {
+            matches!(
+                elem,
+                ArrayElement::Number(_)
+                    | ArrayElement::Date(_)
+                    | ArrayElement::DateTime(_)
+                    | ArrayElement::Time(_)
+            )
+        }
+
+        // Helper to extract numeric value from element (dates are days, datetime is µs, etc.)
+        fn extract_numeric(elem: &ArrayElement) -> Option<f64> {
+            match elem {
+                ArrayElement::Number(n) => Some(*n),
+                ArrayElement::Date(d) => Some(*d as f64),
+                ArrayElement::DateTime(dt) => Some(*dt as f64),
+                ArrayElement::Time(t) => Some(*t as f64),
+                _ => None,
+            }
+        }
+
         // Determine if this is a numeric or discrete range
-        let is_numeric_range = matches!(
-            (&input_range[0], input_range.get(1)),
-            (ArrayElement::Number(_), Some(ArrayElement::Number(_)))
-        );
+        let is_numeric_range = is_numeric_element(&input_range[0])
+            && input_range.get(1).map_or(false, is_numeric_element);
 
         // Apply transformation to each (data_key, column_name) pair
         for (data_key, col_name) in column_sources {
@@ -3045,9 +3111,12 @@ fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Re
                 }
 
                 let transformed = if is_numeric_range {
-                    // Numeric range - extract min/max
-                    let (range_min, range_max) = match (&input_range[0], &input_range[1]) {
-                        (ArrayElement::Number(lo), ArrayElement::Number(hi)) => (*lo, *hi),
+                    // Numeric range - extract min/max (works for Number, Date, DateTime, Time)
+                    let (range_min, range_max) = match (
+                        extract_numeric(&input_range[0]),
+                        input_range.get(1).and_then(extract_numeric),
+                    ) {
+                        (Some(lo), Some(hi)) => (lo, hi),
                         _ => continue,
                     };
                     apply_oob_to_column_numeric(df, &col_name, range_min, range_max, oob_mode)?
@@ -3164,9 +3233,10 @@ fn apply_oob_to_column_numeric(
                 .map(|opt| opt.is_none_or(|v| v >= range_min && v <= range_max))
                 .collect();
 
-            df.filter(&mask).map_err(|e| {
+            let result = df.filter(&mask).map_err(|e| {
                 GgsqlError::InternalError(format!("Failed to filter DataFrame: {}", e))
-            })
+            })?;
+            Ok(result)
         }
         OOB_SQUISH => {
             // Clamp values to [range_min, range_max]
@@ -3255,6 +3325,101 @@ fn apply_oob_to_column_discrete(
         .with_column(new_series)
         .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))?;
     Ok(result)
+}
+
+// =============================================================================
+// Column Pruning
+// =============================================================================
+
+/// Collect the set of column names required for a specific layer.
+///
+/// Returns column names needed for:
+/// - Aesthetic mappings (e.g., `__ggsql_aes_x__`, `__ggsql_aes_y__`)
+/// - Bin end columns for binned scales (e.g., `__ggsql_aes_x2__`)
+/// - Facet variables (shared across all layers)
+/// - Partition columns (for Vega-Lite detail encoding)
+/// - Order column for Path geoms
+fn collect_layer_required_columns(layer: &Layer, spec: &Plot) -> HashSet<String> {
+    use crate::plot::layer::geom::GeomType;
+
+    let mut required = HashSet::new();
+
+    // Facet variables (shared across all layers)
+    if let Some(ref facet) = spec.facet {
+        for var in facet.get_variables() {
+            required.insert(var);
+        }
+    }
+
+    // Aesthetic columns for this layer
+    for aesthetic in layer.mappings.aesthetics.keys() {
+        let aes_col = naming::aesthetic_column(aesthetic);
+        required.insert(aes_col.clone());
+
+        // Check if this aesthetic has a binned scale
+        if let Some(scale) = spec.find_scale(aesthetic) {
+            if let Some(ref scale_type) = scale.scale_type {
+                if scale_type.scale_type_kind() == ScaleTypeKind::Binned {
+                    required.insert(naming::bin_end_column(&aes_col));
+                }
+            }
+        }
+    }
+
+    // Partition columns for this layer (used by Vega-Lite detail encoding)
+    for col in &layer.partition_by {
+        required.insert(col.clone());
+    }
+
+    // Order column for Path geoms
+    if layer.geom.geom_type() == GeomType::Path {
+        required.insert(naming::ORDER_COLUMN.to_string());
+    }
+
+    required
+}
+
+/// Prune columns from a DataFrame to only include required columns.
+///
+/// Columns that don't exist in the DataFrame are silently ignored.
+fn prune_dataframe(df: &DataFrame, required: &HashSet<String>) -> Result<DataFrame> {
+    let columns_to_keep: Vec<String> = df
+        .get_column_names()
+        .into_iter()
+        .filter(|name| required.contains(name.as_str()))
+        .map(|name| name.to_string())
+        .collect();
+
+    if columns_to_keep.is_empty() {
+        return Err(GgsqlError::InternalError(format!(
+            "No columns remain after pruning. Required columns: {:?}",
+            required
+        )));
+    }
+
+    df.select(&columns_to_keep)
+        .map_err(|e| GgsqlError::InternalError(format!("Failed to prune columns: {}", e)))
+}
+
+/// Prune all DataFrames in the data map based on layer requirements.
+///
+/// Each layer's DataFrame is pruned to only include columns needed by that layer.
+fn prune_dataframes_per_layer(
+    specs: &[Plot],
+    data_map: &mut HashMap<String, DataFrame>,
+) -> Result<()> {
+    for spec in specs {
+        for layer in &spec.layers {
+            if let Some(ref data_key) = layer.data_key {
+                if let Some(df) = data_map.get(data_key) {
+                    let required = collect_layer_required_columns(layer, spec);
+                    let pruned = prune_dataframe(df, &required)?;
+                    data_map.insert(data_key.clone(), pruned);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Build data map from a query using DuckDB reader
@@ -3427,53 +3592,74 @@ mod tests {
     // ========================================
 
     #[test]
-    fn test_transform_cte_references_single() {
-        let sql = "SELECT * FROM sales WHERE year = 2024";
-        let mut cte_names = HashSet::new();
-        cte_names.insert("sales".to_string());
+    fn test_transform_cte_references() {
+        // Test cases: (sql, cte_names, expected_contains, expected_not_contains)
+        let test_cases: Vec<(
+            &str,
+            Vec<&str>,
+            Vec<&str>,    // strings that should be in result
+            Option<&str>, // exact match (if result should equal this)
+        )> = vec![
+            // Single CTE reference
+            (
+                "SELECT * FROM sales WHERE year = 2024",
+                vec!["sales"],
+                vec!["FROM __ggsql_cte_sales_", "__ WHERE year = 2024"],
+                None,
+            ),
+            // Multiple CTE references
+            (
+                "SELECT * FROM sales JOIN targets ON sales.date = targets.date",
+                vec!["sales", "targets"],
+                vec!["FROM __ggsql_cte_sales_", "JOIN __ggsql_cte_targets_"],
+                None,
+            ),
+            // No matching CTE (unchanged)
+            (
+                "SELECT * FROM other_table",
+                vec!["sales"],
+                vec![],
+                Some("SELECT * FROM other_table"),
+            ),
+            // Empty CTE names (unchanged)
+            (
+                "SELECT * FROM sales",
+                vec![],
+                vec![],
+                Some("SELECT * FROM sales"),
+            ),
+        ];
 
-        let result = transform_cte_references(sql, &cte_names);
+        for (sql, cte_names_vec, expected_contains, exact_match) in test_cases {
+            let cte_names: HashSet<String> =
+                cte_names_vec.iter().map(|s| s.to_string()).collect();
+            let result = transform_cte_references(sql, &cte_names);
 
-        // CTE table names now include session UUID
-        assert!(result.starts_with("SELECT * FROM __ggsql_cte_sales_"));
-        assert!(result.ends_with("__ WHERE year = 2024"));
-        assert!(result.contains(naming::session_id()));
-    }
-
-    #[test]
-    fn test_transform_cte_references_multiple() {
-        let sql = "SELECT * FROM sales JOIN targets ON sales.date = targets.date";
-        let mut cte_names = HashSet::new();
-        cte_names.insert("sales".to_string());
-        cte_names.insert("targets".to_string());
-
-        let result = transform_cte_references(sql, &cte_names);
-
-        // CTE table names now include session UUID
-        assert!(result.contains("FROM __ggsql_cte_sales_"));
-        assert!(result.contains("JOIN __ggsql_cte_targets_"));
-        assert!(result.contains(naming::session_id()));
-    }
-
-    #[test]
-    fn test_transform_cte_references_no_match() {
-        let sql = "SELECT * FROM other_table";
-        let mut cte_names = HashSet::new();
-        cte_names.insert("sales".to_string());
-
-        let result = transform_cte_references(sql, &cte_names);
-
-        assert_eq!(result, "SELECT * FROM other_table");
-    }
-
-    #[test]
-    fn test_transform_cte_references_empty() {
-        let sql = "SELECT * FROM sales";
-        let cte_names = HashSet::new();
-
-        let result = transform_cte_references(sql, &cte_names);
-
-        assert_eq!(result, "SELECT * FROM sales");
+            if let Some(expected) = exact_match {
+                assert_eq!(
+                    result, expected,
+                    "SQL '{}' should remain unchanged",
+                    sql
+                );
+            } else {
+                for expected in &expected_contains {
+                    assert!(
+                        result.contains(expected),
+                        "Result '{}' should contain '{}' for SQL '{}'",
+                        result,
+                        expected,
+                        sql
+                    );
+                }
+                // When CTEs are transformed, result should contain session UUID
+                if !cte_names_vec.is_empty() {
+                    assert!(
+                        result.contains(naming::session_id()),
+                        "Result should contain session UUID"
+                    );
+                }
+            }
+        }
     }
 
     // ========================================
@@ -3629,13 +3815,29 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // With new approach, all layers have their own data
-        assert!(result.data.contains_key(&naming::layer_key(0)));
-        assert!(result.data.contains_key(&naming::layer_key(1)));
+        // Both layers should have data_keys
+        let layer0_key = result.specs[0].layers[0]
+            .data_key
+            .as_ref()
+            .expect("Layer 0 should have data_key");
+        let layer1_key = result.specs[0].layers[1]
+            .data_key
+            .as_ref()
+            .expect("Layer 1 should have data_key");
 
-        // Both layers should have 3 rows (from the same source)
-        assert_eq!(result.data.get(&naming::layer_key(0)).unwrap().height(), 3);
-        assert_eq!(result.data.get(&naming::layer_key(1)).unwrap().height(), 3);
+        // Both layer data should exist
+        assert!(
+            result.data.contains_key(layer0_key),
+            "Should have layer 0 data"
+        );
+        assert!(
+            result.data.contains_key(layer1_key),
+            "Should have layer 1 data"
+        );
+
+        // Both should have 3 rows
+        assert_eq!(result.data.get(layer0_key).unwrap().height(), 3);
+        assert_eq!(result.data.get(layer1_key).unwrap().height(), 3);
     }
 
     #[cfg(feature = "duckdb")]
@@ -5555,74 +5757,45 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_apply_oob_censor_filters_data() {
+    fn test_apply_oob_numeric_operations() {
         use polars::prelude::*;
 
-        // Create DataFrame with values 1..10
-        let df = DataFrame::new(vec![
-            Series::new("x".into(), vec![1.0f64, 5.0, 10.0, 15.0, 20.0]).into(),
-            Series::new("y".into(), vec![10.0f64, 20.0, 30.0, 40.0, 50.0]).into(),
-        ])
-        .unwrap();
+        // Test cases: (oob_mode, expected_height, expected_values)
+        let test_cases: Vec<(&str, usize, Vec<f64>)> = vec![
+            // Censor: filters out values outside range [5, 15]
+            ("censor", 3, vec![5.0, 10.0, 15.0]),
+            // Squish: clamps values to range [5, 15]
+            ("squish", 5, vec![5.0, 5.0, 10.0, 15.0, 15.0]),
+            // Keep: preserves all values unchanged
+            ("keep", 5, vec![1.0, 5.0, 10.0, 15.0, 20.0]),
+        ];
 
-        // Apply censor to keep only values in [5, 15]
-        let result = apply_oob_to_column_numeric(&df, "x", 5.0, 15.0, "censor").unwrap();
+        for (oob_mode, expected_height, expected_values) in test_cases {
+            let df = DataFrame::new(vec![
+                Series::new("x".into(), vec![1.0f64, 5.0, 10.0, 15.0, 20.0]).into(),
+                Series::new("y".into(), vec![10.0f64, 20.0, 30.0, 40.0, 50.0]).into(),
+            ])
+            .unwrap();
 
-        // Should have 3 rows: 5, 10, 15
-        assert_eq!(result.height(), 3);
+            let result = apply_oob_to_column_numeric(&df, "x", 5.0, 15.0, oob_mode).unwrap();
 
-        // Check values
-        let x_col = result.column("x").unwrap();
-        let x_series = x_col.as_materialized_series().f64().unwrap();
-        let values: Vec<f64> = x_series.into_iter().flatten().collect();
-        assert_eq!(values, vec![5.0, 10.0, 15.0]);
-    }
+            assert_eq!(
+                result.height(),
+                expected_height,
+                "OOB mode '{}' should have {} rows",
+                oob_mode,
+                expected_height
+            );
 
-    #[test]
-    fn test_apply_oob_squish_clamps_data() {
-        use polars::prelude::*;
-
-        // Create DataFrame with values 1..10
-        let df = DataFrame::new(vec![
-            Series::new("x".into(), vec![1.0f64, 5.0, 10.0, 15.0, 20.0]).into(),
-            Series::new("y".into(), vec![10.0f64, 20.0, 30.0, 40.0, 50.0]).into(),
-        ])
-        .unwrap();
-
-        // Apply squish to clamp values to [5, 15]
-        let result = apply_oob_to_column_numeric(&df, "x", 5.0, 15.0, "squish").unwrap();
-
-        // Should still have 5 rows
-        assert_eq!(result.height(), 5);
-
-        // Check clamped values: [1→5, 5, 10, 15, 20→15]
-        let x_col = result.column("x").unwrap();
-        let x_series = x_col.as_materialized_series().f64().unwrap();
-        let values: Vec<f64> = x_series.into_iter().flatten().collect();
-        assert_eq!(values, vec![5.0, 5.0, 10.0, 15.0, 15.0]);
-    }
-
-    #[test]
-    fn test_apply_oob_keep_preserves_data() {
-        use polars::prelude::*;
-
-        // Create DataFrame with values 1..10
-        let df = DataFrame::new(vec![Series::new(
-            "x".into(),
-            vec![1.0f64, 5.0, 10.0, 15.0, 20.0],
-        )
-        .into()])
-        .unwrap();
-
-        // Apply keep - should not modify data
-        let result = apply_oob_to_column_numeric(&df, "x", 5.0, 15.0, "keep").unwrap();
-
-        // Should still have 5 rows with original values
-        assert_eq!(result.height(), 5);
-        let x_col = result.column("x").unwrap();
-        let x_series = x_col.as_materialized_series().f64().unwrap();
-        let values: Vec<f64> = x_series.into_iter().flatten().collect();
-        assert_eq!(values, vec![1.0, 5.0, 10.0, 15.0, 20.0]);
+            let x_col = result.column("x").unwrap();
+            let x_series = x_col.as_materialized_series().f64().unwrap();
+            let values: Vec<f64> = x_series.into_iter().flatten().collect();
+            assert_eq!(
+                values, expected_values,
+                "OOB mode '{}' produced wrong values",
+                oob_mode
+            );
+        }
     }
 
     #[test]
@@ -5852,7 +6025,9 @@ mod tests {
         assert_eq!(df.height(), 2);
 
         // Verify only rows with x=1,2 (categories A,B) remain
-        let x_col = df.column("x").unwrap();
+        // After pruning, columns are renamed to aesthetic names
+        let x_col_name = naming::aesthetic_column("x");
+        let x_col = df.column(&x_col_name).unwrap();
         let x_values: Vec<i32> = x_col
             .as_materialized_series()
             .i32()
@@ -5943,7 +6118,9 @@ mod tests {
         assert_eq!(df.height(), 2);
 
         // Verify only y values for rows with allowed categories remain
-        let y_col = df.column("y").unwrap();
+        // After pruning, columns are renamed to aesthetic names
+        let y_col_name = naming::aesthetic_column("y");
+        let y_col = df.column(&y_col_name).unwrap();
         let y_values: Vec<i32> = y_col
             .as_materialized_series()
             .i32()
@@ -6432,47 +6609,25 @@ mod tests {
     }
 
     #[test]
-    fn test_gets_default_scale_positional() {
-        // Position aesthetics should get default scale (type inferred from data)
-        assert!(gets_default_scale("x"));
-        assert!(gets_default_scale("y"));
-        assert!(gets_default_scale("xmin"));
-        assert!(gets_default_scale("xmax"));
-        assert!(gets_default_scale("ymin"));
-        assert!(gets_default_scale("ymax"));
-        assert!(gets_default_scale("xend"));
-        assert!(gets_default_scale("yend"));
-        assert!(gets_default_scale("x2"));
-        assert!(gets_default_scale("y2"));
-    }
+    fn test_gets_default_scale() {
+        // Aesthetics that SHOULD get default scale (type inferred from data)
+        let should_get_scale = [
+            // Position aesthetics
+            "x", "y", "xmin", "xmax", "ymin", "ymax", "xend", "yend", "x2", "y2",
+            // Color aesthetics (color/colour/col are split to fill/stroke)
+            "fill", "stroke",
+            // Size, opacity, shape, linetype
+            "size", "linewidth", "opacity", "shape", "linetype",
+        ];
+        for aes in should_get_scale {
+            assert!(gets_default_scale(aes), "'{}' should get default scale", aes);
+        }
 
-    #[test]
-    fn test_gets_default_scale_color() {
-        // Color aesthetics should get default scale
-        // Note: color/colour/col are split to fill/stroke before scale creation
-        assert!(gets_default_scale("fill"));
-        assert!(gets_default_scale("stroke"));
-    }
-
-    #[test]
-    fn test_gets_default_scale_size_and_other() {
-        // Size, opacity, shape, linetype should get default scale
-        assert!(gets_default_scale("size"));
-        assert!(gets_default_scale("linewidth"));
-        assert!(gets_default_scale("opacity"));
-        assert!(gets_default_scale("shape"));
-        assert!(gets_default_scale("linetype"));
-    }
-
-    #[test]
-    fn test_gets_default_scale_identity_aesthetics() {
-        // Text, label, group, detail, tooltip should NOT get default scale (use Identity)
-        assert!(!gets_default_scale("text"));
-        assert!(!gets_default_scale("label"));
-        assert!(!gets_default_scale("group"));
-        assert!(!gets_default_scale("detail"));
-        assert!(!gets_default_scale("tooltip"));
-        assert!(!gets_default_scale("unknown_aesthetic"));
+        // Aesthetics that should NOT get default scale (use Identity)
+        let should_not_get_scale = ["text", "label", "group", "detail", "tooltip", "unknown_aesthetic"];
+        for aes in should_not_get_scale {
+            assert!(!gets_default_scale(aes), "'{}' should NOT get default scale", aes);
+        }
     }
 
     #[cfg(feature = "duckdb")]
@@ -6941,170 +7096,92 @@ mod tests {
     // =============================================================================
 
     #[test]
-    fn test_infer_scale_target_type_discrete_boolean_range() {
-        use crate::plot::scale::ScaleType;
-
-        // Discrete scale with boolean input range should infer Boolean type
-        let scale = Scale {
-            aesthetic: "color".to_string(),
-            scale_type: Some(ScaleType::discrete()),
-            input_range: Some(vec![
-                ArrayElement::Boolean(true),
-                ArrayElement::Boolean(false),
-            ]),
-            explicit_input_range: false,
-            output_range: None,
-            transform: None,
-            explicit_transform: false,
-            properties: HashMap::new(),
-            resolved: false,
-            label_mapping: None,
-            label_template: None,
-        };
-
-        let target_type = infer_scale_target_type(&scale);
-        assert_eq!(target_type, Some(ArrayElementType::Boolean));
-    }
-
-    #[test]
-    fn test_infer_scale_target_type_discrete_string_range() {
-        use crate::plot::scale::ScaleType;
-
-        // Discrete scale with string input range should infer String type
-        let scale = Scale {
-            aesthetic: "color".to_string(),
-            scale_type: Some(ScaleType::discrete()),
-            input_range: Some(vec![
-                ArrayElement::String("A".to_string()),
-                ArrayElement::String("B".to_string()),
-            ]),
-            explicit_input_range: false,
-            output_range: None,
-            transform: None,
-            explicit_transform: false,
-            properties: HashMap::new(),
-            resolved: false,
-            label_mapping: None,
-            label_template: None,
-        };
-
-        let target_type = infer_scale_target_type(&scale);
-        assert_eq!(target_type, Some(ArrayElementType::String));
-    }
-
-    #[test]
-    fn test_infer_scale_target_type_continuous_date_transform() {
+    fn test_infer_scale_target_type() {
         use crate::plot::scale::{ScaleType, Transform};
 
-        // Continuous scale with date transform should infer Date type
-        let scale = Scale {
-            aesthetic: "x".to_string(),
-            scale_type: Some(ScaleType::continuous()),
-            input_range: None,
-            explicit_input_range: false,
-            output_range: None,
-            transform: Some(Transform::date()),
-            explicit_transform: true,
-            properties: HashMap::new(),
-            resolved: false,
-            label_mapping: None,
-            label_template: None,
-        };
+        // Helper to create a base scale
+        fn make_scale(
+            scale_type: ScaleType,
+            input_range: Option<Vec<ArrayElement>>,
+            transform: Option<Transform>,
+        ) -> Scale {
+            let explicit_transform = transform.is_some();
+            Scale {
+                aesthetic: "x".to_string(),
+                scale_type: Some(scale_type),
+                input_range,
+                explicit_input_range: false,
+                output_range: None,
+                transform,
+                explicit_transform,
+                properties: HashMap::new(),
+                resolved: false,
+                label_mapping: None,
+                label_template: None,
+            }
+        }
 
-        let target_type = infer_scale_target_type(&scale);
-        assert_eq!(target_type, Some(ArrayElementType::Date));
-    }
+        // Test cases: (scale_type, input_range, transform, expected_target_type, description)
+        let test_cases: Vec<(ScaleType, Option<Vec<ArrayElement>>, Option<Transform>, Option<ArrayElementType>, &str)> = vec![
+            // Discrete scales infer type from input_range
+            (
+                ScaleType::discrete(),
+                Some(vec![ArrayElement::Boolean(true), ArrayElement::Boolean(false)]),
+                None,
+                Some(ArrayElementType::Boolean),
+                "Discrete with boolean range → Boolean",
+            ),
+            (
+                ScaleType::discrete(),
+                Some(vec![ArrayElement::String("A".to_string()), ArrayElement::String("B".to_string())]),
+                None,
+                Some(ArrayElementType::String),
+                "Discrete with string range → String",
+            ),
+            // Continuous scales infer from transform
+            (
+                ScaleType::continuous(),
+                None,
+                Some(Transform::date()),
+                Some(ArrayElementType::Date),
+                "Continuous with date transform → Date",
+            ),
+            (
+                ScaleType::continuous(),
+                None,
+                Some(Transform::log()),
+                Some(ArrayElementType::Number),
+                "Continuous with log transform → Number",
+            ),
+            // Scales that return None (no coercion)
+            (
+                ScaleType::binned(),
+                None,
+                None,
+                None,
+                "Binned → None (binning in SQL)",
+            ),
+            (
+                ScaleType::identity(),
+                None,
+                None,
+                None,
+                "Identity → None (no coercion)",
+            ),
+            (
+                ScaleType::continuous(),
+                None,
+                None,
+                None,
+                "Continuous without transform → None",
+            ),
+        ];
 
-    #[test]
-    fn test_infer_scale_target_type_continuous_log_transform() {
-        use crate::plot::scale::{ScaleType, Transform};
-
-        // Continuous scale with log transform should infer Number type
-        let scale = Scale {
-            aesthetic: "y".to_string(),
-            scale_type: Some(ScaleType::continuous()),
-            input_range: None,
-            explicit_input_range: false,
-            output_range: None,
-            transform: Some(Transform::log()),
-            explicit_transform: true,
-            properties: HashMap::new(),
-            resolved: false,
-            label_mapping: None,
-            label_template: None,
-        };
-
-        let target_type = infer_scale_target_type(&scale);
-        assert_eq!(target_type, Some(ArrayElementType::Number));
-    }
-
-    #[test]
-    fn test_infer_scale_target_type_binned_returns_none() {
-        use crate::plot::scale::ScaleType;
-
-        // Binned scales should return None (no coercion - binning happens in SQL)
-        let scale = Scale {
-            aesthetic: "x".to_string(),
-            scale_type: Some(ScaleType::binned()),
-            input_range: None,
-            explicit_input_range: false,
-            output_range: None,
-            transform: None,
-            explicit_transform: false,
-            properties: HashMap::new(),
-            resolved: false,
-            label_mapping: None,
-            label_template: None,
-        };
-
-        let target_type = infer_scale_target_type(&scale);
-        assert_eq!(target_type, None);
-    }
-
-    #[test]
-    fn test_infer_scale_target_type_identity_returns_none() {
-        use crate::plot::scale::ScaleType;
-
-        // Identity scales should return None (no coercion)
-        let scale = Scale {
-            aesthetic: "label".to_string(),
-            scale_type: Some(ScaleType::identity()),
-            input_range: None,
-            explicit_input_range: false,
-            output_range: None,
-            transform: None,
-            explicit_transform: false,
-            properties: HashMap::new(),
-            resolved: false,
-            label_mapping: None,
-            label_template: None,
-        };
-
-        let target_type = infer_scale_target_type(&scale);
-        assert_eq!(target_type, None);
-    }
-
-    #[test]
-    fn test_infer_scale_target_type_continuous_no_transform() {
-        use crate::plot::scale::ScaleType;
-
-        // Continuous scale without transform should return None (no coercion)
-        let scale = Scale {
-            aesthetic: "x".to_string(),
-            scale_type: Some(ScaleType::continuous()),
-            input_range: None,
-            explicit_input_range: false,
-            output_range: None,
-            transform: None,
-            explicit_transform: false,
-            properties: HashMap::new(),
-            resolved: false,
-            label_mapping: None,
-            label_template: None,
-        };
-
-        let target_type = infer_scale_target_type(&scale);
-        assert_eq!(target_type, None);
+        for (scale_type, input_range, transform, expected, description) in test_cases {
+            let scale = make_scale(scale_type, input_range, transform);
+            let result = infer_scale_target_type(&scale);
+            assert_eq!(result, expected, "{}", description);
+        }
     }
 
     #[cfg(feature = "duckdb")]
@@ -7289,12 +7366,11 @@ mod tests {
     #[cfg(feature = "duckdb")]
     #[test]
     fn test_query_deduplication_identical_layers() {
-        // Test that identical layers share the same query result (deduplication)
-        // This is a performance optimization - two layers with identical mappings
-        // should only execute the query once
+        // Test that multiple layers work correctly
+        // Each layer has its own data_key which may be shared if queries are identical
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
-        // Two identical point layers - should deduplicate to one query execution
+        // Two identical point layers
         let query = r#"
             SELECT * FROM (VALUES
                 (1, 10), (2, 20), (3, 30)
@@ -7306,46 +7382,49 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        // Both layers should have data
-        let layer0_key = naming::layer_key(0);
-        let layer1_key = naming::layer_key(1);
+        // Both layers should have data_keys
+        let layer0_data_key = result.specs[0].layers[0]
+            .data_key
+            .as_ref()
+            .expect("Layer 0 should have data_key");
+        let layer1_data_key = result.specs[0].layers[1]
+            .data_key
+            .as_ref()
+            .expect("Layer 1 should have data_key");
 
+        // Both layer data should exist in the data map
         assert!(
-            result.data.contains_key(&layer0_key),
-            "Should have layer 0 data"
+            result.data.contains_key(layer0_data_key),
+            "Should have layer 0 data at key {}",
+            layer0_data_key
         );
         assert!(
-            result.data.contains_key(&layer1_key),
-            "Should have layer 1 data"
+            result.data.contains_key(layer1_data_key),
+            "Should have layer 1 data at key {}",
+            layer1_data_key
         );
 
-        // Both layers should have the same data (3 rows each)
-        let layer0_data = result.data.get(&layer0_key).unwrap();
-        let layer1_data = result.data.get(&layer1_key).unwrap();
-
+        // Both should have 3 rows
+        let layer0_data = result.data.get(layer0_data_key).unwrap();
+        let layer1_data = result.data.get(layer1_data_key).unwrap();
         assert_eq!(layer0_data.height(), 3);
         assert_eq!(layer1_data.height(), 3);
 
-        // Verify the data content is identical
-        let l0_x: Vec<i32> = layer0_data
-            .column("x")
+        // Verify the data content is correct (DuckDB may return i32 or i64 depending on literals)
+        let x_col = layer0_data
+            .column(&naming::aesthetic_column("x"))
             .unwrap()
-            .as_materialized_series()
-            .i32()
+            .as_materialized_series();
+        // Cast to i64 to handle both i32 and i64 input types
+        let x_values: Vec<i64> = x_col
+            .cast(&polars::prelude::DataType::Int64)
             .unwrap()
-            .into_iter()
-            .flatten()
-            .collect();
-        let l1_x: Vec<i32> = layer1_data
-            .column("x")
-            .unwrap()
-            .as_materialized_series()
-            .i32()
+            .i64()
             .unwrap()
             .into_iter()
             .flatten()
             .collect();
 
-        assert_eq!(l0_x, l1_x);
+        assert_eq!(x_values, vec![1, 2, 3]);
     }
 }

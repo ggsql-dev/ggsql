@@ -220,10 +220,12 @@ fn stat_histogram(
         )
     };
 
+    // Filter NULL x values before aggregation - NULL values should not be binned/counted
     let transformed_query = format!(
-        "WITH __stat_src__ AS ({query}), __binned__ AS (SELECT {binned} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __binned__",
+        "WITH __stat_src__ AS ({query}), __binned__ AS (SELECT {binned} FROM __stat_src__ WHERE {x} IS NOT NULL GROUP BY {group}) SELECT {final} FROM __binned__",
         query = query,
         binned = binned_select,
+        x = x_col,
         group = group_cols,
         final = final_select
     );

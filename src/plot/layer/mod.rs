@@ -38,6 +38,11 @@ pub struct Layer {
     pub order_by: Option<SqlExpression>,
     /// Columns for grouping/partitioning (from PARTITION BY clause)
     pub partition_by: Vec<String>,
+    /// Key for this layer's data in the datamap (set during execution).
+    /// Defaults to `None`. Set to `__ggsql_layer_<idx>__` during execution,
+    /// but may point to another layer's data when queries are deduplicated.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_key: Option<String>,
 }
 
 impl Layer {
@@ -52,6 +57,7 @@ impl Layer {
             filter: None,
             order_by: None,
             partition_by: Vec::new(),
+            data_key: None,
         }
     }
 

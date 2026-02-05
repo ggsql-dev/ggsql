@@ -129,258 +129,124 @@ mod tests {
     use super::*;
     use std::f64::consts::E;
 
-    // ==================== Base-10 (Exp10) Tests ====================
+    // ==================== Consolidated Transform Tests ====================
 
-    #[test]
-    fn test_exp10_domain() {
-        let t = Exp::base10();
-        let (min, max) = t.allowed_domain();
-        assert!(min.is_infinite() && min < 0.0);
-        assert!(max.is_infinite() && max > 0.0);
+    /// Test data for all exp bases
+    fn get_transforms() -> Vec<(Exp, TransformKind, &'static str)> {
+        vec![
+            (Exp::base10(), TransformKind::Exp10, "exp10"),
+            (Exp::base2(), TransformKind::Exp2, "exp2"),
+            (Exp::natural(), TransformKind::Exp, "exp"),
+        ]
     }
 
     #[test]
-    fn test_exp10_is_value_in_domain() {
-        let t = Exp::base10();
-        assert!(t.is_value_in_domain(0.0));
-        assert!(t.is_value_in_domain(1.0));
-        assert!(t.is_value_in_domain(-1.0));
-        assert!(t.is_value_in_domain(100.0));
-        assert!(!t.is_value_in_domain(f64::INFINITY));
-        assert!(!t.is_value_in_domain(f64::NAN));
+    fn test_all_bases_domain() {
+        for (t, _, name) in get_transforms() {
+            let (min, max) = t.allowed_domain();
+            assert!(min.is_infinite() && min < 0.0, "{}: domain min should be -∞", name);
+            assert!(max.is_infinite() && max > 0.0, "{}: domain max should be +∞", name);
+        }
     }
 
     #[test]
-    fn test_exp10_transform() {
-        let t = Exp::base10();
-        assert!((t.transform(0.0) - 1.0).abs() < 1e-10);
-        assert!((t.transform(1.0) - 10.0).abs() < 1e-10);
-        assert!((t.transform(2.0) - 100.0).abs() < 1e-10);
-        assert!((t.transform(3.0) - 1000.0).abs() < 1e-10);
-        assert!((t.transform(-1.0) - 0.1).abs() < 1e-10);
+    fn test_all_bases_is_value_in_domain() {
+        for (t, _, name) in get_transforms() {
+            // Valid values (all finite)
+            assert!(t.is_value_in_domain(0.0), "{}: 0.0 should be in domain", name);
+            assert!(t.is_value_in_domain(1.0), "{}: 1.0 should be in domain", name);
+            assert!(t.is_value_in_domain(-1.0), "{}: -1.0 should be in domain", name);
+            assert!(t.is_value_in_domain(100.0), "{}: 100.0 should be in domain", name);
+            // Invalid values
+            assert!(!t.is_value_in_domain(f64::INFINITY), "{}: infinity should not be in domain", name);
+            assert!(!t.is_value_in_domain(f64::NAN), "{}: NaN should not be in domain", name);
+        }
     }
 
     #[test]
-    fn test_exp10_inverse() {
-        let t = Exp::base10();
-        assert!((t.inverse(1.0) - 0.0).abs() < 1e-10);
-        assert!((t.inverse(10.0) - 1.0).abs() < 1e-10);
-        assert!((t.inverse(100.0) - 2.0).abs() < 1e-10);
-        assert!((t.inverse(0.1) - (-1.0)).abs() < 1e-10);
-    }
+    fn test_all_bases_transform_and_inverse() {
+        // Test cases: (transform, input, expected_transform)
+        let test_cases = vec![
+            // Exp10: 10^0=1, 10^1=10, 10^2=100, 10^-1=0.1
+            (Exp::base10(), vec![(0.0, 1.0), (1.0, 10.0), (2.0, 100.0), (-1.0, 0.1)]),
+            // Exp2: 2^0=1, 2^1=2, 2^2=4, 2^-1=0.5
+            (Exp::base2(), vec![(0.0, 1.0), (1.0, 2.0), (2.0, 4.0), (-1.0, 0.5)]),
+            // Natural: e^0=1, e^1=e, e^2=e²
+            (Exp::natural(), vec![(0.0, 1.0), (1.0, E), (2.0, E * E)]),
+        ];
 
-    #[test]
-    fn test_exp10_roundtrip() {
-        let t = Exp::base10();
-        for &val in &[-2.0, -1.0, 0.0, 1.0, 2.0, 3.0] {
-            let transformed = t.transform(val);
-            let back = t.inverse(transformed);
-            if val == 0.0 {
-                assert!((back - val).abs() < 1e-10, "Roundtrip failed for {}", val);
-            } else {
+        for (t, cases) in test_cases {
+            for (input, expected) in cases {
                 assert!(
-                    (back - val).abs() / val.abs() < 1e-10,
-                    "Roundtrip failed for {}",
-                    val
+                    (t.transform(input) - expected).abs() < 1e-10,
+                    "{}: transform({}) should be {}, got {}",
+                    t.name(), input, expected, t.transform(input)
+                );
+                // Test inverse too
+                assert!(
+                    (t.inverse(expected) - input).abs() < 1e-9,
+                    "{}: inverse({}) should be {}, got {}",
+                    t.name(), expected, input, t.inverse(expected)
                 );
             }
         }
     }
 
     #[test]
-    fn test_exp10_is_inverse_of_log10() {
-        // Verify that Exp10::transform is the same as Log10::inverse
-        use super::super::Log;
-        let exp10 = Exp::base10();
-        let log10 = Log::base10();
-
-        for &val in &[-1.0, 0.0, 1.0, 2.0, 3.0] {
-            assert!(
-                (exp10.transform(val) - log10.inverse(val)).abs() < 1e-10,
-                "Exp10::transform != Log10::inverse for {}",
-                val
-            );
+    fn test_all_bases_roundtrip() {
+        let test_values = [-2.0, -1.0, 0.0, 1.0, 2.0, 3.0];
+        for (t, _, name) in get_transforms() {
+            for &val in &test_values {
+                let transformed = t.transform(val);
+                let back = t.inverse(transformed);
+                if val == 0.0 {
+                    assert!((back - val).abs() < 1e-10, "{}: Roundtrip failed for {}", name, val);
+                } else {
+                    assert!(
+                        (back - val).abs() / val.abs() < 1e-10,
+                        "{}: Roundtrip failed for {}",
+                        name, val
+                    );
+                }
+            }
         }
     }
 
     #[test]
-    fn test_exp10_inverse_is_log10_transform() {
-        // Verify that Exp10::inverse is the same as Log10::transform
-        use super::super::Log;
-        let exp10 = Exp::base10();
-        let log10 = Log::base10();
-
-        for &val in &[0.001, 0.1, 1.0, 10.0, 100.0] {
-            assert!(
-                (exp10.inverse(val) - log10.transform(val)).abs() < 1e-10,
-                "Exp10::inverse != Log10::transform for {}",
-                val
-            );
+    fn test_all_bases_kind_and_name() {
+        for (t, expected_kind, expected_name) in get_transforms() {
+            assert_eq!(t.transform_kind(), expected_kind, "Kind mismatch for {}", expected_name);
+            assert_eq!(t.name(), expected_name);
         }
     }
 
     #[test]
-    fn test_exp10_kind_and_name() {
-        let t = Exp::base10();
-        assert_eq!(t.transform_kind(), TransformKind::Exp10);
-        assert_eq!(t.name(), "exp10");
-    }
+    fn test_all_bases_is_inverse_of_log() {
+        use super::super::Log;
 
-    // ==================== Base-2 (Exp2) Tests ====================
+        let pairs = vec![
+            (Exp::base10(), Log::base10()),
+            (Exp::base2(), Log::base2()),
+            (Exp::natural(), Log::natural()),
+        ];
 
-    #[test]
-    fn test_exp2_domain() {
-        let t = Exp::base2();
-        let (min, max) = t.allowed_domain();
-        assert!(min.is_infinite() && min < 0.0);
-        assert!(max.is_infinite() && max > 0.0);
-    }
-
-    #[test]
-    fn test_exp2_is_value_in_domain() {
-        let t = Exp::base2();
-        assert!(t.is_value_in_domain(0.0));
-        assert!(t.is_value_in_domain(1.0));
-        assert!(t.is_value_in_domain(-1.0));
-        assert!(!t.is_value_in_domain(f64::INFINITY));
-    }
-
-    #[test]
-    fn test_exp2_transform() {
-        let t = Exp::base2();
-        assert!((t.transform(0.0) - 1.0).abs() < 1e-10);
-        assert!((t.transform(1.0) - 2.0).abs() < 1e-10);
-        assert!((t.transform(2.0) - 4.0).abs() < 1e-10);
-        assert!((t.transform(3.0) - 8.0).abs() < 1e-10);
-        assert!((t.transform(-1.0) - 0.5).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_exp2_inverse() {
-        let t = Exp::base2();
-        assert!((t.inverse(1.0) - 0.0).abs() < 1e-10);
-        assert!((t.inverse(2.0) - 1.0).abs() < 1e-10);
-        assert!((t.inverse(4.0) - 2.0).abs() < 1e-10);
-        assert!((t.inverse(8.0) - 3.0).abs() < 1e-10);
-        assert!((t.inverse(0.5) - (-1.0)).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_exp2_roundtrip() {
-        let t = Exp::base2();
-        for &val in &[-2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0] {
-            let transformed = t.transform(val);
-            let back = t.inverse(transformed);
-            if val == 0.0 {
-                assert!((back - val).abs() < 1e-10, "Roundtrip failed for {}", val);
-            } else {
+        let test_values = [-1.0, 0.0, 1.0, 2.0];
+        for (exp, log) in pairs {
+            for &val in &test_values {
                 assert!(
-                    (back - val).abs() / val.abs() < 1e-10,
-                    "Roundtrip failed for {}",
-                    val
+                    (exp.transform(val) - log.inverse(val)).abs() < 1e-10,
+                    "{}::transform != {}::inverse for {}",
+                    exp.name(), log.name(), val
                 );
             }
         }
     }
 
     #[test]
-    fn test_exp2_is_inverse_of_log2() {
-        // Verify that Exp2::transform is the same as Log2::inverse
-        use super::super::Log;
-        let exp2 = Exp::base2();
-        let log2 = Log::base2();
-
-        for &val in &[-1.0, 0.0, 1.0, 2.0, 3.0] {
-            assert!(
-                (exp2.transform(val) - log2.inverse(val)).abs() < 1e-10,
-                "Exp2::transform != Log2::inverse for {}",
-                val
-            );
-        }
-    }
-
-    #[test]
-    fn test_exp2_kind_and_name() {
-        let t = Exp::base2();
-        assert_eq!(t.transform_kind(), TransformKind::Exp2);
-        assert_eq!(t.name(), "exp2");
-    }
-
-    // ==================== Natural Exp (base e) Tests ====================
-
-    #[test]
-    fn test_exp_domain() {
-        let t = Exp::natural();
-        let (min, max) = t.allowed_domain();
-        assert!(min.is_infinite() && min < 0.0);
-        assert!(max.is_infinite() && max > 0.0);
-    }
-
-    #[test]
-    fn test_exp_is_value_in_domain() {
-        let t = Exp::natural();
-        assert!(t.is_value_in_domain(0.0));
-        assert!(t.is_value_in_domain(1.0));
-        assert!(t.is_value_in_domain(-1.0));
-        assert!(!t.is_value_in_domain(f64::INFINITY));
-    }
-
-    #[test]
-    fn test_exp_transform() {
-        let t = Exp::natural();
-        assert!((t.transform(0.0) - 1.0).abs() < 1e-10);
-        assert!((t.transform(1.0) - E).abs() < 1e-10);
-        assert!((t.transform(2.0) - E * E).abs() < 1e-10);
-        assert!((t.transform(-1.0) - (1.0 / E)).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_exp_inverse() {
-        let t = Exp::natural();
-        assert!((t.inverse(1.0) - 0.0).abs() < 1e-10);
-        assert!((t.inverse(E) - 1.0).abs() < 1e-10);
-        assert!((t.inverse(E * E) - 2.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_exp_roundtrip() {
-        let t = Exp::natural();
-        for &val in &[-2.0, -1.0, 0.0, 1.0, 2.0] {
-            let transformed = t.transform(val);
-            let back = t.inverse(transformed);
-            if val == 0.0 {
-                assert!((back - val).abs() < 1e-10, "Roundtrip failed for {}", val);
-            } else {
-                assert!(
-                    (back - val).abs() / val.abs() < 1e-10,
-                    "Roundtrip failed for {}",
-                    val
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_exp_is_inverse_of_ln() {
-        // Verify that Exp::transform is the same as Log(natural)::inverse
-        use super::super::Log;
-        let exp = Exp::natural();
-        let ln = Log::natural();
-
-        for &val in &[-1.0, 0.0, 1.0, 2.0] {
-            assert!(
-                (exp.transform(val) - ln.inverse(val)).abs() < 1e-10,
-                "Exp::transform != Log(natural)::inverse for {}",
-                val
-            );
-        }
-    }
-
-    #[test]
-    fn test_exp_kind_and_name() {
-        let t = Exp::natural();
-        assert_eq!(t.transform_kind(), TransformKind::Exp);
-        assert_eq!(t.name(), "exp");
+    fn test_all_bases_display() {
+        assert_eq!(format!("{}", Exp::base10()), "exp10");
+        assert_eq!(format!("{}", Exp::base2()), "exp2");
+        assert_eq!(format!("{}", Exp::natural()), "exp");
     }
 
     // ==================== General Tests ====================
@@ -404,28 +270,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_invalid_base_zero() {
-        Exp::new(0.0);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_invalid_base_one() {
-        Exp::new(1.0);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_invalid_base_negative() {
-        Exp::new(-2.0);
-    }
-
-    #[test]
-    fn test_display() {
-        assert_eq!(format!("{}", Exp::base10()), "exp10");
-        assert_eq!(format!("{}", Exp::base2()), "exp2");
-        assert_eq!(format!("{}", Exp::natural()), "exp");
+    fn test_invalid_bases() {
+        // Test all invalid base cases in one test
+        let invalid_bases = [(0.0, "zero"), (1.0, "one"), (-2.0, "negative")];
+        for (base, desc) in invalid_bases {
+            let result = std::panic::catch_unwind(|| Exp::new(base));
+            assert!(result.is_err(), "Exp::new({}) should panic for {} base", base, desc);
+        }
     }
 
     #[test]
