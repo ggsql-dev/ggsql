@@ -1294,7 +1294,9 @@ fn render_path(encoding: &mut Map<String, Value>) {
 }
 
 fn render_polygon(mut spec: Value, encoding: &mut Map<String, Value>) -> Value {
-    // We need to undo `map_aesthetic_name()` and translate 'color' back to 'fill'.
+    // Polygon needs both `fill` and `stroke` independently, but map_aesthetic_name()
+    // converts fill → color (which works for most geoms). For closed line marks,
+    // we need actual `fill` and `stroke` channels, so we undo the mapping here.
     if let Some(color) = encoding.remove("color") {
         encoding.insert("fill".to_string(), color);
     }
