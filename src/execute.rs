@@ -842,31 +842,52 @@ fn build_aesthetic_schema(layer: &Layer, schema: &Schema) -> Schema {
 ///
 /// This keeps SQL queries using safe prefixed names while producing clean
 /// output for the Vega-Lite writer.
-/// Apply remappings to rename stat columns to their target aesthetic's prefixed name.
+/// Apply remappings to rename stat columns to their target aesthetic's prefixed name,
+/// and add constant columns for literal remappings.
 ///
 /// After stat transforms, columns like `__ggsql_stat_count` need to be renamed
 /// to the target aesthetic's prefixed name (e.g., `__ggsql_aes_y__`).
 ///
+/// For literal values (e.g., `ymin=0`), this creates a constant column.
+///
 /// Note: Prefixed aesthetic names persist through the entire pipeline.
 /// We do NOT rename `__ggsql_aes_x__` back to `x`.
 fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataFrame> {
+    use polars::prelude::IntoColumn;
+
     let mut df = df;
+    let row_count = df.height();
 
     // Apply remappings: stat columns → prefixed aesthetic names
     // e.g., __ggsql_stat_count → __ggsql_aes_y__
     // Remappings structure: HashMap<target_aesthetic, AestheticValue pointing to stat column>
-    for (target_aesthetic, stat_col_value) in &layer.remappings.aesthetics {
-        if let Some(stat_col_name) = stat_col_value.column_name() {
-            // Check if this stat column exists in the DataFrame
-            if df.column(stat_col_name).is_ok() {
-                let target_col_name = naming::aesthetic_column(target_aesthetic);
-                df.rename(stat_col_name, target_col_name.into())
-                    .map_err(|e| {
+    for (target_aesthetic, value) in &layer.remappings.aesthetics {
+        let target_col_name = naming::aesthetic_column(target_aesthetic);
+
+        match value {
+            AestheticValue::Column { name, .. } => {
+                // Check if this stat column exists in the DataFrame
+                if df.column(name).is_ok() {
+                    df.rename(name, target_col_name.into()).map_err(|e| {
                         GgsqlError::InternalError(format!(
                             "Failed to rename stat column '{}' to '{}': {}",
-                            stat_col_name, target_aesthetic, e
+                            name, target_aesthetic, e
                         ))
                     })?;
+                }
+            }
+            AestheticValue::Literal(lit) => {
+                // Add constant column for literal values
+                let series = literal_to_series(&target_col_name, lit, row_count);
+                df = df
+                    .with_column(series.into_column())
+                    .map_err(|e| {
+                        GgsqlError::InternalError(format!(
+                            "Failed to add literal column '{}': {}",
+                            target_col_name, e
+                        ))
+                    })?
+                    .clone();
             }
         }
     }
@@ -874,32 +895,61 @@ fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataFrame
     Ok(df)
 }
 
+/// Convert a literal value to a Polars Series with constant values.
+fn literal_to_series(name: &str, lit: &LiteralValue, len: usize) -> polars::prelude::Series {
+    use polars::prelude::{NamedFrom, Series};
+
+    match lit {
+        LiteralValue::Number(n) => Series::new(name.into(), vec![*n; len]),
+        LiteralValue::String(s) => Series::new(name.into(), vec![s.as_str(); len]),
+        LiteralValue::Boolean(b) => Series::new(name.into(), vec![*b; len]),
+    }
+}
+
 /// Update layer mappings to use prefixed aesthetic names for remapped columns.
 ///
 /// After remappings are applied (stat columns renamed to prefixed aesthetic names),
 /// the layer mappings need to be updated so the writer uses the correct field names.
 ///
-/// The original name is set to the stat name (e.g., "density", "count") so axis labels
-/// show meaningful names instead of internal prefixed names.
+/// For column remappings, the original name is set to the stat name (e.g., "density", "count")
+/// so axis labels show meaningful names instead of internal prefixed names.
+///
+/// For literal remappings, the value becomes a column reference pointing to the
+/// constant column created by `apply_remappings_post_query`.
 fn update_mappings_for_remappings(layer: &mut Layer) {
     // For each remapping, add the target aesthetic to mappings pointing to the prefixed name
-    for (target_aesthetic, stat_col_value) in &layer.remappings.aesthetics {
+    for (target_aesthetic, value) in &layer.remappings.aesthetics {
         let prefixed_name = naming::aesthetic_column(target_aesthetic);
 
-        // Use the stat name from remappings as the original_name for labels
-        // The stat_col_value contains the user-specified stat name (e.g., "density", "count")
-        let original_name = stat_col_value.column_name().map(|s| s.to_string());
-
-        let value = AestheticValue::Column {
-            name: prefixed_name,
-            original_name,
-            is_dummy: false,
+        let new_value = match value {
+            AestheticValue::Column {
+                original_name,
+                is_dummy,
+                ..
+            } => {
+                // Use the stat name from remappings as the original_name for labels
+                // The stat_col_value contains the user-specified stat name (e.g., "density", "count")
+                AestheticValue::Column {
+                    name: prefixed_name,
+                    original_name: original_name.clone(),
+                    is_dummy: *is_dummy,
+                }
+            }
+            AestheticValue::Literal(_) => {
+                // Literal becomes a column reference after post-query processing
+                // No original_name since it's a constant value
+                AestheticValue::Column {
+                    name: prefixed_name,
+                    original_name: None,
+                    is_dummy: false,
+                }
+            }
         };
 
         layer
             .mappings
             .aesthetics
-            .insert(target_aesthetic.clone(), value);
+            .insert(target_aesthetic.clone(), new_value);
     }
 }
 
@@ -1094,12 +1144,16 @@ fn add_discrete_columns_to_partition_by(
                     continue;
                 }
 
+                // Use the prefixed aesthetic column name, since the query renames
+                // columns to prefixed names (e.g., island → __ggsql_aes_fill__)
+                let aes_col_name = naming::aesthetic_column(aesthetic);
+
                 // Skip if already in partition_by
-                if layer.partition_by.contains(&col.to_string()) {
+                if layer.partition_by.contains(&aes_col_name) {
                     continue;
                 }
 
-                layer.partition_by.push(col.to_string());
+                layer.partition_by.push(aes_col_name);
             }
         }
     }
@@ -1517,6 +1571,11 @@ where
                 }
             }
 
+            // Add default ymin=0 for bar/histogram geoms to ensure y scale includes zero.
+            // This is added to remappings so it's handled post-query (since this is after
+            // query building). The remapping will create a constant column in the DataFrame.
+            add_default_ymin_for_bar_histogram(layer);
+
             // Wrap transformed query to rename stat columns to prefixed aesthetic names
             let stat_rename_exprs: Vec<String> = stat_columns
                 .iter()
@@ -1545,7 +1604,11 @@ where
                 )
             }
         }
-        StatResult::Identity => query,
+        StatResult::Identity => {
+            // Add default ymin=0 for bar/histogram geoms even without stat transforms
+            add_default_ymin_for_bar_histogram(layer);
+            query
+        }
     };
 
     // Apply ORDER BY
@@ -1556,6 +1619,33 @@ where
     };
 
     Ok(final_query)
+}
+
+/// Add default ymin=0 for bar/histogram geoms to ensure y scale includes zero.
+///
+/// Bars and histograms should visually start from a baseline (typically 0).
+/// This adds an implicit `ymin=0` mapping to remappings if:
+/// - The geom is Bar or Histogram
+/// - The layer has a "y" mapping
+/// - The layer doesn't already have a "ymin" mapping or remapping
+fn add_default_ymin_for_bar_histogram(layer: &mut Layer) {
+    use crate::plot::layer::geom::GeomType;
+
+    if matches!(
+        layer.geom.geom_type(),
+        GeomType::Bar | GeomType::Histogram
+    ) {
+        // Only add if layer has y but no ymin
+        if layer.mappings.aesthetics.contains_key("y")
+            && !layer.mappings.aesthetics.contains_key("ymin")
+            && !layer.remappings.aesthetics.contains_key("ymin")
+        {
+            layer.remappings.insert(
+                "ymin".to_string(),
+                AestheticValue::Literal(LiteralValue::Number(0.0)),
+            );
+        }
+    }
 }
 
 /// Merge global mappings into layer aesthetics and expand wildcards
@@ -4592,6 +4682,139 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
+    fn test_bar_adds_ymin_zero_for_baseline() {
+        // Bar geom should add ymin=0 to ensure y scale includes zero (bars start from baseline)
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE bar_ymin_test AS SELECT * FROM (VALUES
+                    ('A', 10), ('B', 20), ('C', 30)
+                ) AS t(category, value)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM bar_ymin_test
+            VISUALISE category AS x, value AS y
+            DRAW bar
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+        let layer = &result.specs[0].layers[0];
+
+        // Layer should have ymin in mappings (added by default for bar)
+        assert!(
+            layer.mappings.aesthetics.contains_key("ymin"),
+            "Bar should have ymin mapping for baseline: {:?}",
+            layer.mappings.aesthetics.keys().collect::<Vec<_>>()
+        );
+
+        // The DataFrame should have the ymin column with 0 values
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        let ymin_col = naming::aesthetic_column("ymin");
+        assert!(
+            layer_df.column(&ymin_col).is_ok(),
+            "DataFrame should have '{}' column: {:?}",
+            ymin_col,
+            layer_df.get_column_names_str()
+        );
+
+        // All ymin values should be 0
+        let ymin_series = layer_df.column(&ymin_col).unwrap();
+        let ymin_vals: Vec<f64> = ymin_series
+            .f64()
+            .unwrap()
+            .into_iter()
+            .map(|v| v.unwrap())
+            .collect();
+        assert!(
+            ymin_vals.iter().all(|&v| v == 0.0),
+            "All ymin values should be 0: {:?}",
+            ymin_vals
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_histogram_adds_ymin_zero_for_baseline() {
+        // Histogram geom should also add ymin=0
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE hist_ymin_test AS SELECT * FROM (VALUES
+                    (10.0), (20.0), (30.0), (40.0), (50.0)
+                ) AS t(value)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM hist_ymin_test
+            VISUALISE value AS x
+            DRAW histogram
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+        let layer = &result.specs[0].layers[0];
+
+        // Layer should have ymin in mappings
+        assert!(
+            layer.mappings.aesthetics.contains_key("ymin"),
+            "Histogram should have ymin mapping for baseline: {:?}",
+            layer.mappings.aesthetics.keys().collect::<Vec<_>>()
+        );
+
+        // The DataFrame should have the ymin column
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        let ymin_col = naming::aesthetic_column("ymin");
+        assert!(
+            layer_df.column(&ymin_col).is_ok(),
+            "DataFrame should have '{}' column: {:?}",
+            ymin_col,
+            layer_df.get_column_names_str()
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_point_geom_does_not_add_ymin() {
+        // Point geom should NOT add ymin - only bar/histogram get this treatment
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE point_no_ymin_test AS SELECT * FROM (VALUES
+                    (1, 10), (2, 20), (3, 30)
+                ) AS t(x, y)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM point_no_ymin_test
+            VISUALISE x, y
+            DRAW point
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+        let layer = &result.specs[0].layers[0];
+
+        // Point should NOT have ymin mapping
+        assert!(
+            !layer.mappings.aesthetics.contains_key("ymin"),
+            "Point should NOT have ymin mapping: {:?}",
+            layer.mappings.aesthetics.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
     fn test_aliased_columns_with_bar_geom() {
         // Test explicit mappings with SQL column aliases using bar geom
         // Bar geom uses existing y values directly when y is mapped and exists
@@ -6745,12 +6968,14 @@ mod tests {
 
         add_discrete_columns_to_partition_by(&mut spec.layers, &[schema], &spec.scales);
 
-        // After: group_id should be added to partition_by because SCALE DISCRETE color
+        // After: color aesthetic column should be added to partition_by because SCALE DISCRETE
+        // Uses prefixed aesthetic column name since queries rename columns
+        let expected_col = naming::aesthetic_column("color");
         assert!(
-            spec.layers[0]
-                .partition_by
-                .contains(&"group_id".to_string()),
-            "Integer column with explicit SCALE DISCRETE should be added to partition_by"
+            spec.layers[0].partition_by.contains(&expected_col),
+            "Integer column with explicit SCALE DISCRETE should be added to partition_by as '{}', got: {:?}",
+            expected_col,
+            spec.layers[0].partition_by
         );
     }
 
@@ -6801,11 +7026,10 @@ mod tests {
 
         add_discrete_columns_to_partition_by(&mut spec.layers, &[schema], &spec.scales);
 
-        // category should NOT be added because SCALE CONTINUOUS overrides schema
+        // color aesthetic should NOT be added because SCALE CONTINUOUS overrides schema
+        let color_col = naming::aesthetic_column("color");
         assert!(
-            !spec.layers[0]
-                .partition_by
-                .contains(&"category".to_string()),
+            !spec.layers[0].partition_by.contains(&color_col),
             "String column with explicit SCALE CONTINUOUS should NOT be added to partition_by"
         );
     }
@@ -6858,11 +7082,13 @@ mod tests {
         add_discrete_columns_to_partition_by(&mut spec.layers, &[schema], &spec.scales);
 
         // category SHOULD be added because Identity falls back to schema (which says discrete)
+        // Uses prefixed aesthetic column name since queries rename columns
+        let expected_col = naming::aesthetic_column("color");
         assert!(
-            spec.layers[0]
-                .partition_by
-                .contains(&"category".to_string()),
-            "Discrete column with Identity scale should be added to partition_by"
+            spec.layers[0].partition_by.contains(&expected_col),
+            "Discrete column with Identity scale should be added to partition_by as '{}', got: {:?}",
+            expected_col,
+            spec.layers[0].partition_by
         );
     }
 
@@ -6918,11 +7144,13 @@ mod tests {
         add_discrete_columns_to_partition_by(&mut spec.layers, &[schema], &spec.scales);
 
         // After: temperature should be added to partition_by because SCALE BINNED creates categories
+        // Uses prefixed aesthetic column name since queries rename columns
+        let expected_col = naming::aesthetic_column("color");
         assert!(
-            spec.layers[0]
-                .partition_by
-                .contains(&"temperature".to_string()),
-            "Continuous column with SCALE BINNED should be added to partition_by"
+            spec.layers[0].partition_by.contains(&expected_col),
+            "Continuous column with SCALE BINNED should be added to partition_by as '{}', got: {:?}",
+            expected_col,
+            spec.layers[0].partition_by
         );
     }
 
