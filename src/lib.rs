@@ -36,6 +36,7 @@ ggsql splits queries at the `VISUALISE` boundary:
 pub mod naming;
 pub mod parser;
 pub mod plot;
+pub mod session;
 
 #[cfg(any(feature = "duckdb", feature = "postgres", feature = "sqlite"))]
 pub mod reader;

@@ -64,7 +64,8 @@ const_format = "0.2"
 uuid = { version = "1.0", features = ["v4"] }
 
 # Web server
-axum = "0.7"
+axum = { version = "0.7", features = ["multipart"] }
+tempfile = "3.14"
 tokio = { version = "1.35", features = ["full"] }
 tower = "0.5"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
