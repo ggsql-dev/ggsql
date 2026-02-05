@@ -1151,9 +1151,7 @@ impl Writer for VegaLiteWriter {
                         "width": {"band": width}
                     });
                 }
-                GeomType::Path => {
-                    layer_spec = render_path(layer_spec, &mut encoding, layer);
-                }
+                GeomType::Path => render_path(&mut encoding),
                 GeomType::Ribbon => render_ribbon(&mut encoding),
                 GeomType::Area => render_area(&mut encoding, layer)?,
                 GeomType::Polygon => {
@@ -1295,28 +1293,9 @@ impl Writer for VegaLiteWriter {
     }
 }
 
-fn render_path(mut spec: Value, encoding: &mut Map<String, Value>, layer: &Layer) -> Value {
-    // Add order encoding for Path geoms (preserves data order instead of x-axis sorting)
-    encoding.insert(
-        "order".to_string(),
-        json!({
-            "field": naming::ORDER_COLUMN,
-            "type": "quantitative"
-        }),
-    );
-    // Add window transform for Path geoms to preserve data order
-    // (Line geom uses Vega-Lite's default x-axis sorting)
-    let mut window_transform = json!({
-        "window": [{"op": "row_number", "as": naming::ORDER_COLUMN}]
-    });
-
-    // Add groupby if partition_by is present (restarts numbering per group)
-    if !layer.partition_by.is_empty() {
-        window_transform["groupby"] = json!(layer.partition_by);
-    }
-
-    spec["transform"] = json!([window_transform]);
-    spec
+fn render_path(encoding: &mut Map<String, Value>) {
+    // Use the natural data order
+    encoding.insert("order".to_string(), json!({"value": Value::Null}));
 }
 
 fn render_polygon(mut spec: Value, encoding: &mut Map<String, Value>) -> Value {
@@ -1324,6 +1303,8 @@ fn render_polygon(mut spec: Value, encoding: &mut Map<String, Value>) -> Value {
     if let Some(color) = encoding.remove("color") {
         encoding.insert("fill".to_string(), color);
     }
+    // Use the natural data order
+    encoding.insert("order".to_string(), json!({"value": Value::Null}));
     spec["mark"] = json!({
         "type": "line",
         "interpolate": "linear-closed", // This closes the path
