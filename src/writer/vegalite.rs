@@ -1963,12 +1963,12 @@ fn prepare_boxplot_summary(
     let grouping_cols_refs: Vec<&str> = grouping_cols.iter().map(|s| s.as_str()).collect();
     let summary = polars_ops::frame::pivot::pivot_stable(
         &summary,
-        [type_col],                   // on: column to pivot (becomes new columns)
-        Some(grouping_cols_refs),     // index: row identifiers
-        Some([value_col]),            // values: data to spread
-        false,                        // sort_columns
-        None,                         // agg_fn
-        None,                         // separator
+        [type_col],               // on: column to pivot (becomes new columns)
+        Some(grouping_cols_refs), // index: row identifiers
+        Some([value_col]),        // values: data to spread
+        false,                    // sort_columns
+        None,                     // agg_fn
+        None,                     // separator
     )
     .map_err(|e| GgsqlError::WriterError(format!("Pivot failed: {}", e)))?;
 
@@ -2023,7 +2023,9 @@ fn render_boxplot(
     // Find dodge groups (grouping cols minus the axis group col)
     let dodge_groups: Vec<&str> = grouping_cols
         .iter()
-        .filter(|col| col.as_str() != group_col && col.as_str() != type_col && col.as_str() != value_col)
+        .filter(|col| {
+            col.as_str() != group_col && col.as_str() != type_col && col.as_str() != value_col
+        })
         .map(|s| s.as_str())
         .collect();
 
@@ -2053,7 +2055,8 @@ fn render_boxplot(
         let mut points = prototype.clone();
 
         // Add source filter transform
-        let existing_transforms = points.get("transform")
+        let existing_transforms = points
+            .get("transform")
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
@@ -2096,7 +2099,8 @@ fn render_boxplot(
     // Helper to create summary layer with filter transform
     let create_summary_layer = |mut layer_spec: Value, mark: Value| -> Value {
         // Add source filter transform
-        let existing_transforms = layer_spec.get("transform")
+        let existing_transforms = layer_spec
+            .get("transform")
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
@@ -6494,12 +6498,15 @@ mod tests {
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // INVARIANT: Only one unified dataset should exist
-        let datasets = vl_spec["datasets"].as_object()
+        let datasets = vl_spec["datasets"]
+            .as_object()
             .expect("datasets should be an object");
         assert_eq!(
-            datasets.len(), 1,
+            datasets.len(),
+            1,
             "Expected exactly 1 dataset (unified), found {}. Keys: {:?}",
-            datasets.len(), datasets.keys().collect::<Vec<_>>()
+            datasets.len(),
+            datasets.keys().collect::<Vec<_>>()
         );
         assert!(
             datasets.contains_key(naming::GLOBAL_DATA_KEY),
@@ -6519,13 +6526,20 @@ mod tests {
 
         // Verify all boxplot layers use filter transforms on __ggsql_source__
         for (i, layer) in layers.iter().enumerate() {
-            let transforms = layer["transform"].as_array()
+            let transforms = layer["transform"]
+                .as_array()
                 .unwrap_or_else(|| panic!("Layer {} should have transforms", i));
-            assert!(!transforms.is_empty(), "Layer {} should have at least one transform", i);
+            assert!(
+                !transforms.is_empty(),
+                "Layer {} should have at least one transform",
+                i
+            );
             let filter = &transforms[0]["filter"];
             assert_eq!(
-                filter["field"], naming::SOURCE_COLUMN,
-                "Layer {} should filter on __ggsql_source__", i
+                filter["field"],
+                naming::SOURCE_COLUMN,
+                "Layer {} should filter on __ggsql_source__",
+                i
             );
         }
 
@@ -6552,25 +6566,41 @@ mod tests {
         );
 
         // Verify outliers filter on outlier source key, summary layers on summary source key
-        let outlier_source = layers[0]["transform"][0]["filter"]["equal"].as_str().unwrap();
-        let summary_source = layers[1]["transform"][0]["filter"]["equal"].as_str().unwrap();
-        assert!(outlier_source.contains("outliers"), "Outlier source should contain 'outliers'");
-        assert!(summary_source.contains("summary"), "Summary source should contain 'summary'");
+        let outlier_source = layers[0]["transform"][0]["filter"]["equal"]
+            .as_str()
+            .unwrap();
+        let summary_source = layers[1]["transform"][0]["filter"]["equal"]
+            .as_str()
+            .unwrap();
+        assert!(
+            outlier_source.contains("outliers"),
+            "Outlier source should contain 'outliers'"
+        );
+        assert!(
+            summary_source.contains("summary"),
+            "Summary source should contain 'summary'"
+        );
 
         // Verify unified dataset contains both outlier and summary data with source tags
-        let unified_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY].as_array().unwrap();
-        let outlier_rows: Vec<_> = unified_data.iter()
+        let unified_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
+        let outlier_rows: Vec<_> = unified_data
+            .iter()
             .filter(|row| row[naming::SOURCE_COLUMN].as_str() == Some(outlier_source))
             .collect();
-        let summary_rows: Vec<_> = unified_data.iter()
+        let summary_rows: Vec<_> = unified_data
+            .iter()
             .filter(|row| row[naming::SOURCE_COLUMN].as_str() == Some(summary_source))
             .collect();
         assert_eq!(
-            outlier_rows.len(), 5,
+            outlier_rows.len(),
+            5,
             "Should have 5 outlier rows (3 for A, 2 for B)"
         );
         assert_eq!(
-            summary_rows.len(), 2,
+            summary_rows.len(),
+            2,
             "Should have 2 summary rows (one per category)"
         );
 
@@ -6628,12 +6658,15 @@ mod tests {
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // INVARIANT: Only one unified dataset should exist
-        let datasets = vl_spec["datasets"].as_object()
+        let datasets = vl_spec["datasets"]
+            .as_object()
             .expect("datasets should be an object");
         assert_eq!(
-            datasets.len(), 1,
+            datasets.len(),
+            1,
             "Expected exactly 1 dataset (unified), found {}. Keys: {:?}",
-            datasets.len(), datasets.keys().collect::<Vec<_>>()
+            datasets.len(),
+            datasets.keys().collect::<Vec<_>>()
         );
 
         // Verify multiple layers (no outliers in this data)
@@ -6643,12 +6676,19 @@ mod tests {
 
         // Verify all layers use filter transforms
         for (i, layer) in layers.iter().enumerate() {
-            let transforms = layer["transform"].as_array()
+            let transforms = layer["transform"]
+                .as_array()
                 .unwrap_or_else(|| panic!("Layer {} should have transforms", i));
-            assert!(!transforms.is_empty(), "Layer {} should have at least one transform", i);
+            assert!(
+                !transforms.is_empty(),
+                "Layer {} should have at least one transform",
+                i
+            );
             assert_eq!(
-                transforms[0]["filter"]["field"], naming::SOURCE_COLUMN,
-                "Layer {} should filter on __ggsql_source__", i
+                transforms[0]["filter"]["field"],
+                naming::SOURCE_COLUMN,
+                "Layer {} should filter on __ggsql_source__",
+                i
             );
         }
 
@@ -6666,13 +6706,19 @@ mod tests {
         assert_eq!(layers[0]["encoding"]["yOffset"]["field"], "region");
 
         // Verify unified dataset contains summary data with both category and region
-        let summary_source = layers[0]["transform"][0]["filter"]["equal"].as_str().unwrap();
-        let unified_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY].as_array().unwrap();
-        let summary_rows: Vec<_> = unified_data.iter()
+        let summary_source = layers[0]["transform"][0]["filter"]["equal"]
+            .as_str()
+            .unwrap();
+        let unified_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+            .as_array()
+            .unwrap();
+        let summary_rows: Vec<_> = unified_data
+            .iter()
             .filter(|row| row[naming::SOURCE_COLUMN].as_str() == Some(summary_source))
             .collect();
         assert_eq!(
-            summary_rows.len(), 2,
+            summary_rows.len(),
+            2,
             "Should have summary for 2 region groups within category A"
         );
 
@@ -6698,13 +6744,26 @@ mod tests {
             let mut spec = Plot::new();
             spec.layers.push(
                 Layer::new(Geom::point())
-                    .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-                    .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+                    .with_aesthetic(
+                        "x".to_string(),
+                        AestheticValue::standard_column("x".to_string()),
+                    )
+                    .with_aesthetic(
+                        "y".to_string(),
+                        AestheticValue::standard_column("y".to_string()),
+                    ),
             );
             let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-            let datasets = vl_spec["datasets"].as_object().expect("point: datasets should be object");
-            assert_eq!(datasets.len(), 1, "point: Expected 1 dataset, found {}", datasets.len());
+            let datasets = vl_spec["datasets"]
+                .as_object()
+                .expect("point: datasets should be object");
+            assert_eq!(
+                datasets.len(),
+                1,
+                "point: Expected 1 dataset, found {}",
+                datasets.len()
+            );
         }
 
         // Line
@@ -6713,13 +6772,26 @@ mod tests {
             let mut spec = Plot::new();
             spec.layers.push(
                 Layer::new(Geom::line())
-                    .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-                    .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+                    .with_aesthetic(
+                        "x".to_string(),
+                        AestheticValue::standard_column("x".to_string()),
+                    )
+                    .with_aesthetic(
+                        "y".to_string(),
+                        AestheticValue::standard_column("y".to_string()),
+                    ),
             );
             let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-            let datasets = vl_spec["datasets"].as_object().expect("line: datasets should be object");
-            assert_eq!(datasets.len(), 1, "line: Expected 1 dataset, found {}", datasets.len());
+            let datasets = vl_spec["datasets"]
+                .as_object()
+                .expect("line: datasets should be object");
+            assert_eq!(
+                datasets.len(),
+                1,
+                "line: Expected 1 dataset, found {}",
+                datasets.len()
+            );
         }
 
         // Bar
@@ -6728,13 +6800,26 @@ mod tests {
             let mut spec = Plot::new();
             spec.layers.push(
                 Layer::new(Geom::bar())
-                    .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
-                    .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+                    .with_aesthetic(
+                        "x".to_string(),
+                        AestheticValue::standard_column("x".to_string()),
+                    )
+                    .with_aesthetic(
+                        "y".to_string(),
+                        AestheticValue::standard_column("y".to_string()),
+                    ),
             );
             let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-            let datasets = vl_spec["datasets"].as_object().expect("bar: datasets should be object");
-            assert_eq!(datasets.len(), 1, "bar: Expected 1 dataset, found {}", datasets.len());
+            let datasets = vl_spec["datasets"]
+                .as_object()
+                .expect("bar: datasets should be object");
+            assert_eq!(
+                datasets.len(),
+                1,
+                "bar: Expected 1 dataset, found {}",
+                datasets.len()
+            );
         }
 
         // Boxplot - this was the problematic case that motivated this fix
@@ -6747,16 +6832,26 @@ mod tests {
             let mut spec = Plot::new();
             spec.layers.push(
                 Layer::new(Geom::boxplot())
-                    .with_aesthetic("x".to_string(), AestheticValue::standard_column("category".to_string()))
-                    .with_aesthetic("y".to_string(), AestheticValue::standard_column(naming::stat_column("value")))
+                    .with_aesthetic(
+                        "x".to_string(),
+                        AestheticValue::standard_column("category".to_string()),
+                    )
+                    .with_aesthetic(
+                        "y".to_string(),
+                        AestheticValue::standard_column(naming::stat_column("value")),
+                    ),
             );
             let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-            let datasets = vl_spec["datasets"].as_object().expect("boxplot: datasets should be object");
+            let datasets = vl_spec["datasets"]
+                .as_object()
+                .expect("boxplot: datasets should be object");
             assert_eq!(
-                datasets.len(), 1,
+                datasets.len(),
+                1,
                 "boxplot: Expected 1 dataset (single-dataset invariant), found {}. Keys: {:?}",
-                datasets.len(), datasets.keys().collect::<Vec<_>>()
+                datasets.len(),
+                datasets.keys().collect::<Vec<_>>()
             );
         }
     }
@@ -6779,8 +6874,14 @@ mod tests {
         let mut spec = Plot::new();
         spec.layers.push(
             Layer::new(Geom::boxplot())
-                .with_aesthetic("x".to_string(), AestheticValue::standard_column("category".to_string()))
-                .with_aesthetic("y".to_string(), AestheticValue::standard_column(naming::stat_column("value")))
+                .with_aesthetic(
+                    "x".to_string(),
+                    AestheticValue::standard_column("category".to_string()),
+                )
+                .with_aesthetic(
+                    "y".to_string(),
+                    AestheticValue::standard_column(naming::stat_column("value")),
+                ),
         );
 
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
@@ -6791,13 +6892,19 @@ mod tests {
         assert_eq!(layers.len(), 5); // outliers + 4 boxplot parts
 
         for (i, layer) in layers.iter().enumerate() {
-            let transforms = layer["transform"].as_array()
+            let transforms = layer["transform"]
+                .as_array()
                 .unwrap_or_else(|| panic!("Layer {} should have transforms", i));
-            assert!(!transforms.is_empty(), "Layer {} should have at least one transform", i);
+            assert!(
+                !transforms.is_empty(),
+                "Layer {} should have at least one transform",
+                i
+            );
             assert_eq!(
                 transforms[0]["filter"]["field"],
                 naming::SOURCE_COLUMN,
-                "Boxplot layer {} should filter on __ggsql_source__", i
+                "Boxplot layer {} should filter on __ggsql_source__",
+                i
             );
         }
     }

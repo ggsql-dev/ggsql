@@ -187,7 +187,7 @@ pub trait Reader {
     ///
     /// # Returns
     ///
-/// A `Spec` containing the resolved visualization specification and data.
+    /// A `Spec` containing the resolved visualization specification and data.
     ///
     /// # Errors
     ///
@@ -215,18 +215,13 @@ pub trait Reader {
         let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
 
         // Prepare data with type names for this reader
-        let prepared_data = prepare_data_with_executor(
-            query,
-            |sql| self.execute_sql(sql),
-            &self.sql_type_names(),
-        )?;
+        let prepared_data =
+            prepare_data_with_executor(query, |sql| self.execute_sql(sql), &self.sql_type_names())?;
 
         // Get the first (and typically only) spec
-        let plot = prepared_data
-            .specs
-            .into_iter()
-            .next()
-            .ok_or_else(|| GgsqlError::ValidationError("No visualization spec found".to_string()))?;
+        let plot = prepared_data.specs.into_iter().next().ok_or_else(|| {
+            GgsqlError::ValidationError("No visualization spec found".to_string())
+        })?;
 
         // For now, layer_sql and stat_sql are not tracked in PreparedData
         // (they were part of main's version but not HEAD's)

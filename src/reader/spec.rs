@@ -31,12 +31,7 @@ impl Spec {
         // Get aesthetic names from mappings (these are what the user thinks of as columns)
         // This provides backwards-compatible column names like "x", "y" instead of internal names
         let columns: Vec<String> = if !plot.layers.is_empty() {
-            plot.layers[0]
-                .mappings
-                .aesthetics
-                .keys()
-                .cloned()
-                .collect()
+            plot.layers[0].mappings.aesthetics.keys().cloned().collect()
         } else {
             Vec::new()
         };
