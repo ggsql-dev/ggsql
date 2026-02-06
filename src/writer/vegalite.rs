@@ -1173,7 +1173,7 @@ impl Writer for VegaLiteWriter {
                     );
                 }
                 GeomType::Ribbon => render_ribbon(&mut encoding),
-                GeomType::Area => render_area(&mut encoding, layer)?,
+                GeomType::Area | GeomType::Density => render_area(&mut encoding, layer)?,
                 _ => {}
             }
 

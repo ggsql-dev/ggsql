@@ -34,6 +34,10 @@ impl GeomTrait for Density {
     fn default_params(&self) -> &'static [DefaultParam] {
         &[
             DefaultParam {
+                name: "stacking",
+                default: DefaultParamValue::String("off"),
+            },
+            DefaultParam {
                 name: "bandwidth",
                 default: DefaultParamValue::Null,
             },
@@ -425,7 +429,10 @@ mod tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let df = reader.execute_sql(&sql).expect("SQL should execute");
 
-        assert_eq!(df.get_column_names(), vec!["__ggsql_stat_x", "__ggsql_stat_density"]);
+        assert_eq!(
+            df.get_column_names(),
+            vec!["__ggsql_stat_x", "__ggsql_stat_density"]
+        );
         assert_eq!(df.height(), 512); // 512 grid points
     }
 
@@ -475,7 +482,12 @@ mod tests {
 
         assert_eq!(
             df.get_column_names(),
-            vec!["__ggsql_stat_x", "region", "category", "__ggsql_stat_density"]
+            vec![
+                "__ggsql_stat_x",
+                "region",
+                "category",
+                "__ggsql_stat_density"
+            ]
         );
         assert_eq!(df.height(), 1024); // 512 grid points × 2 groups
     }
