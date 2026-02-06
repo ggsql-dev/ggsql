@@ -2,6 +2,7 @@
 
 use super::{GeomAesthetics, GeomTrait, GeomType};
 use crate::{
+    naming,
     plot::{
         geom::types::get_column_name, DefaultParam, DefaultParamValue, ParameterValue, StatResult,
     },
@@ -44,7 +45,15 @@ impl GeomTrait for Density {
     }
 
     fn default_remappings(&self) -> &'static [(&'static str, &'static str)] {
-        &[("density", "y")]
+        &[("x", "x"), ("density", "y")]
+    }
+
+    fn valid_stat_columns(&self) -> &'static [&'static str] {
+        &["x", "density"]
+    }
+
+    fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
+        &["x"]
     }
 
     fn apply_stat_transform(
@@ -58,13 +67,29 @@ impl GeomTrait for Density {
     ) -> crate::Result<super::StatResult> {
         stat_density(query, aesthetics, group_by, parameters, execute_query)
     }
-
-    // Note: stat_density not yet implemented - will return Identity for now
 }
 
 impl std::fmt::Display for Density {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "density")
+    }
+}
+
+// Helper to add trailing comma to non-empty strings
+fn with_trailing_comma(s: &str) -> String {
+    if s.is_empty() {
+        String::new()
+    } else {
+        format!("{}, ", s)
+    }
+}
+
+// Helper to add leading comma to non-empty strings
+fn with_leading_comma(s: &str) -> String {
+    if s.is_empty() {
+        String::new()
+    } else {
+        format!(", {}", s)
     }
 }
 
@@ -79,11 +104,12 @@ fn stat_density(
         GgsqlError::ValidationError("Density requires 'x' aesthetic mapping".to_string())
     })?;
 
-    let range = compute_range_sql(&x, &query, execute)?;
-    let bw = density_sql_bandwidth(query, group_by, &x, parameters);
+    let range = compute_range_sql(&x, query, execute)?;
+    let bw_cte = density_sql_bandwidth(query, group_by, &x, parameters);
+    let density_query = compute_density(&x, query, group_by, range, &bw_cte);
 
     Ok(StatResult::Transformed {
-        query: "".to_string(),
+        query: density_query,
         stat_columns: vec!["x".to_string(), "density".to_string()],
         dummy_columns: vec![],
         consumed_aesthetics: vec!["x".to_string()],
@@ -186,7 +212,7 @@ fn density_sql_bandwidth(
     // Most complexity here comes from trying to compute quartiles in a
     // SQL dialect-agnostic fashion.
     format!(
-        "WITH 
+        "WITH
           quartiles AS (
             SELECT
               {value},
@@ -218,5 +244,136 @@ fn density_sql_bandwidth(
       comma = comma,
       from = from,
       adjust = adjust
+    )
+}
+
+fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: usize) -> String {
+    let has_groups = !groups.is_empty();
+    let n_points = n_points - 1; // GENERATE_SERIES gives one point for free
+    let diff = (max - min).abs();
+
+    // Expand range 10%
+    let expand = 0.1;
+    let min = min - (expand * diff * 0.5);
+    let max = max + (expand * diff * 0.5);
+    let diff = (max - min).abs();
+
+    if !has_groups {
+        return format!(
+            "grid AS (
+          SELECT {min} + (seq.n * {diff} / {n_points}) AS x
+          FROM GENERATE_SERIES(0, {n_points}) AS seq(n)
+        )",
+            min = min,
+            diff = diff,
+            n_points = n_points
+        );
+    }
+
+    let groups = groups.join(", ");
+    format!(
+        "grid AS (
+          SELECT
+            {groups},
+            {min} + (seq.n * {diff} / {n_points}) AS x
+          FROM GENERATE_SERIES(0, {n_points}) AS seq(n)
+          CROSS JOIN (SELECT DISTINCT {groups} FROM ({from})) AS groups
+        )",
+        groups = groups,
+        diff = diff,
+        min = min,
+        n_points = n_points,
+        from = from
+    )
+}
+
+fn compute_density(
+    value: &str,
+    from: &str,
+    group_by: &[String],
+    range: (f64, f64),
+    bandwidth_cte: &str,
+) -> String {
+    let (min, max) = range;
+
+    let grid_cte = build_grid_cte(group_by, from, min, max, 512);
+
+    let data_cte = format!(
+        "data AS (
+          SELECT {groups}{value} AS val
+          FROM ({from})
+          WHERE {value} IS NOT NULL
+        )",
+        groups = with_trailing_comma(&group_by.join(", ")),
+        value = value,
+        from = from
+    );
+
+    // Helper to build join conditions between two tables
+    fn join_conditions(group_by: &[String], left_table: &str, right_table: &str) -> String {
+        if group_by.is_empty() {
+            return String::new();
+        }
+        let conds: Vec<String> = group_by
+            .iter()
+            .map(|g| {
+                format!(
+                    "{left}.{col} = {right}.{col}",
+                    left = left_table,
+                    col = g,
+                    right = right_table
+                )
+            })
+            .collect();
+        format!("AND {}", conds.join(" AND "))
+    }
+
+    // Build all group-related SQL fragments
+    let grid_groups: Vec<String> = group_by.iter().map(|g| format!("grid.{}", g)).collect();
+    let grid_group_select = with_trailing_comma(&grid_groups.join(", "));
+
+    // Build WHERE clause with group conditions
+    let where_clause = if group_by.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " {} {}",
+            join_conditions(group_by, "grid", "bandwidth"),
+            join_conditions(group_by, "grid", "data")
+        )
+    };
+
+    let join_logic = format!(
+        "CROSS JOIN data
+        CROSS JOIN bandwidth
+        WHERE true{where_clause}
+        GROUP BY grid.x{grid_group_by}
+        ORDER BY grid.x{grid_group_by}",
+        where_clause = where_clause,
+        grid_group_by = with_leading_comma(&grid_groups.join(", "))
+    );
+
+    // Generate the density computation query
+
+    // Uses Gaussian kernel: K(u) = (1/sqrt(2*pi)) * exp(-0.5 * u^2)
+
+    format!(
+        "{bandwidth_cte},
+        {data_cte},
+        {grid_cte}
+        SELECT
+          grid.x AS {x_column},
+          {grid_group_select}
+          AVG(
+            EXP(-0.5 * POW((grid.x - data.val) / bandwidth.bw, 2)) / (bandwidth.bw * SQRT(2 * PI()))
+          ) AS {density_column}
+        FROM grid
+        {join_logic}",
+        bandwidth_cte = bandwidth_cte,
+        data_cte = data_cte,
+        grid_cte = grid_cte,
+        x_column = naming::stat_column("x"),
+        density_column = naming::stat_column("density"),
+        grid_group_select = grid_group_select
     )
 }
