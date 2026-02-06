@@ -50,6 +50,8 @@ pub mod writer;
 #[cfg(feature = "duckdb")]
 pub mod execute;
 
+pub mod validate;
+
 // Re-export key types for convenience
 pub use plot::{
     AestheticValue, DataSource, Facet, Geom, Layer, Mappings, Plot, Scale, SqlExpression,
@@ -117,7 +119,7 @@ mod integration_tests {
             FROM generate_series(0, 4) as t(n)
         "#;
 
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // Verify DataFrame has temporal type (DuckDB returns Datetime for DATE + INTERVAL)
         assert_eq!(df.get_column_names(), vec!["date", "revenue"]);
@@ -177,7 +179,7 @@ mod integration_tests {
             FROM generate_series(0, 3) as t(n)
         "#;
 
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // Verify DataFrame has Datetime type
         let timestamp_col = df.column("timestamp").unwrap();
@@ -225,7 +227,7 @@ mod integration_tests {
 
         // Real SQL that users would write
         let sql = "SELECT 1 as int_col, 2.5 as float_col, true as bool_col";
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // Verify types are preserved
         // DuckDB treats numeric literals as DECIMAL, which we convert to Float64
@@ -280,7 +282,7 @@ mod integration_tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let sql = "SELECT * FROM (VALUES (1, 2.5, 'a'), (2, NULL, 'b'), (NULL, 3.5, NULL)) AS t(int_col, float_col, str_col)";
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // Verify types
         assert!(matches!(
@@ -330,7 +332,7 @@ mod integration_tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let sql = "SELECT * FROM (VALUES ('A', 10), ('B', 20), ('A', 15), ('C', 30)) AS t(category, value)";
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         let mut spec = Plot::new();
         let layer = Layer::new(Geom::bar())
@@ -376,7 +378,7 @@ mod integration_tests {
             GROUP BY day
         "#;
 
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // Verify temporal type is preserved through aggregation
         // DATE_TRUNC returns Date type (not Datetime)
@@ -414,7 +416,7 @@ mod integration_tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let sql = "SELECT 0.1 as small, 123.456 as medium, 999999.999999 as large";
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // All should be Float64
         assert!(matches!(
@@ -466,7 +468,7 @@ mod integration_tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let sql = "SELECT CAST(1 AS TINYINT) as tiny, CAST(1000 AS SMALLINT) as small, CAST(1000000 AS INTEGER) as int, CAST(1000000000000 AS BIGINT) as big";
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // Verify types
         assert!(matches!(
@@ -535,7 +537,7 @@ mod integration_tests {
         // Prepare data - this parses and processes the query
         let prepared = execute::prepare_data_with_executor(
             query,
-            |sql| reader.execute(sql),
+            |sql| reader.execute_sql(sql),
             &reader.sql_type_names(),
         )
         .unwrap();
@@ -665,7 +667,7 @@ mod integration_tests {
 
         let prepared = execute::prepare_data_with_executor(
             query,
-            |sql| reader.execute(sql),
+            |sql| reader.execute_sql(sql),
             &reader.sql_type_names(),
         )
         .unwrap();
@@ -766,7 +768,7 @@ mod integration_tests {
 
         let prepared = execute::prepare_data_with_executor(
             query,
-            |sql| reader.execute(sql),
+            |sql| reader.execute_sql(sql),
             &reader.sql_type_names(),
         )
         .unwrap();

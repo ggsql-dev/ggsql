@@ -1,5 +1,7 @@
 //! Area geom implementation
 
+use crate::plot::{DefaultParam, DefaultParamValue};
+
 use super::{GeomAesthetics, GeomTrait, GeomType};
 
 /// Area geom - filled area charts
@@ -13,10 +15,25 @@ impl GeomTrait for Area {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["x", "y", "fill", "stroke", "opacity"],
+            supported: &[
+                "x",
+                "y",
+                "fill",
+                "stroke",
+                "opacity",
+                "linewidth",
+                // "linetype", // vegalite doesn't support strokeDash
+            ],
             required: &["x", "y"],
             hidden: &[],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[DefaultParam {
+            name: "stacking",
+            default: DefaultParamValue::String("off"),
+        }]
     }
 }
 

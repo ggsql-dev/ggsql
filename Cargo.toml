@@ -2,6 +2,14 @@
 members = [
     "tree-sitter-ggsql",
     "src",
+    "ggsql-jupyter",
+    "ggsql-python"
+]
+# ggsql-python is excluded from default builds because it's a PyO3 extension
+# that requires Python dev headers. Build it separately with maturin.
+default-members = [
+    "tree-sitter-ggsql",
+    "src",
     "ggsql-jupyter"
 ]
 resolver = "2"
@@ -21,10 +29,12 @@ tree-sitter = "0.25"
 csscolorparser = "0.8.1"
 
 # Data processing
-polars = { version = "0.52", features = ["lazy", "sql"] }
+polars = { version = "0.52", features = ["lazy", "sql", "ipc"] }
+polars-ops = { version = "0.52", features = ["pivot"] }
 
 # Readers
-duckdb = { version = "1.1", features = ["bundled"] }
+duckdb = { version = "1.4", features = ["bundled", "vtab-arrow"] }
+arrow = { version = "56", default-features = false, features = ["ipc"] }
 postgres = "0.19"
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls"] }
 rusqlite = "0.32"

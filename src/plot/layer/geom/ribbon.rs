@@ -13,7 +13,16 @@ impl GeomTrait for Ribbon {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["x", "ymin", "ymax", "fill", "stroke", "opacity"],
+            supported: &[
+                "x",
+                "ymin",
+                "ymax",
+                "fill",
+                "stroke",
+                "opacity",
+                "linewidth",
+                // "linetype" // vegalite doesn't support strokeDash
+            ],
             required: &["x", "ymin", "ymax"],
             hidden: &[],
         }

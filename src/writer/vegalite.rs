@@ -20,7 +20,6 @@
 //! // Can be rendered in browser with vega-embed
 //! ```
 
-use crate::naming;
 use crate::plot::layer::geom::{GeomAesthetics, GeomType};
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
 
@@ -37,10 +36,12 @@ const POINTS_TO_AREA: f64 = std::f64::consts::PI * POINTS_TO_PIXELS * POINTS_TO_
 use crate::plot::ArrayElement;
 use crate::plot::{Coord, CoordType, LiteralValue, ParameterValue};
 use crate::writer::Writer;
+use crate::{naming, Layer};
 use crate::{AestheticValue, DataFrame, Geom, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
+use std::ops::Not;
 
 /// Build a Vega-Lite labelExpr from label mappings
 ///
@@ -1484,6 +1485,8 @@ impl VegaLiteWriter {
 }
 
 impl Writer for VegaLiteWriter {
+    type Output = String;
+
     fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<String> {
         // Validate spec before processing
         self.validate(spec)?;
@@ -1537,23 +1540,73 @@ impl Writer for VegaLiteWriter {
         // Build individual datasets - convert all DataFrames to Vega-Lite format
         // For binned columns, replace center values with bin_start and add bin_end columns
         let mut individual_datasets = Map::new();
-        for (key, df) in data {
-            let values = if binned_columns.is_empty() {
-                self.dataframe_to_values(df)?
+
+        // Track boxplot info for layers that need special handling
+        // Key: layer_idx, Value: BoxplotPreparedInfo
+        let mut boxplot_info: HashMap<usize, BoxplotPreparedInfo> = HashMap::new();
+
+        // For boxplot layers, prepare summary data BEFORE unification
+        // so all data (including boxplot summaries) is in the unified dataset
+        for (layer_idx, layer) in spec.layers.iter().enumerate() {
+            let data_key = &layer_data_keys[layer_idx];
+
+            if layer.geom.geom_type() == GeomType::Boxplot {
+                let df = data.get(data_key).ok_or_else(|| {
+                    GgsqlError::WriterError(format!(
+                        "Missing data source '{}' for boxplot layer {}",
+                        data_key,
+                        layer_idx + 1
+                    ))
+                })?;
+
+                // Prepare boxplot data (outliers + summary)
+                let (outlier_values, summary_values, grouping_cols, has_outliers) =
+                    prepare_boxplot_summary(df, self, &binned_columns)?;
+
+                // Generate unique keys for outlier and summary datasets
+                let outlier_key = format!("{}_outliers", data_key);
+                let summary_key = format!("{}_summary", data_key);
+
+                // Add both to individual_datasets with their source tags
+                // (the unify_datasets function will add __ggsql_source__ field)
+                individual_datasets.insert(outlier_key.clone(), json!(outlier_values));
+                individual_datasets.insert(summary_key.clone(), json!(summary_values));
+
+                // Store info for later use during layer rendering
+                boxplot_info.insert(
+                    layer_idx,
+                    BoxplotPreparedInfo {
+                        outlier_key,
+                        summary_key,
+                        grouping_cols,
+                        has_outliers,
+                    },
+                );
             } else {
-                self.dataframe_to_values_with_bins(df, &binned_columns)?
-            };
-            individual_datasets.insert(key.clone(), json!(values));
+                // Non-boxplot layers: convert DataFrame to JSON values directly
+                let df = data.get(data_key).ok_or_else(|| {
+                    GgsqlError::WriterError(format!(
+                        "Missing data source '{}' for layer {}",
+                        data_key,
+                        layer_idx + 1
+                    ))
+                })?;
+                let values = if binned_columns.is_empty() {
+                    self.dataframe_to_values(df)?
+                } else {
+                    self.dataframe_to_values_with_bins(df, &binned_columns)?
+                };
+                individual_datasets.insert(data_key.clone(), json!(values));
+            }
         }
 
         // Unify all datasets into a single dataset with source identification
         // Each row gets a __ggsql_source__ field identifying which layer it belongs to
         let unified_data = self.unify_datasets(&individual_datasets)?;
 
-        // Store unified dataset at GLOBAL_DATA_KEY
+        // Store unified dataset at GLOBAL_DATA_KEY - this is the ONLY dataset
         let mut datasets = Map::new();
         datasets.insert(naming::GLOBAL_DATA_KEY.to_string(), json!(unified_data));
-        vl_spec["datasets"] = Value::Object(datasets);
 
         // Set top-level data reference to unified dataset
         vl_spec["data"] = json!({"name": naming::GLOBAL_DATA_KEY});
@@ -1688,9 +1741,40 @@ impl Writer for VegaLiteWriter {
                 );
             }
 
+            // Handle geom-specific encoding transformations
+            match layer.geom.geom_type() {
+                GeomType::Ribbon => render_ribbon(&mut encoding),
+                GeomType::Area => render_area(&mut encoding, layer)?,
+                _ => {}
+            }
+
             layer_spec["encoding"] = Value::Object(encoding);
-            layers.push(layer_spec);
+
+            // For boxplots we use the pre-prepared data and render multiple layers
+            if layer.geom.geom_type() == GeomType::Boxplot {
+                let info = boxplot_info.get(&layer_idx).ok_or_else(|| {
+                    GgsqlError::InternalError(format!(
+                        "Missing boxplot info for layer {}",
+                        layer_idx
+                    ))
+                })?;
+
+                let boxplot_layers = render_boxplot(
+                    layer_spec,
+                    layer,
+                    &info.outlier_key,
+                    &info.summary_key,
+                    &info.grouping_cols,
+                    info.has_outliers,
+                )?;
+                layers.extend(boxplot_layers);
+            } else {
+                layers.push(layer_spec);
+            }
         }
+
+        // Assign datasets to vl_spec - there should be exactly one unified dataset
+        vl_spec["datasets"] = Value::Object(datasets);
 
         vl_spec["layer"] = json!(layers);
 
@@ -1783,6 +1867,315 @@ impl Writer for VegaLiteWriter {
 
         Ok(())
     }
+}
+
+fn render_ribbon(encoding: &mut Map<String, Value>) {
+    if let Some(ymax) = encoding.remove("ymax") {
+        encoding.insert("y".to_string(), ymax);
+    }
+    if let Some(ymin) = encoding.remove("ymin") {
+        encoding.insert("y2".to_string(), ymin);
+    }
+}
+
+fn render_area(encoding: &mut Map<String, Value>, layer: &Layer) -> Result<()> {
+    if let Some(mut y) = encoding.remove("y") {
+        let stack_value;
+        if let Some(ParameterValue::String(stack)) = layer.parameters.get("stacking") {
+            stack_value = match stack.as_str() {
+                "on" => json!("zero"),
+                "off" => Value::Null,
+                "fill" => json!("normalize"),
+                _ => {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Area layer's `stacking` must be \"on\", \"off\" or \"fill\", not \"{}\"",
+                        stack
+                    )));
+                }
+            }
+        } else {
+            stack_value = Value::Null
+        }
+        y["stack"] = stack_value;
+        encoding.insert("y".to_string(), y);
+    }
+    Ok(())
+}
+
+/// Info about prepared boxplot data for a layer
+struct BoxplotPreparedInfo {
+    /// Key for outlier data in the unified dataset
+    outlier_key: String,
+    /// Key for summary data in the unified dataset
+    summary_key: String,
+    /// Grouping column names
+    grouping_cols: Vec<String>,
+    /// Whether there are any outliers
+    has_outliers: bool,
+}
+
+/// Prepare boxplot summary data by pivoting from long to wide format.
+///
+/// Returns (outlier_data_values, summary_data_values, grouping_cols, has_outliers)
+fn prepare_boxplot_summary(
+    data: &DataFrame,
+    writer: &VegaLiteWriter,
+    binned_columns: &HashMap<String, Vec<f64>>,
+) -> Result<(Vec<Value>, Vec<Value>, Vec<String>, bool)> {
+    let type_col = naming::stat_column("type");
+    let type_col = type_col.as_str();
+    let value_col = naming::stat_column("value");
+    let value_col = value_col.as_str();
+
+    // Find grouping columns (all columns except 'type' and 'value')
+    let grouping_cols: Vec<String> = data
+        .get_column_names()
+        .iter()
+        .filter(|&col| col.as_str() != type_col && col.as_str() != value_col)
+        .map(|s| s.to_string())
+        .collect();
+
+    // Separate outliers from summary data
+    let is_outlier = data
+        .column(type_col)
+        .and_then(|s| s.str())
+        .map(|s| s.equal("outlier"))
+        .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
+
+    let has_outliers = is_outlier.any();
+
+    // Convert outlier data to JSON values
+    let outlier_data = data
+        .filter(&is_outlier)
+        .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
+    let outlier_values = if binned_columns.is_empty() {
+        writer.dataframe_to_values(&outlier_data)?
+    } else {
+        writer.dataframe_to_values_with_bins(&outlier_data, binned_columns)?
+    };
+
+    // Filter to non-outliers and pivot to wide format
+    let summary = data
+        .filter(&is_outlier.not())
+        .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
+
+    // Pivot from long to wide format, giving every metric its own column
+    let grouping_cols_refs: Vec<&str> = grouping_cols.iter().map(|s| s.as_str()).collect();
+    let summary = polars_ops::frame::pivot::pivot_stable(
+        &summary,
+        [type_col],                   // on: column to pivot (becomes new columns)
+        Some(grouping_cols_refs),     // index: row identifiers
+        Some([value_col]),            // values: data to spread
+        false,                        // sort_columns
+        None,                         // agg_fn
+        None,                         // separator
+    )
+    .map_err(|e| GgsqlError::WriterError(format!("Pivot failed: {}", e)))?;
+
+    let summary_values = if binned_columns.is_empty() {
+        writer.dataframe_to_values(&summary)?
+    } else {
+        writer.dataframe_to_values_with_bins(&summary, binned_columns)?
+    };
+
+    Ok((outlier_values, summary_values, grouping_cols, has_outliers))
+}
+
+/// Render boxplot layers using filter transforms on the unified dataset.
+///
+/// Creates 5 layers: outliers (optional), lower whiskers, upper whiskers, box, median line.
+/// All layers use filter transforms to select their data from the unified dataset.
+fn render_boxplot(
+    prototype: Value,
+    layer: &Layer,
+    outlier_source_key: &str,
+    summary_source_key: &str,
+    grouping_cols: &[String],
+    has_outliers: bool,
+) -> Result<Vec<Value>> {
+    let mut layers: Vec<Value> = Vec::new();
+
+    let type_col = naming::stat_column("type");
+    let value_col = naming::stat_column("value");
+
+    let x_col = layer
+        .mappings
+        .get("x")
+        .and_then(|x| x.column_name())
+        .ok_or_else(|| {
+            GgsqlError::WriterError("Failed to find column for 'x' aesthetic".to_string())
+        })?;
+    let y_col = layer
+        .mappings
+        .get("y")
+        .and_then(|y| y.column_name())
+        .ok_or_else(|| {
+            GgsqlError::WriterError("Failed to find column for 'y' aesthetic".to_string())
+        })?;
+
+    // Set orientation
+    let is_horizontal = x_col == value_col;
+    let group_col = if is_horizontal { y_col } else { x_col };
+    let offset = if is_horizontal { "yOffset" } else { "xOffset" };
+    let value_var1 = if is_horizontal { "x" } else { "y" };
+    let value_var2 = if is_horizontal { "x2" } else { "y2" };
+
+    // Find dodge groups (grouping cols minus the axis group col)
+    let dodge_groups: Vec<&str> = grouping_cols
+        .iter()
+        .filter(|col| col.as_str() != group_col && col.as_str() != type_col && col.as_str() != value_col)
+        .map(|s| s.as_str())
+        .collect();
+
+    // Get width parameter
+    let mut width = 0.9;
+    if let Some(ParameterValue::Number(num)) = layer.parameters.get("width") {
+        width = *num;
+    }
+
+    // Default styling
+    let default_stroke = "black";
+    let default_fill = "#FFFFFF00";
+    let default_linewidth = 1.0;
+
+    // Helper to create filter transform for source selection
+    let make_source_filter = |source_key: &str| -> Value {
+        json!({
+            "filter": {
+                "field": naming::SOURCE_COLUMN,
+                "equal": source_key
+            }
+        })
+    };
+
+    // Create outlier points layer (if there are outliers)
+    if has_outliers {
+        let mut points = prototype.clone();
+
+        // Add source filter transform
+        let existing_transforms = points.get("transform")
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let mut new_transforms = vec![make_source_filter(outlier_source_key)];
+        new_transforms.extend(existing_transforms);
+        points["transform"] = json!(new_transforms);
+
+        points["mark"] = json!({
+            "type": "point",
+            "stroke": default_stroke,
+            "strokeWidth": default_linewidth
+        });
+        if points["encoding"].get("color").is_some() {
+            points["mark"]["filled"] = json!(true);
+        }
+
+        // Add dodging offset
+        if !dodge_groups.is_empty() {
+            points["encoding"][offset] = json!({"field": dodge_groups[0]});
+        }
+
+        layers.push(points);
+    }
+
+    // Clone prototype without size/shape (these apply only to points)
+    let mut summary_prototype = prototype.clone();
+    if let Some(Value::Object(ref mut encoding)) = summary_prototype.get_mut("encoding") {
+        encoding.remove("size");
+        encoding.remove("shape");
+    }
+
+    // Build encodings for the 5 boxplot numbers
+    let mut summary_encoding = HashMap::new();
+    for aes in &["lower", "upper", "q1", "q3", "median"] {
+        let mut template = summary_prototype["encoding"][value_var1].clone();
+        template["field"] = json!(*aes);
+        summary_encoding.insert(*aes, template);
+    }
+
+    // Helper to create summary layer with filter transform
+    let create_summary_layer = |mut layer_spec: Value, mark: Value| -> Value {
+        // Add source filter transform
+        let existing_transforms = layer_spec.get("transform")
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let mut new_transforms = vec![make_source_filter(summary_source_key)];
+        new_transforms.extend(existing_transforms);
+        layer_spec["transform"] = json!(new_transforms);
+        layer_spec["mark"] = mark;
+        layer_spec
+    };
+
+    // Lower whiskers (rule from lower to q1)
+    let mut lower_whiskers = create_summary_layer(
+        summary_prototype.clone(),
+        json!({
+            "type": "rule",
+            "stroke": default_stroke,
+            "size": default_linewidth
+        }),
+    );
+
+    // Handle strokeWidth -> size for rule marks
+    if let Some(linewidth) = lower_whiskers["encoding"].get("strokeWidth").cloned() {
+        lower_whiskers["encoding"]["size"] = linewidth;
+        if let Some(Value::Object(ref mut encoding)) = lower_whiskers.get_mut("encoding") {
+            encoding.remove("strokeWidth");
+        }
+    }
+
+    lower_whiskers["encoding"][value_var1] = summary_encoding["q1"].clone();
+    lower_whiskers["encoding"][value_var2] = summary_encoding["lower"].clone();
+
+    // Upper whiskers (rule from q3 to upper)
+    let mut upper_whiskers = lower_whiskers.clone();
+    upper_whiskers["encoding"][value_var1] = summary_encoding["q3"].clone();
+    upper_whiskers["encoding"][value_var2] = summary_encoding["upper"].clone();
+
+    // Box (bar from q1 to q3)
+    let mut box_part = create_summary_layer(
+        summary_prototype.clone(),
+        json!({
+            "type": "bar",
+            "width": {"band": width},
+            "align": "center",
+            "stroke": default_stroke,
+            "color": default_fill,
+            "strokeWidth": default_linewidth
+        }),
+    );
+    box_part["encoding"][value_var1] = summary_encoding["q1"].clone();
+    box_part["encoding"][value_var2] = summary_encoding["q3"].clone();
+
+    // Median line (tick at median)
+    let mut median_line = create_summary_layer(
+        summary_prototype.clone(),
+        json!({
+            "type": "tick",
+            "stroke": default_stroke,
+            "width": {"band": width},
+            "align": "center",
+            "strokeWidth": default_linewidth
+        }),
+    );
+    median_line["encoding"][value_var1] = summary_encoding["median"].clone();
+
+    // Add dodging to all summary layers
+    if !dodge_groups.is_empty() {
+        let offset_val = json!({"field": dodge_groups[0]});
+        lower_whiskers["encoding"][offset] = offset_val.clone();
+        upper_whiskers["encoding"][offset] = offset_val.clone();
+        box_part["encoding"][offset] = offset_val.clone();
+        median_line["encoding"][offset] = offset_val;
+    }
+
+    layers.push(lower_whiskers);
+    layers.push(upper_whiskers);
+    layers.push(box_part);
+    layers.push(median_line);
+
+    Ok(layers)
 }
 
 #[cfg(test)]
@@ -2116,7 +2509,7 @@ mod tests {
         let geoms = vec![
             (Geom::histogram(), "bar"),
             (Geom::density(), "area"),
-            (Geom::boxplot(), "boxplot"),
+            // (Geom::boxplot(), "boxplot"), // Boxplot produces several layers
         ];
 
         for (geom, expected_mark) in geoms {
@@ -4323,7 +4716,7 @@ mod tests {
         let writer = VegaLiteWriter::new();
 
         let mut spec = Plot::new();
-        let layer = Layer::new(Geom::ribbon())
+        let layer = Layer::new(Geom::errorbar())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("date".to_string()),
@@ -5901,10 +6294,12 @@ mod tests {
     #[test]
     fn test_unified_data_preserves_layer_separation() {
         // Test that filter transforms correctly isolate layer data
+        // when multiple layers have different data sources
         let writer = VegaLiteWriter::new();
 
         let mut spec = Plot::new();
-        let layer = Layer::new(Geom::point())
+        // Layer 0: points
+        let layer0 = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -5913,7 +6308,18 @@ mod tests {
                 "y".to_string(),
                 AestheticValue::standard_column("y".to_string()),
             );
-        spec.layers.push(layer);
+        // Layer 1: lines (different geom to show they're separate layers)
+        let layer1 = Layer::new(Geom::line())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer0);
+        spec.layers.push(layer1);
 
         // Create two layer datasets with different data
         let mut data_map = HashMap::new();
@@ -5955,5 +6361,444 @@ mod tests {
 
         assert_eq!(layer0_count, 3, "Layer 0 should have 3 rows");
         assert_eq!(layer1_count, 2, "Layer 1 should have 2 rows");
+    }
+
+    // ========================================
+    // render_ribbon Tests
+    // ========================================
+
+    #[test]
+    fn test_render_ribbon_translates_ymin_ymax() {
+        let mut encoding = Map::new();
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "x", "type": "quantitative"}),
+        );
+        encoding.insert(
+            "ymin".to_string(),
+            json!({"field": "lower", "type": "quantitative"}),
+        );
+        encoding.insert(
+            "ymax".to_string(),
+            json!({"field": "upper", "type": "quantitative"}),
+        );
+
+        render_ribbon(&mut encoding);
+
+        // ymax should become y
+        assert_eq!(encoding.get("y").unwrap()["field"], "upper");
+
+        // ymin should become y2
+        assert_eq!(encoding.get("y2").unwrap()["field"], "lower");
+
+        // Original ymin and ymax should be removed
+        assert!(!encoding.contains_key("ymin"));
+        assert!(!encoding.contains_key("ymax"));
+    }
+
+    // ========================================
+    // render_area Tests
+    // ========================================
+
+    #[test]
+    fn test_render_area_stacking_values() {
+        let test_cases = vec![
+            (Some("on"), json!("zero")),
+            (Some("off"), Value::Null),
+            (Some("fill"), json!("normalize")),
+            (None, Value::Null),
+        ];
+
+        for (stacking_param, expected_stack) in test_cases {
+            let mut encoding = Map::new();
+            encoding.insert(
+                "y".to_string(),
+                json!({"field": "value", "type": "quantitative"}),
+            );
+
+            let mut layer = Layer::new(Geom::area());
+            if let Some(value) = stacking_param {
+                layer = layer.with_parameter(
+                    "stacking".to_string(),
+                    ParameterValue::String(value.to_string()),
+                );
+            }
+
+            render_area(&mut encoding, &layer).unwrap();
+
+            assert_eq!(
+                encoding.get("y").unwrap()["stack"],
+                expected_stack,
+                "stacking={:?} should produce stack={:?}",
+                stacking_param,
+                expected_stack
+            );
+        }
+    }
+
+    #[test]
+    fn test_render_area_stacking_invalid() {
+        let mut encoding = Map::new();
+        encoding.insert(
+            "y".to_string(),
+            json!({"field": "value", "type": "quantitative"}),
+        );
+
+        let layer = Layer::new(Geom::area()).with_parameter(
+            "stacking".to_string(),
+            ParameterValue::String("invalid".to_string()),
+        );
+
+        let result = render_area(&mut encoding, &layer);
+
+        assert!(result.is_err());
+        match result {
+            Err(GgsqlError::ValidationError(msg)) => {
+                assert!(msg.contains("stacking"));
+                assert!(msg.contains("invalid"));
+            }
+            _ => panic!("Expected ValidationError"),
+        }
+    }
+
+    #[test]
+    fn test_boxplot_vertical_with_outliers() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        // Create boxplot data in long format (as produced by stat_boxplot)
+        // This simulates boxplot statistics for two categories with outliers
+        let df = df! {
+            "category" => &["A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "B", "B", "B", "B", "B", "B", "B", "B", "B"],
+            naming::stat_column("type").as_str() => &["lower", "q1", "median", "q3", "upper", "min", "max", "outlier", "outlier", "outlier", "lower", "q1", "median", "q3", "upper", "min", "max", "outlier", "outlier"],
+            naming::stat_column("value").as_str() => &[10.0, 15.0, 20.0, 25.0, 30.0, 10.0, 30.0, 5.0, 35.0, 40.0, 20.0, 25.0, 30.0, 35.0, 40.0, 20.0, 40.0, 15.0, 50.0],
+        }
+        .unwrap();
+
+        // Create a boxplot layer
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::boxplot())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("category".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column(naming::stat_column("value")),
+            );
+        spec.layers.push(layer);
+
+        // Generate Vega-Lite JSON
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // INVARIANT: Only one unified dataset should exist
+        let datasets = vl_spec["datasets"].as_object()
+            .expect("datasets should be an object");
+        assert_eq!(
+            datasets.len(), 1,
+            "Expected exactly 1 dataset (unified), found {}. Keys: {:?}",
+            datasets.len(), datasets.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            datasets.contains_key(naming::GLOBAL_DATA_KEY),
+            "Should have unified global dataset"
+        );
+
+        // Verify that boxplot produces multiple layers (outliers + 4 boxplot components)
+        assert!(vl_spec["layer"].is_array());
+        let layers = vl_spec["layer"].as_array().unwrap();
+        assert_eq!(layers.len(), 5, "Boxplot with outliers should produce 5 layers: outliers, lower whisker, upper whisker, box, median");
+
+        // Verify first layer is outliers (point marks)
+        assert_eq!(
+            layers[0]["mark"]["type"], "point",
+            "First layer should be outlier points"
+        );
+
+        // Verify all boxplot layers use filter transforms on __ggsql_source__
+        for (i, layer) in layers.iter().enumerate() {
+            let transforms = layer["transform"].as_array()
+                .unwrap_or_else(|| panic!("Layer {} should have transforms", i));
+            assert!(!transforms.is_empty(), "Layer {} should have at least one transform", i);
+            let filter = &transforms[0]["filter"];
+            assert_eq!(
+                filter["field"], naming::SOURCE_COLUMN,
+                "Layer {} should filter on __ggsql_source__", i
+            );
+        }
+
+        // Verify whiskers (rule marks)
+        assert_eq!(
+            layers[1]["mark"]["type"], "rule",
+            "Second layer should be lower whisker"
+        );
+        assert_eq!(
+            layers[2]["mark"]["type"], "rule",
+            "Third layer should be upper whisker"
+        );
+
+        // Verify box (bar mark)
+        assert_eq!(
+            layers[3]["mark"]["type"], "bar",
+            "Fourth layer should be box"
+        );
+
+        // Verify median (tick mark)
+        assert_eq!(
+            layers[4]["mark"]["type"], "tick",
+            "Fifth layer should be median line"
+        );
+
+        // Verify outliers filter on outlier source key, summary layers on summary source key
+        let outlier_source = layers[0]["transform"][0]["filter"]["equal"].as_str().unwrap();
+        let summary_source = layers[1]["transform"][0]["filter"]["equal"].as_str().unwrap();
+        assert!(outlier_source.contains("outliers"), "Outlier source should contain 'outliers'");
+        assert!(summary_source.contains("summary"), "Summary source should contain 'summary'");
+
+        // Verify unified dataset contains both outlier and summary data with source tags
+        let unified_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY].as_array().unwrap();
+        let outlier_rows: Vec<_> = unified_data.iter()
+            .filter(|row| row[naming::SOURCE_COLUMN].as_str() == Some(outlier_source))
+            .collect();
+        let summary_rows: Vec<_> = unified_data.iter()
+            .filter(|row| row[naming::SOURCE_COLUMN].as_str() == Some(summary_source))
+            .collect();
+        assert_eq!(
+            outlier_rows.len(), 5,
+            "Should have 5 outlier rows (3 for A, 2 for B)"
+        );
+        assert_eq!(
+            summary_rows.len(), 2,
+            "Should have 2 summary rows (one per category)"
+        );
+
+        // Verify summary rows have the five-number columns
+        let first_summary = &summary_rows[0];
+        assert!(first_summary["lower"].is_number());
+        assert!(first_summary["upper"].is_number());
+        assert!(first_summary["q1"].is_number());
+        assert!(first_summary["q3"].is_number());
+        assert!(first_summary["median"].is_number());
+        assert!(first_summary["category"].is_string());
+
+        // Verify encodings use y for values (vertical orientation)
+        assert!(layers[1]["encoding"]["y"].is_object());
+        assert!(layers[1]["encoding"]["y2"].is_object());
+        assert_eq!(layers[1]["encoding"]["y"]["field"], "q1");
+        assert_eq!(layers[1]["encoding"]["y2"]["field"], "lower");
+    }
+
+    #[test]
+    fn test_boxplot_horizontal_with_grouping() {
+        // NOTE: This test verifies the render_boxplot() logic for horizontal orientation
+        // and grouping, but actual orientation detection is not yet implemented upstream
+        // in the stat pipeline. This test uses manually constructed data
+        // to verify the rendering logic works correctly when given horizontal data.
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        // Create horizontal boxplot data with grouping
+        // Horizontal means x has the values, y has the categories
+        let df = df! {
+            "category" => &["A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A"],
+            "region" => &["North", "North", "North", "North", "North", "North", "North", "South", "South", "South", "South", "South", "South", "South"],
+            naming::stat_column("type").as_str() => &["lower", "q1", "median", "q3", "upper", "min", "max", "lower", "q1", "median", "q3", "upper", "min", "max"],
+            naming::stat_column("value").as_str() => &[10.0, 15.0, 20.0, 25.0, 30.0, 10.0, 30.0, 20.0, 25.0, 30.0, 35.0, 40.0, 20.0, 40.0],
+        }
+        .unwrap();
+
+        // Create a horizontal boxplot layer (x = value, y = category)
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::boxplot())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column(naming::stat_column("value")),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("category".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Generate Vega-Lite JSON
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // INVARIANT: Only one unified dataset should exist
+        let datasets = vl_spec["datasets"].as_object()
+            .expect("datasets should be an object");
+        assert_eq!(
+            datasets.len(), 1,
+            "Expected exactly 1 dataset (unified), found {}. Keys: {:?}",
+            datasets.len(), datasets.keys().collect::<Vec<_>>()
+        );
+
+        // Verify multiple layers (no outliers in this data)
+        assert!(vl_spec["layer"].is_array());
+        let layers = vl_spec["layer"].as_array().unwrap();
+        assert_eq!(layers.len(), 4, "Boxplot should produce 4 layers");
+
+        // Verify all layers use filter transforms
+        for (i, layer) in layers.iter().enumerate() {
+            let transforms = layer["transform"].as_array()
+                .unwrap_or_else(|| panic!("Layer {} should have transforms", i));
+            assert!(!transforms.is_empty(), "Layer {} should have at least one transform", i);
+            assert_eq!(
+                transforms[0]["filter"]["field"], naming::SOURCE_COLUMN,
+                "Layer {} should filter on __ggsql_source__", i
+            );
+        }
+
+        // Verify encodings use x for values (horizontal orientation)
+        assert!(layers[0]["encoding"]["x"].is_object());
+        assert!(layers[0]["encoding"]["x2"].is_object());
+        assert_eq!(layers[0]["encoding"]["x"]["field"], "q1");
+        assert_eq!(layers[0]["encoding"]["x2"]["field"], "lower");
+
+        // Verify yOffset is used for dodging (since we have region grouping)
+        assert!(
+            layers[0]["encoding"]["yOffset"].is_object(),
+            "Should have yOffset for dodging"
+        );
+        assert_eq!(layers[0]["encoding"]["yOffset"]["field"], "region");
+
+        // Verify unified dataset contains summary data with both category and region
+        let summary_source = layers[0]["transform"][0]["filter"]["equal"].as_str().unwrap();
+        let unified_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY].as_array().unwrap();
+        let summary_rows: Vec<_> = unified_data.iter()
+            .filter(|row| row[naming::SOURCE_COLUMN].as_str() == Some(summary_source))
+            .collect();
+        assert_eq!(
+            summary_rows.len(), 2,
+            "Should have summary for 2 region groups within category A"
+        );
+
+        let first_row = &summary_rows[0];
+        assert!(first_row["category"].is_string());
+        assert!(first_row["region"].is_string());
+    }
+
+    /// Test that all geom types produce only a single unified dataset
+    /// This guards against regressions that might add extra datasets
+    #[test]
+    fn test_writer_always_produces_single_dataset() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        // Test cases: (name, geom, data, aesthetics)
+        // Each should produce exactly one dataset
+
+        // Point
+        {
+            let df = df! { "x" => &[1.0, 2.0], "y" => &[3.0, 4.0] }.unwrap();
+            let mut spec = Plot::new();
+            spec.layers.push(
+                Layer::new(Geom::point())
+                    .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
+                    .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            );
+            let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+            let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+            let datasets = vl_spec["datasets"].as_object().expect("point: datasets should be object");
+            assert_eq!(datasets.len(), 1, "point: Expected 1 dataset, found {}", datasets.len());
+        }
+
+        // Line
+        {
+            let df = df! { "x" => &[1.0, 2.0], "y" => &[3.0, 4.0] }.unwrap();
+            let mut spec = Plot::new();
+            spec.layers.push(
+                Layer::new(Geom::line())
+                    .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
+                    .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            );
+            let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+            let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+            let datasets = vl_spec["datasets"].as_object().expect("line: datasets should be object");
+            assert_eq!(datasets.len(), 1, "line: Expected 1 dataset, found {}", datasets.len());
+        }
+
+        // Bar
+        {
+            let df = df! { "x" => &["A", "B"], "y" => &[10.0, 20.0] }.unwrap();
+            let mut spec = Plot::new();
+            spec.layers.push(
+                Layer::new(Geom::bar())
+                    .with_aesthetic("x".to_string(), AestheticValue::standard_column("x".to_string()))
+                    .with_aesthetic("y".to_string(), AestheticValue::standard_column("y".to_string()))
+            );
+            let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+            let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+            let datasets = vl_spec["datasets"].as_object().expect("bar: datasets should be object");
+            assert_eq!(datasets.len(), 1, "bar: Expected 1 dataset, found {}", datasets.len());
+        }
+
+        // Boxplot - this was the problematic case that motivated this fix
+        {
+            let df = df! {
+                "category" => &["A", "A", "A", "A", "A", "A", "A"],
+                naming::stat_column("type").as_str() => &["lower", "q1", "median", "q3", "upper", "min", "max"],
+                naming::stat_column("value").as_str() => &[10.0, 15.0, 20.0, 25.0, 30.0, 10.0, 30.0],
+            }.unwrap();
+            let mut spec = Plot::new();
+            spec.layers.push(
+                Layer::new(Geom::boxplot())
+                    .with_aesthetic("x".to_string(), AestheticValue::standard_column("category".to_string()))
+                    .with_aesthetic("y".to_string(), AestheticValue::standard_column(naming::stat_column("value")))
+            );
+            let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+            let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+            let datasets = vl_spec["datasets"].as_object().expect("boxplot: datasets should be object");
+            assert_eq!(
+                datasets.len(), 1,
+                "boxplot: Expected 1 dataset (single-dataset invariant), found {}. Keys: {:?}",
+                datasets.len(), datasets.keys().collect::<Vec<_>>()
+            );
+        }
+    }
+
+    /// Test that boxplot layers all use filter transforms
+    #[test]
+    fn test_boxplot_uses_filter_transforms() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        // Create boxplot data with outliers
+        let df = df! {
+            "category" => &["A", "A", "A", "A", "A", "A", "A", "A", "A"],
+            naming::stat_column("type").as_str() => &["lower", "q1", "median", "q3", "upper", "min", "max", "outlier", "outlier"],
+            naming::stat_column("value").as_str() => &[10.0, 15.0, 20.0, 25.0, 30.0, 10.0, 30.0, 5.0, 35.0],
+        }
+        .unwrap();
+
+        let mut spec = Plot::new();
+        spec.layers.push(
+            Layer::new(Geom::boxplot())
+                .with_aesthetic("x".to_string(), AestheticValue::standard_column("category".to_string()))
+                .with_aesthetic("y".to_string(), AestheticValue::standard_column(naming::stat_column("value")))
+        );
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // All boxplot layers should use filter transforms on __ggsql_source__
+        let layers = vl_spec["layer"].as_array().unwrap();
+        assert_eq!(layers.len(), 5); // outliers + 4 boxplot parts
+
+        for (i, layer) in layers.iter().enumerate() {
+            let transforms = layer["transform"].as_array()
+                .unwrap_or_else(|| panic!("Layer {} should have transforms", i));
+            assert!(!transforms.is_empty(), "Layer {} should have at least one transform", i);
+            assert_eq!(
+                transforms[0]["filter"]["field"],
+                naming::SOURCE_COLUMN,
+                "Boxplot layer {} should filter on __ggsql_source__", i
+            );
+        }
     }
 }

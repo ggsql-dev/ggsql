@@ -1833,6 +1833,10 @@ pub struct PreparedData {
     pub data: HashMap<String, DataFrame>,
     /// Parsed and resolved visualization specifications
     pub specs: Vec<Plot>,
+    /// The SQL portion of the query
+    pub sql: String,
+    /// The VISUALISE portion of the query
+    pub visual: String,
 }
 
 /// Build data map from a query using a custom query executor function
@@ -2143,6 +2147,8 @@ where
     Ok(PreparedData {
         data: data_map,
         specs,
+        sql: sql_part,
+        visual: viz_part,
     })
 }
 
@@ -3526,7 +3532,7 @@ fn prune_dataframes_per_layer(
 /// Convenience wrapper around `prepare_data_with_executor` for direct DuckDB reader usage.
 #[cfg(feature = "duckdb")]
 pub fn prepare_data(query: &str, reader: &DuckDBReader) -> Result<PreparedData> {
-    prepare_data_with_executor(query, |sql| reader.execute(sql), &reader.sql_type_names())
+    prepare_data_with_executor(query, |sql| reader.execute_sql(sql), &reader.sql_type_names())
 }
 
 #[cfg(test)]
@@ -6200,7 +6206,7 @@ mod tests {
     #[test]
     fn test_fetch_schema_numeric_columns() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let execute_query = |sql: &str| reader.execute(sql);
+        let execute_query = |sql: &str| reader.execute_sql(sql);
         let query = "SELECT * FROM (VALUES (1, 10.5), (5, 20.0), (3, 15.5)) AS t(x, y)";
 
         let schema = fetch_schema_for_test(query, &execute_query).unwrap();
@@ -6226,7 +6232,7 @@ mod tests {
     #[test]
     fn test_fetch_schema_string_columns() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let execute_query = |sql: &str| reader.execute(sql);
+        let execute_query = |sql: &str| reader.execute_sql(sql);
         let query = "SELECT * FROM (VALUES ('apple'), ('cherry'), ('banana')) AS t(fruit)";
 
         let schema = fetch_schema_for_test(query, &execute_query).unwrap();
@@ -6245,7 +6251,7 @@ mod tests {
     #[test]
     fn test_fetch_schema_date_columns() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let execute_query = |sql: &str| reader.execute(sql);
+        let execute_query = |sql: &str| reader.execute_sql(sql);
         let query = "SELECT * FROM (VALUES
             ('2024-01-15'::DATE),
             ('2024-03-01'::DATE),
@@ -6269,7 +6275,7 @@ mod tests {
     #[test]
     fn test_fetch_schema_empty_table() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let execute_query = |sql: &str| reader.execute(sql);
+        let execute_query = |sql: &str| reader.execute_sql(sql);
         // Empty result set (WHERE 1=0 filters out all rows)
         let query = "SELECT 1 as x, 2 as y WHERE 1=0";
 
@@ -6293,7 +6299,7 @@ mod tests {
     #[test]
     fn test_fetch_schema_mixed_column_types() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let execute_query = |sql: &str| reader.execute(sql);
+        let execute_query = |sql: &str| reader.execute_sql(sql);
         let query = "SELECT * FROM (VALUES
             (1, 'A', true, '2024-01-01'::DATE),
             (5, 'C', false, '2024-12-31'::DATE),
@@ -6337,7 +6343,7 @@ mod tests {
     #[test]
     fn test_fetch_schema_with_nulls() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let execute_query = |sql: &str| reader.execute(sql);
+        let execute_query = |sql: &str| reader.execute_sql(sql);
         let query = "SELECT * FROM (VALUES
             (1, 'A'),
             (NULL, 'B'),
