@@ -119,10 +119,6 @@ impl TransformTrait for Time {
         (0.0, MAX_TIME_NANOS)
     }
 
-    fn is_value_in_domain(&self, value: f64) -> bool {
-        value.is_finite() && (0.0..=MAX_TIME_NANOS).contains(&value)
-    }
-
     fn transform(&self, value: f64) -> f64 {
         // Identity transform - time stays in nanoseconds-since-midnight space
         value
@@ -369,13 +365,9 @@ mod tests {
     fn test_time_domain() {
         let t = Time;
         let (min, max) = t.allowed_domain();
+        // Time domain is 0 to 24 hours in nanoseconds
         assert_eq!(min, 0.0);
         assert_eq!(max, 24.0 * NANOS_PER_HOUR);
-
-        assert!(t.is_value_in_domain(0.0));
-        assert!(t.is_value_in_domain(12.0 * NANOS_PER_HOUR));
-        assert!(!t.is_value_in_domain(-1.0));
-        assert!(!t.is_value_in_domain(25.0 * NANOS_PER_HOUR));
     }
 
     #[test]

@@ -2068,6 +2068,48 @@ pub fn get_linetype_palette(name: &str) -> Option<&'static [&'static str]> {
     }
 }
 
+/// Look up a palette by aesthetic and name, returning as ArrayElements.
+///
+/// This helper consolidates the aesthetic-based palette lookup with proper error handling,
+/// eliminating duplicate code across scale type implementations.
+///
+/// # Arguments
+///
+/// * `aesthetic` - The aesthetic type ("shape", "linetype", "color", "fill", "stroke")
+/// * `name` - The palette name to look up
+///
+/// # Returns
+///
+/// Returns `Ok(Vec<ArrayElement>)` with the palette values, or an error if:
+/// - The aesthetic doesn't support palettes
+/// - The palette name is unknown
+///
+/// # Example
+///
+/// ```ignore
+/// let colors = lookup_palette("fill", "viridis")?;
+/// let shapes = lookup_palette("shape", "default")?;
+/// ```
+pub fn lookup_palette(aesthetic: &str, name: &str) -> Result<Vec<ArrayElement>, String> {
+    let palette = match aesthetic {
+        "shape" => get_shape_palette(name),
+        "linetype" => get_linetype_palette(name),
+        "color" | "fill" | "stroke" => get_color_palette(name),
+        _ => {
+            return Err(format!(
+                "Palette '{}' not applicable to aesthetic '{}'",
+                name, aesthetic
+            ));
+        }
+    }
+    .ok_or_else(|| format!("Unknown {} palette: '{}'", aesthetic, name))?;
+
+    Ok(palette
+        .iter()
+        .map(|s| ArrayElement::String(s.to_string()))
+        .collect())
+}
+
 /// Generate linetypes with evenly-spaced ink densities.
 ///
 /// Creates `count` linetypes ranging from sparse (low ink) to solid (100% ink).
@@ -2140,28 +2182,6 @@ pub fn generate_linetype_sequential(count: usize) -> Vec<String> {
     }
 
     result
-}
-
-/// Expand a palette to an array of ArrayElements, sized to match input_range length.
-/// Returns an error if count exceeds the palette size.
-pub fn expand_palette(
-    palette: &'static [&'static str],
-    count: usize,
-    palette_name: &str,
-) -> Result<Vec<ArrayElement>, String> {
-    if count > palette.len() {
-        return Err(format!(
-            "Palette '{}' has {} colors but {} are needed. Choose a larger palette.",
-            palette_name,
-            palette.len(),
-            count
-        ));
-    }
-    Ok(palette
-        .iter()
-        .take(count)
-        .map(|s| ArrayElement::String(s.to_string()))
-        .collect())
 }
 
 #[cfg(test)]
@@ -2305,29 +2325,56 @@ mod tests {
     }
 
     #[test]
-    fn test_expand_palette() {
-        let expanded = expand_palette(TABLEAU10, 3, "tableau10").unwrap();
-        assert_eq!(expanded.len(), 3);
-        assert_eq!(expanded[0], ArrayElement::String("#4e79a7".to_string()));
-        assert_eq!(expanded[1], ArrayElement::String("#f28e2b".to_string()));
-        assert_eq!(expanded[2], ArrayElement::String("#e15759".to_string()));
+    fn test_lookup_palette_color() {
+        // Color aesthetic should look up color palettes
+        let result = lookup_palette("fill", "viridis");
+        assert!(result.is_ok());
+        let arr = result.unwrap();
+        assert_eq!(arr.len(), 256); // viridis has 256 colors
+
+        // stroke should also work
+        let result = lookup_palette("stroke", "tableau10");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 10);
+
+        // color should also work
+        let result = lookup_palette("color", "ggsql");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 10);
     }
 
     #[test]
-    fn test_expand_palette_exact_size() {
-        // Requesting exactly the palette size should work
-        let expanded = expand_palette(TABLEAU10, 10, "tableau10").unwrap();
-        assert_eq!(expanded.len(), 10);
+    fn test_lookup_palette_shape() {
+        let result = lookup_palette("shape", "default");
+        assert!(result.is_ok());
+        let arr = result.unwrap();
+        assert_eq!(arr.len(), 15); // default shapes palette
     }
 
     #[test]
-    fn test_expand_palette_too_many() {
-        // Requesting more colors than palette has should error
-        let result = expand_palette(TABLEAU10, 15, "tableau10");
+    fn test_lookup_palette_linetype() {
+        let result = lookup_palette("linetype", "default");
+        assert!(result.is_ok());
+        let arr = result.unwrap();
+        assert_eq!(arr.len(), 6); // default linetypes palette
+    }
+
+    #[test]
+    fn test_lookup_palette_unknown_palette() {
+        let result = lookup_palette("fill", "nonexistent_palette");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("tableau10"));
-        assert!(err.contains("10 colors"));
-        assert!(err.contains("15 are needed"));
+        assert!(err.contains("Unknown"));
+        assert!(err.contains("nonexistent_palette"));
+    }
+
+    #[test]
+    fn test_lookup_palette_invalid_aesthetic() {
+        // Palettes don't apply to x/y aesthetics
+        let result = lookup_palette("x", "viridis");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("not applicable"));
+        assert!(err.contains("x"));
     }
 }

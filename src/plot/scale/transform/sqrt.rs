@@ -22,10 +22,6 @@ impl TransformTrait for Sqrt {
         (0.0, f64::INFINITY)
     }
 
-    fn is_value_in_domain(&self, value: f64) -> bool {
-        value >= 0.0 && value.is_finite()
-    }
-
     fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
         sqrt_breaks(min, max, n, pretty)
     }
@@ -64,16 +60,6 @@ mod tests {
         let (min, max) = t.allowed_domain();
         assert_eq!(min, 0.0);
         assert!(max.is_infinite());
-    }
-
-    #[test]
-    fn test_sqrt_is_value_in_domain() {
-        let t = Sqrt;
-        assert!(t.is_value_in_domain(0.0)); // sqrt includes 0
-        assert!(t.is_value_in_domain(1.0));
-        assert!(t.is_value_in_domain(100.0));
-        assert!(!t.is_value_in_domain(-1.0));
-        assert!(!t.is_value_in_domain(f64::INFINITY));
     }
 
     #[test]

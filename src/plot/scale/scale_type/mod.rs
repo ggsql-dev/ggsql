@@ -276,7 +276,15 @@ fn compute_unique_bool(columns: &[&Column], include_null: bool) -> Vec<ArrayElem
                     Some(false) => has_false = true,
                     None => has_null = true,
                 }
+                // Early exit if all values have been encountered
+                if has_null && has_true && has_false {
+                    break;
+                }
             }
+        }
+        // Early exit if all values have been encountered
+        if has_null && has_true && has_false {
+            break;
         }
     }
 
@@ -501,42 +509,6 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     fn uses_discrete_input_range(&self) -> bool {
         false
     }
-
-    /// Returns whether this scale type accepts the given data type
-    fn allows_data_type(&self, dtype: &DataType) -> bool;
-
-    /// Validate that all columns have compatible data types for this scale.
-    /// Returns Ok(()) if valid, Err with details if any column is incompatible.
-    fn validate_columns(&self, columns: &[&Column]) -> Result<(), String> {
-        for col in columns {
-            let dtype = col.dtype();
-            if !self.allows_data_type(dtype) {
-                return Err(format!(
-                    "Column '{}' has type {:?} which is not compatible with {} scale",
-                    col.name(),
-                    dtype,
-                    self.name()
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    /// Resolve input range from user-provided range and data columns.
-    ///
-    /// Behavior varies by scale type:
-    /// - Continuous/Binned: Compute min/max from data, merge with user range (nulls → computed)
-    /// - Date/DateTime/Time: Compute min/max as ISO strings, merge with user range
-    /// - Discrete: Collect unique values if no user range; error if user range contains nulls
-    /// - Identity: Return Ok(None); error if user provided any input range
-    ///
-    /// The `properties` parameter provides access to SETTING values, including `expand`.
-    fn resolve_input_range(
-        &self,
-        user_range: Option<&[ArrayElement]>,
-        columns: &[&Column],
-        properties: &HashMap<String, ParameterValue>,
-    ) -> Result<Option<Vec<ArrayElement>>, String>;
 
     /// Get default output range for an aesthetic.
     ///
@@ -996,19 +968,8 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             }
             Some(OutputRange::Palette(name)) => {
                 // Named palette - convert to Array (full palette for interpolation)
-                let palette = match aesthetic {
-                    "shape" => palettes::get_shape_palette(name),
-                    "linetype" => palettes::get_linetype_palette(name),
-                    _ => palettes::get_color_palette(name),
-                };
-                if let Some(palette) = palette {
-                    let arr: Vec<_> = palette
-                        .iter()
-                        .map(|s| ArrayElement::String(s.to_string()))
-                        .collect();
-                    scale.output_range = Some(OutputRange::Array(arr));
-                }
-                // If palette not found, leave as Palette for Vega-Lite to handle as scheme
+                let arr = palettes::lookup_palette(aesthetic, name)?;
+                scale.output_range = Some(OutputRange::Array(arr));
             }
             Some(OutputRange::Array(_)) => {
                 // Already an array, nothing to do
@@ -1154,28 +1115,6 @@ impl ScaleType {
     /// Check if this scale type uses discrete input range (unique values vs min/max)
     pub fn uses_discrete_input_range(&self) -> bool {
         self.0.uses_discrete_input_range()
-    }
-
-    /// Check if this scale type accepts the given data type
-    pub fn allows_data_type(&self, dtype: &DataType) -> bool {
-        self.0.allows_data_type(dtype)
-    }
-
-    /// Validate that all columns have compatible data types for this scale
-    pub fn validate_columns(&self, columns: &[&Column]) -> Result<(), String> {
-        self.0.validate_columns(columns)
-    }
-
-    /// Resolve input range from user-provided range and data columns.
-    ///
-    /// Delegates to the underlying scale type implementation.
-    pub fn resolve_input_range(
-        &self,
-        user_range: Option<&[ArrayElement]>,
-        columns: &[&Column],
-        properties: &HashMap<String, ParameterValue>,
-    ) -> Result<Option<Vec<ArrayElement>>, String> {
-        self.0.resolve_input_range(user_range, columns, properties)
     }
 
     /// Get default output range for an aesthetic.
@@ -1371,24 +1310,6 @@ pub(crate) fn input_range_has_nulls(range: &[ArrayElement]) -> bool {
     range.iter().any(|e| matches!(e, ArrayElement::Null))
 }
 
-/// Merge explicit range with inferred values (replace nulls with inferred)
-pub(super) fn merge_with_inferred(
-    explicit: &[ArrayElement],
-    inferred: &[ArrayElement],
-) -> Vec<ArrayElement> {
-    explicit
-        .iter()
-        .enumerate()
-        .map(|(i, exp)| {
-            if matches!(exp, ArrayElement::Null) {
-                inferred.get(i).cloned().unwrap_or(ArrayElement::Null)
-            } else {
-                exp.clone()
-            }
-        })
-        .collect()
-}
-
 // =============================================================================
 // Expansion helpers for continuous/temporal scales
 // =============================================================================
@@ -1429,6 +1350,127 @@ pub(super) fn validate_oob(value: &str) -> Result<(), String> {
             value
         )),
     }
+}
+
+// =============================================================================
+// Output range resolution helpers
+// =============================================================================
+
+/// Interpolate numeric values to a target count.
+///
+/// Takes min/max from the first and last values in the array,
+/// then generates `count` evenly-spaced values.
+///
+/// Returns `None` if the input has fewer than 2 values, count is 0,
+/// or values are not numeric.
+///
+/// # Example
+///
+/// ```ignore
+/// let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(6.0)];
+/// let interpolated = interpolate_numeric(&range, 5);
+/// // Returns Some([1.0, 2.25, 3.5, 4.75, 6.0])
+/// ```
+pub(crate) fn interpolate_numeric(
+    values: &[ArrayElement],
+    count: usize,
+) -> Option<Vec<ArrayElement>> {
+    if values.len() < 2 || count == 0 {
+        return None;
+    }
+
+    let nums: Vec<f64> = values.iter().filter_map(|e| e.to_f64()).collect();
+    if nums.len() < 2 {
+        return None;
+    }
+
+    let min_val = nums[0];
+    let max_val = nums[nums.len() - 1];
+
+    Some(
+        (0..count)
+            .map(|i| {
+                let t = if count > 1 {
+                    i as f64 / (count - 1) as f64
+                } else {
+                    0.5
+                };
+                ArrayElement::Number(min_val + t * (max_val - min_val))
+            })
+            .collect(),
+    )
+}
+
+/// Size/interpolate output range to match a target count.
+///
+/// This is used by ordinal and binned scales to ensure the output range
+/// has exactly the right number of values for the categories or bins.
+///
+/// Behavior by aesthetic type:
+/// - **fill/stroke**: Interpolates colors using Oklab color space
+/// - **size/linewidth/opacity**: Interpolates numeric values linearly
+/// - **shape/linetype/other**: Truncates if too many values; errors if too few
+///
+/// # Arguments
+///
+/// * `scale` - The scale being resolved (output_range will be modified)
+/// * `aesthetic` - The aesthetic type
+/// * `count` - Target number of output values
+///
+/// # Errors
+///
+/// Returns an error if the output range has insufficient values for
+/// non-interpolatable aesthetics (shape, linetype).
+pub(crate) fn size_output_range(
+    scale: &mut super::Scale,
+    aesthetic: &str,
+    count: usize,
+) -> Result<(), String> {
+    use super::colour::{interpolate_colors, ColorSpace};
+    use super::OutputRange;
+
+    if count == 0 {
+        return Ok(());
+    }
+
+    if let Some(OutputRange::Array(ref arr)) = scale.output_range.clone() {
+        if matches!(aesthetic, "fill" | "stroke") && arr.len() >= 2 {
+            // Color interpolation using Oklab
+            let hex_strs: Vec<&str> = arr
+                .iter()
+                .filter_map(|e| match e {
+                    ArrayElement::String(s) => Some(s.as_str()),
+                    _ => None,
+                })
+                .collect();
+            let interpolated = interpolate_colors(&hex_strs, count, ColorSpace::Oklab)?;
+            scale.output_range = Some(OutputRange::Array(
+                interpolated.into_iter().map(ArrayElement::String).collect(),
+            ));
+        } else if matches!(aesthetic, "size" | "linewidth" | "opacity") && arr.len() >= 2 {
+            // Numeric interpolation
+            if let Some(interpolated) = interpolate_numeric(arr, count) {
+                scale.output_range = Some(OutputRange::Array(interpolated));
+            }
+        } else {
+            // Non-interpolatable aesthetics (shape, linetype): truncate/error
+            if arr.len() < count {
+                return Err(format!(
+                    "Output range has {} values but {} {} needed",
+                    arr.len(),
+                    count,
+                    if count == 1 { "is" } else { "are" }
+                ));
+            }
+            if arr.len() > count {
+                scale.output_range = Some(OutputRange::Array(
+                    arr.iter().take(count).cloned().collect(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Parse expand parameter value into (mult, add) factors.
@@ -1999,250 +2041,6 @@ mod tests {
     }
 
     #[test]
-    fn test_allows_data_type() {
-        use polars::prelude::TimeUnit;
-
-        // Continuous allows numeric types AND temporal types (temporal is fundamentally continuous)
-        assert!(ScaleType::continuous().allows_data_type(&DataType::Float64));
-        assert!(ScaleType::continuous().allows_data_type(&DataType::Int32));
-        assert!(ScaleType::continuous().allows_data_type(&DataType::UInt64));
-        assert!(ScaleType::continuous().allows_data_type(&DataType::Date));
-        assert!(ScaleType::continuous()
-            .allows_data_type(&DataType::Datetime(TimeUnit::Microseconds, None)));
-        assert!(ScaleType::continuous().allows_data_type(&DataType::Time));
-        assert!(!ScaleType::continuous().allows_data_type(&DataType::String));
-
-        // Binned allows numeric types AND temporal types (same as continuous)
-        assert!(ScaleType::binned().allows_data_type(&DataType::Float64));
-        assert!(ScaleType::binned().allows_data_type(&DataType::Int32));
-        assert!(!ScaleType::binned().allows_data_type(&DataType::String));
-
-        // Discrete allows string/boolean
-        assert!(ScaleType::discrete().allows_data_type(&DataType::String));
-        assert!(ScaleType::discrete().allows_data_type(&DataType::Boolean));
-        assert!(!ScaleType::discrete().allows_data_type(&DataType::Float64));
-        assert!(!ScaleType::discrete().allows_data_type(&DataType::Int32));
-
-        // Identity allows everything
-        assert!(ScaleType::identity().allows_data_type(&DataType::String));
-        assert!(ScaleType::identity().allows_data_type(&DataType::Float64));
-        assert!(ScaleType::identity().allows_data_type(&DataType::Date));
-        assert!(ScaleType::identity().allows_data_type(&DataType::Time));
-    }
-
-    #[test]
-    fn test_validate_columns() {
-        use polars::prelude::*;
-
-        let float_col: Column = Series::new("x".into(), &[1.0f64, 2.0, 3.0]).into();
-        let string_col: Column = Series::new("y".into(), &["a", "b", "c"]).into();
-        let int_col: Column = Series::new("z".into(), &[1i32, 2, 3]).into();
-
-        // Continuous should accept numeric columns
-        assert!(ScaleType::continuous()
-            .validate_columns(&[&float_col])
-            .is_ok());
-        assert!(ScaleType::continuous()
-            .validate_columns(&[&int_col])
-            .is_ok());
-        assert!(ScaleType::continuous()
-            .validate_columns(&[&float_col, &int_col])
-            .is_ok());
-
-        // Continuous should reject string column
-        let result = ScaleType::continuous().validate_columns(&[&string_col]);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Column 'y'"));
-
-        // Discrete should accept string column
-        assert!(ScaleType::discrete()
-            .validate_columns(&[&string_col])
-            .is_ok());
-
-        // Discrete should reject numeric column
-        let result = ScaleType::discrete().validate_columns(&[&float_col]);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Column 'x'"));
-
-        // Identity should accept any column
-        assert!(ScaleType::identity()
-            .validate_columns(&[&float_col])
-            .is_ok());
-        assert!(ScaleType::identity()
-            .validate_columns(&[&string_col])
-            .is_ok());
-        assert!(ScaleType::identity()
-            .validate_columns(&[&float_col, &string_col, &int_col])
-            .is_ok());
-    }
-
-    #[test]
-    fn test_resolve_input_range_continuous_no_expand() {
-        use polars::prelude::*;
-        let col: Column = Series::new("x".into(), &[1.0f64, 5.0, 10.0]).into();
-
-        // Disable expansion for predictable test values
-        let mut props = HashMap::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.0));
-
-        // No user range -> compute from data
-        let result = ScaleType::continuous()
-            .resolve_input_range(None, &[&col], &props)
-            .unwrap();
-        assert_eq!(
-            result,
-            Some(vec![ArrayElement::Number(1.0), ArrayElement::Number(10.0)])
-        );
-
-        // User range with nulls -> merge
-        let user = vec![ArrayElement::Null, ArrayElement::Number(100.0)];
-        let result = ScaleType::continuous()
-            .resolve_input_range(Some(&user), &[&col], &props)
-            .unwrap();
-        assert_eq!(
-            result,
-            Some(vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)])
-        );
-
-        // User range without nulls -> keep as-is
-        let user = vec![ArrayElement::Number(0.0), ArrayElement::Number(50.0)];
-        let result = ScaleType::continuous()
-            .resolve_input_range(Some(&user), &[&col], &props)
-            .unwrap();
-        assert_eq!(
-            result,
-            Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(50.0)])
-        );
-    }
-
-    #[test]
-    fn test_resolve_input_range_discrete() {
-        use polars::prelude::*;
-        let col: Column = Series::new("x".into(), &["b", "a", "c"]).into();
-        let props = HashMap::new();
-
-        // No user range -> compute unique sorted values
-        let result = ScaleType::discrete()
-            .resolve_input_range(None, &[&col], &props)
-            .unwrap();
-        assert_eq!(
-            result,
-            Some(vec![
-                ArrayElement::String("a".into()),
-                ArrayElement::String("b".into()),
-                ArrayElement::String("c".into()),
-            ])
-        );
-
-        // User range without nulls -> keep as-is
-        let user = vec![
-            ArrayElement::String("x".into()),
-            ArrayElement::String("y".into()),
-        ];
-        let result = ScaleType::discrete()
-            .resolve_input_range(Some(&user), &[&col], &props)
-            .unwrap();
-        assert_eq!(
-            result,
-            Some(vec![
-                ArrayElement::String("x".into()),
-                ArrayElement::String("y".into()),
-            ])
-        );
-    }
-
-    #[test]
-    fn test_resolve_input_range_discrete_rejects_nulls() {
-        use polars::prelude::*;
-        let col: Column = Series::new("x".into(), &["a", "b"]).into();
-        let user = vec![ArrayElement::Null, ArrayElement::String("c".into())];
-        let props = HashMap::new();
-
-        let result = ScaleType::discrete().resolve_input_range(Some(&user), &[&col], &props);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("null placeholder"));
-    }
-
-    #[test]
-    fn test_resolve_input_range_discrete_boolean_columns() {
-        use polars::prelude::*;
-
-        // Boolean column with both values
-        let col: Column = Series::new("flag".into(), &[true, false, true, false]).into();
-        let props = HashMap::new();
-
-        let result = ScaleType::discrete()
-            .resolve_input_range(None, &[&col], &props)
-            .unwrap();
-
-        // Should return ArrayElement::Boolean values in logical order [false, true]
-        assert_eq!(
-            result,
-            Some(vec![
-                ArrayElement::Boolean(false),
-                ArrayElement::Boolean(true),
-            ])
-        );
-
-        // Boolean column with only true values
-        let col_true_only: Column = Series::new("flag".into(), &[true, true]).into();
-        let result = ScaleType::discrete()
-            .resolve_input_range(None, &[&col_true_only], &props)
-            .unwrap();
-        assert_eq!(result, Some(vec![ArrayElement::Boolean(true)]));
-
-        // Boolean column with only false values
-        let col_false_only: Column = Series::new("flag".into(), &[false, false]).into();
-        let result = ScaleType::discrete()
-            .resolve_input_range(None, &[&col_false_only], &props)
-            .unwrap();
-        assert_eq!(result, Some(vec![ArrayElement::Boolean(false)]));
-    }
-
-    #[test]
-    fn test_resolve_input_range_identity_rejects_range() {
-        use polars::prelude::*;
-        let col: Column = Series::new("x".into(), &[1.0f64]).into();
-        let user = vec![ArrayElement::Number(0.0), ArrayElement::Number(10.0)];
-        let props = HashMap::new();
-
-        let result = ScaleType::identity().resolve_input_range(Some(&user), &[&col], &props);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("does not support input range"));
-    }
-
-    #[test]
-    fn test_resolve_input_range_identity_no_range() {
-        use polars::prelude::*;
-        let col: Column = Series::new("x".into(), &[1.0f64]).into();
-        let props = HashMap::new();
-
-        let result = ScaleType::identity()
-            .resolve_input_range(None, &[&col], &props)
-            .unwrap();
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_resolve_input_range_binned_no_expand() {
-        use polars::prelude::*;
-        let col: Column = Series::new("x".into(), &[1i32, 5, 10]).into();
-
-        // Disable expansion for predictable test values
-        let mut props = HashMap::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.0));
-
-        // No user range -> compute from data
-        let result = ScaleType::binned()
-            .resolve_input_range(None, &[&col], &props)
-            .unwrap();
-        assert_eq!(
-            result,
-            Some(vec![ArrayElement::Number(1.0), ArrayElement::Number(10.0)])
-        );
-    }
-
-    #[test]
     fn test_scale_type_infer() {
         use polars::prelude::TimeUnit;
 
@@ -2403,83 +2201,6 @@ mod tests {
         // expanded = [0 - 0.05, 0 + 0.05] = [-0.05, 0.05]
         assert_eq!(expanded[0], ArrayElement::Number(-0.05));
         assert_eq!(expanded[1], ArrayElement::Number(0.05));
-    }
-
-    #[test]
-    fn test_expand_default_applied() {
-        use polars::prelude::*;
-        let col: Column = Series::new("x".into(), &[0.0f64, 100.0]).into();
-
-        // Default properties (no expand key) should use DEFAULT_EXPAND_MULT = 0.05
-        let props = HashMap::new();
-
-        let result = ScaleType::continuous()
-            .resolve_input_range(None, &[&col], &props)
-            .unwrap()
-            .unwrap();
-
-        // span = 100, 5% expansion = 5 on each side
-        // expected: [-5, 105]
-        assert_eq!(result[0], ArrayElement::Number(-5.0));
-        assert_eq!(result[1], ArrayElement::Number(105.0));
-    }
-
-    #[test]
-    fn test_expand_variations() {
-        use polars::prelude::*;
-
-        // Test various expand values and their expected results
-        // Format: (expand_prop, expected_min, expected_max)
-        let test_cases: Vec<(ParameterValue, f64, f64)> = vec![
-            // 10% expansion: span=100, 10% = 10 on each side
-            (ParameterValue::Number(0.1), -10.0, 110.0),
-            // 5% mult + 10 additive: span=100, 5 + 10 on each side
-            (
-                ParameterValue::Array(vec![ArrayElement::Number(0.05), ArrayElement::Number(10.0)]),
-                -15.0,
-                115.0,
-            ),
-            // Zero disables expansion
-            (ParameterValue::Number(0.0), 0.0, 100.0),
-        ];
-
-        for (expand_prop, expected_min, expected_max) in test_cases {
-            let col: Column = Series::new("x".into(), &[0.0f64, 100.0]).into();
-            let mut props = HashMap::new();
-            props.insert("expand".to_string(), expand_prop.clone());
-
-            let result = ScaleType::continuous()
-                .resolve_input_range(None, &[&col], &props)
-                .unwrap()
-                .unwrap();
-
-            assert_eq!(
-                result[0],
-                ArrayElement::Number(expected_min),
-                "expand={:?}: min should be {}",
-                expand_prop,
-                expected_min
-            );
-            assert_eq!(
-                result[1],
-                ArrayElement::Number(expected_max),
-                "expand={:?}: max should be {}",
-                expand_prop,
-                expected_max
-            );
-        }
-
-        // Also test expansion applied to user-provided range
-        let col: Column = Series::new("x".into(), &[50.0f64]).into();
-        let mut props = HashMap::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.05));
-        let user_range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-        let result = ScaleType::continuous()
-            .resolve_input_range(Some(&user_range), &[&col], &props)
-            .unwrap()
-            .unwrap();
-        assert_eq!(result[0], ArrayElement::Number(-5.0));
-        assert_eq!(result[1], ArrayElement::Number(105.0));
     }
 
     // =========================================================================
@@ -3642,5 +3363,149 @@ mod tests {
         // Min should be clipped to f64::MIN_POSITIVE
         assert_eq!(clipped[0], ArrayElement::Number(f64::MIN_POSITIVE));
         assert_eq!(clipped[1].to_f64().unwrap(), 0.0145);
+    }
+
+    // =========================================================================
+    // Output Range Helper Tests
+    // =========================================================================
+
+    #[test]
+    fn test_interpolate_numeric_basic() {
+        let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(6.0)];
+        let result = interpolate_numeric(&range, 5).unwrap();
+
+        assert_eq!(result.len(), 5);
+        assert!((result[0].to_f64().unwrap() - 1.0).abs() < 0.001);
+        assert!((result[4].to_f64().unwrap() - 6.0).abs() < 0.001);
+        // Check middle values are evenly spaced
+        assert!((result[1].to_f64().unwrap() - 2.25).abs() < 0.001);
+        assert!((result[2].to_f64().unwrap() - 3.5).abs() < 0.001);
+        assert!((result[3].to_f64().unwrap() - 4.75).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_interpolate_numeric_two_values() {
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+        let result = interpolate_numeric(&range, 2).unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert!((result[0].to_f64().unwrap() - 0.0).abs() < 0.001);
+        assert!((result[1].to_f64().unwrap() - 100.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_interpolate_numeric_single_output() {
+        // With count=1, use midpoint
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+        let result = interpolate_numeric(&range, 1).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert!((result[0].to_f64().unwrap() - 50.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_interpolate_numeric_empty_input() {
+        let range: Vec<ArrayElement> = vec![];
+        assert!(interpolate_numeric(&range, 5).is_none());
+    }
+
+    #[test]
+    fn test_interpolate_numeric_single_input() {
+        let range = vec![ArrayElement::Number(1.0)];
+        assert!(interpolate_numeric(&range, 5).is_none());
+    }
+
+    #[test]
+    fn test_interpolate_numeric_zero_count() {
+        let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(6.0)];
+        assert!(interpolate_numeric(&range, 0).is_none());
+    }
+
+    #[test]
+    fn test_interpolate_numeric_non_numeric_values() {
+        let range = vec![
+            ArrayElement::String("a".to_string()),
+            ArrayElement::String("b".to_string()),
+        ];
+        // Should return None because values are not numeric
+        assert!(interpolate_numeric(&range, 3).is_none());
+    }
+
+    #[test]
+    fn test_size_output_range_color_interpolation() {
+        use super::super::OutputRange;
+
+        let mut scale = super::super::Scale::new("fill");
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::String("#ff0000".to_string()),
+            ArrayElement::String("#0000ff".to_string()),
+        ]));
+
+        size_output_range(&mut scale, "fill", 3).unwrap();
+
+        if let Some(OutputRange::Array(arr)) = &scale.output_range {
+            assert_eq!(arr.len(), 3);
+        } else {
+            panic!("Expected OutputRange::Array");
+        }
+    }
+
+    #[test]
+    fn test_size_output_range_size_interpolation() {
+        use super::super::OutputRange;
+
+        let mut scale = super::super::Scale::new("size");
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::Number(1.0),
+            ArrayElement::Number(10.0),
+        ]));
+
+        size_output_range(&mut scale, "size", 4).unwrap();
+
+        if let Some(OutputRange::Array(arr)) = &scale.output_range {
+            assert_eq!(arr.len(), 4);
+            // Values should be 1, 4, 7, 10
+            assert!((arr[0].to_f64().unwrap() - 1.0).abs() < 0.001);
+            assert!((arr[3].to_f64().unwrap() - 10.0).abs() < 0.001);
+        } else {
+            panic!("Expected OutputRange::Array");
+        }
+    }
+
+    #[test]
+    fn test_size_output_range_shape_truncates() {
+        use super::super::OutputRange;
+
+        let mut scale = super::super::Scale::new("shape");
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::String("circle".to_string()),
+            ArrayElement::String("square".to_string()),
+            ArrayElement::String("triangle".to_string()),
+            ArrayElement::String("diamond".to_string()),
+        ]));
+
+        size_output_range(&mut scale, "shape", 2).unwrap();
+
+        if let Some(OutputRange::Array(arr)) = &scale.output_range {
+            assert_eq!(arr.len(), 2);
+        } else {
+            panic!("Expected OutputRange::Array");
+        }
+    }
+
+    #[test]
+    fn test_size_output_range_shape_error_insufficient() {
+        use super::super::OutputRange;
+
+        let mut scale = super::super::Scale::new("shape");
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::String("circle".to_string()),
+            ArrayElement::String("square".to_string()),
+        ]));
+
+        let result = size_output_range(&mut scale, "shape", 5);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("2 values"));
+        // Note: grammar-aware "5 are needed"
     }
 }

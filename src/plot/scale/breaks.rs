@@ -137,22 +137,6 @@ fn generate_breaks(start: f64, step: f64, count: usize) -> Vec<f64> {
     (0..count).map(|i| start + step * i as f64).collect()
 }
 
-/// Wilkinson Extended with preference for including zero.
-///
-/// Useful for bar charts and other visualizations where zero is meaningful.
-pub fn wilkinson_extended_include_zero(min: f64, max: f64, target_count: usize) -> Vec<f64> {
-    // If zero is already in range, use standard algorithm
-    if min <= 0.0 && max >= 0.0 {
-        return wilkinson_extended(min, max, target_count);
-    }
-
-    // Extend range to include zero
-    let extended_min = if min > 0.0 { 0.0 } else { min };
-    let extended_max = if max < 0.0 { 0.0 } else { max };
-
-    wilkinson_extended(extended_min, extended_max, target_count)
-}
-
 // =============================================================================
 // Pretty Breaks (Public API)
 // =============================================================================
@@ -330,34 +314,6 @@ pub fn filter_breaks_to_range(
 // =============================================================================
 // Transform-Aware Break Calculations
 // =============================================================================
-
-/// Main entry point for transform-aware break calculation.
-///
-/// Dispatches to the appropriate break calculation function based on the
-/// transform type. For identity transforms (None), uses Wilkinson's algorithm
-/// for pretty breaks or simple linear spacing.
-pub fn calculate_breaks(
-    min: f64,
-    max: f64,
-    n: usize,
-    transform: Option<&str>,
-    pretty: bool,
-) -> Vec<f64> {
-    match transform {
-        Some("log10") => log_breaks(min, max, n, 10.0, pretty),
-        Some("log2") => log_breaks(min, max, n, 2.0, pretty),
-        Some("log") => log_breaks(min, max, n, std::f64::consts::E, pretty),
-        Some("sqrt") => sqrt_breaks(min, max, n, pretty),
-        Some("asinh") | Some("pseudo_log") => symlog_breaks(min, max, n, pretty),
-        _ => {
-            if pretty {
-                pretty_breaks(min, max, n)
-            } else {
-                linear_breaks(min, max, n)
-            }
-        }
-    }
-}
 
 /// Calculate breaks for log scales.
 ///
@@ -1888,56 +1844,6 @@ mod tests {
     }
 
     // =========================================================================
-    // Calculate Breaks Dispatch Tests (Consolidated)
-    // =========================================================================
-
-    #[test]
-    fn test_calculate_breaks_dispatch() {
-        // Test that calculate_breaks dispatches to correct algorithm
-        // Format: (min, max, n, transform, pretty, expected_values_to_contain)
-        let test_cases: Vec<(f64, f64, usize, Option<&str>, bool, Vec<f64>)> = vec![
-            (1.0, 1000.0, 5, Some("log10"), false, vec![10.0, 100.0]),
-            (1.0, 16.0, 10, Some("log2"), false, vec![2.0, 4.0, 8.0]),
-            (-100.0, 100.0, 7, Some("asinh"), false, vec![0.0]),
-            (-100.0, 100.0, 7, Some("pseudo_log"), false, vec![0.0]),
-        ];
-        for (min, max, n, transform, pretty, expected) in test_cases {
-            let breaks = calculate_breaks(min, max, n, transform, pretty);
-            for v in expected {
-                assert!(
-                    breaks.contains(&v),
-                    "calculate_breaks({}, {}, {:?}) should contain {}",
-                    min,
-                    max,
-                    transform,
-                    v
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_calculate_breaks_identity_mode() {
-        // Identity mode (None transform)
-        let breaks_pretty = calculate_breaks(0.0, 100.0, 5, None, true);
-        assert!(!breaks_pretty.is_empty(), "Identity pretty should work");
-
-        let breaks_linear = calculate_breaks(0.0, 100.0, 5, None, false);
-        assert_eq!(
-            breaks_linear,
-            vec![0.0, 25.0, 50.0, 75.0, 100.0],
-            "Identity linear should be evenly spaced"
-        );
-
-        // Unknown transform should fall back to identity
-        let breaks_unknown = calculate_breaks(0.0, 100.0, 5, Some("unknown"), true);
-        assert!(
-            !breaks_unknown.is_empty(),
-            "Unknown transform should fall back to identity"
-        );
-    }
-
-    // =========================================================================
     // Thin Breaks Tests (Consolidated)
     // =========================================================================
 
@@ -2339,29 +2245,6 @@ mod tests {
                 desc
             );
         }
-    }
-
-    #[test]
-    fn test_wilkinson_include_zero_variants() {
-        // Positive-only range - should extend to include zero
-        let breaks_pos = wilkinson_extended_include_zero(20.0, 80.0, 5);
-        assert!(
-            *breaks_pos.first().unwrap() <= 0.0,
-            "Positive range should extend to include 0"
-        );
-
-        // Negative-only range - should extend to include zero
-        let breaks_neg = wilkinson_extended_include_zero(-80.0, -20.0, 5);
-        assert!(
-            *breaks_neg.last().unwrap() >= 0.0,
-            "Negative range should extend to include 0"
-        );
-
-        // Range already includes zero
-        let breaks_both = wilkinson_extended_include_zero(-10.0, 90.0, 5);
-        assert!(!breaks_both.is_empty());
-        assert!(*breaks_both.first().unwrap() <= -10.0);
-        assert!(*breaks_both.last().unwrap() >= 90.0);
     }
 
     #[test]

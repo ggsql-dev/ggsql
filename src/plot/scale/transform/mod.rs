@@ -29,8 +29,8 @@
 //!
 //! let log10 = Transform::log10();
 //! assert_eq!(log10.transform_kind(), TransformKind::Log10);
-//! assert!(log10.is_value_in_domain(1.0));
-//! assert!(!log10.is_value_in_domain(-1.0));
+//! let (min, max) = log10.allowed_domain();
+//! assert!(min > 0.0); // log domain excludes zero and negative
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -163,12 +163,6 @@ pub trait TransformTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// - `sqrt`: [0, +∞) - includes 0
     /// - `asinh`, `pseudo_log`: (-∞, +∞)
     fn allowed_domain(&self) -> (f64, f64);
-
-    /// Check if value is in the transform's domain
-    ///
-    /// Returns true if the value can be transformed without producing
-    /// NaN or infinity.
-    fn is_value_in_domain(&self, value: f64) -> bool;
 
     /// Calculate breaks for this transform
     ///
@@ -421,11 +415,6 @@ impl Transform {
     /// Get the valid input domain as (min, max)
     pub fn allowed_domain(&self) -> (f64, f64) {
         self.0.allowed_domain()
-    }
-
-    /// Check if value is in the transform's domain
-    pub fn is_value_in_domain(&self, value: f64) -> bool {
-        self.0.is_value_in_domain(value)
     }
 
     /// Calculate breaks for this transform

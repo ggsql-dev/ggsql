@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use polars::prelude::{ChunkAgg, Column, DataType};
+use polars::prelude::DataType;
 
 use super::{
     expand_numeric_range, resolve_common_steps, ScaleDataContext, ScaleTypeKind, ScaleTypeTrait,
@@ -140,54 +140,6 @@ impl ScaleTypeTrait for Binned {
         }
     }
 
-    fn allows_data_type(&self, dtype: &DataType) -> bool {
-        matches!(
-            dtype,
-            DataType::Int8
-                | DataType::Int16
-                | DataType::Int32
-                | DataType::Int64
-                | DataType::UInt8
-                | DataType::UInt16
-                | DataType::UInt32
-                | DataType::UInt64
-                | DataType::Float32
-                | DataType::Float64
-                // Temporal types supported via temporal transforms
-                | DataType::Date
-                | DataType::Datetime(_, _)
-                | DataType::Time
-        )
-    }
-
-    fn resolve_input_range(
-        &self,
-        user_range: Option<&[ArrayElement]>,
-        columns: &[&Column],
-        properties: &HashMap<String, ParameterValue>,
-    ) -> Result<Option<Vec<ArrayElement>>, String> {
-        let computed = compute_numeric_range(columns);
-        let (mult, add) = super::get_expand_factors(properties);
-
-        // Apply expansion to computed range
-        let expanded = computed.map(|range| super::expand_numeric_range(&range, mult, add));
-
-        match user_range {
-            None => Ok(expanded),
-            Some(range) if super::input_range_has_nulls(range) => {
-                // User provided partial range with nulls - merge with expanded computed
-                match expanded {
-                    Some(inferred) => Ok(Some(super::merge_with_inferred(range, &inferred))),
-                    None => Ok(Some(range.to_vec())),
-                }
-            }
-            Some(range) => {
-                // User provided explicit full range - still apply expansion
-                Ok(Some(super::expand_numeric_range(range, mult, add)))
-            }
-        }
-    }
-
     fn default_output_range(
         &self,
         aesthetic: &str,
@@ -245,8 +197,8 @@ impl ScaleTypeTrait for Binned {
         scale: &mut super::super::Scale,
         aesthetic: &str,
     ) -> Result<(), String> {
-        use super::super::colour::{interpolate_colors, ColorSpace};
         use super::super::{palettes, OutputRange};
+        use super::size_output_range;
 
         // Get bin count from resolved breaks
         let bin_count = match scale.properties.get("breaks") {
@@ -279,19 +231,8 @@ impl ScaleTypeTrait for Binned {
                 }
                 Some(OutputRange::Palette(name)) => {
                     // Named palette - convert to Array
-                    let palette = match aesthetic {
-                        "shape" => palettes::get_shape_palette(name),
-                        "linetype" => palettes::get_linetype_palette(name),
-                        _ => palettes::get_color_palette(name),
-                    };
-                    if let Some(palette) = palette {
-                        let arr: Vec<_> = palette
-                            .iter()
-                            .map(|s| ArrayElement::String(s.to_string()))
-                            .collect();
-                        scale.output_range = Some(OutputRange::Array(arr));
-                    }
-                    // If palette not found, leave as Palette for Vega-Lite to handle
+                    let arr = palettes::lookup_palette(aesthetic, name)?;
+                    scale.output_range = Some(OutputRange::Array(arr));
                 }
                 Some(OutputRange::Array(_)) => {
                     // Already an array, nothing to do
@@ -299,57 +240,8 @@ impl ScaleTypeTrait for Binned {
             }
         }
 
-        // Phase 2: Size to bin count (with interpolation for colors and numeric aesthetics)
-        if let Some(OutputRange::Array(ref arr)) = scale.output_range.clone() {
-            if matches!(aesthetic, "fill" | "stroke") && arr.len() >= 2 {
-                // Interpolate colors to exact bin_count
-                let hex_strs: Vec<&str> = arr
-                    .iter()
-                    .filter_map(|e| match e {
-                        ArrayElement::String(s) => Some(s.as_str()),
-                        _ => None,
-                    })
-                    .collect();
-                let interpolated = interpolate_colors(&hex_strs, bin_count, ColorSpace::Oklab)?;
-                scale.output_range = Some(OutputRange::Array(
-                    interpolated.into_iter().map(ArrayElement::String).collect(),
-                ));
-            } else if matches!(aesthetic, "size" | "linewidth" | "opacity") && arr.len() >= 2 {
-                // Interpolate numeric values to exact bin_count
-                // Extract min and max from the range
-                let nums: Vec<f64> = arr.iter().filter_map(|e| e.to_f64()).collect();
-                if nums.len() >= 2 {
-                    let min_val = nums[0];
-                    let max_val = nums[nums.len() - 1];
-                    // Create evenly spaced values from min to max
-                    let interpolated: Vec<ArrayElement> = (0..bin_count)
-                        .map(|i| {
-                            let t = if bin_count > 1 {
-                                i as f64 / (bin_count - 1) as f64
-                            } else {
-                                0.5
-                            };
-                            ArrayElement::Number(min_val + t * (max_val - min_val))
-                        })
-                        .collect();
-                    scale.output_range = Some(OutputRange::Array(interpolated));
-                }
-            } else {
-                // Non-interpolatable aesthetics (shape, linetype): truncate/error like discrete
-                if arr.len() < bin_count {
-                    return Err(format!(
-                        "Output range has {} values but {} bins needed",
-                        arr.len(),
-                        bin_count
-                    ));
-                }
-                if arr.len() > bin_count {
-                    scale.output_range = Some(OutputRange::Array(
-                        arr.iter().take(bin_count).cloned().collect(),
-                    ));
-                }
-            }
-        }
+        // Phase 2: Size/interpolate to bin count
+        size_output_range(scale, aesthetic, bin_count)?;
 
         Ok(())
     }
@@ -487,45 +379,42 @@ impl ScaleTypeTrait for Binned {
         // Simple rule:
         // - If explicit input range provided → add range boundaries as terminal breaks
         // - If no explicit input range → set input_range from terminal breaks
-        {
-            // Extract breaks for modification
-            let maybe_breaks = match scale.properties.get("breaks") {
-                Some(ParameterValue::Array(b)) => Some(b.clone()),
-                _ => None,
-            };
+        let maybe_breaks = match scale.properties.get("breaks") {
+            Some(ParameterValue::Array(b)) => Some(b.clone()),
+            _ => None,
+        };
 
-            if let Some(mut breaks) = maybe_breaks {
-                let mut new_input_range: Option<Vec<ArrayElement>> = None;
+        if let Some(mut breaks) = maybe_breaks {
+            let mut new_input_range: Option<Vec<ArrayElement>> = None;
 
-                if scale.explicit_input_range {
-                    // Explicit input range provided → add range as terminal breaks
-                    if let Some(ref range) = scale.input_range {
-                        add_range_boundaries_to_breaks(&mut breaks, range);
-                    }
-                } else if breaks.len() >= 2 {
-                    // No explicit range → set input_range from terminal breaks
-                    let terminal_range = vec![
-                        breaks.first().unwrap().clone(),
-                        breaks.last().unwrap().clone(),
-                    ];
-                    let expanded = expand_numeric_range(&terminal_range, mult, add);
-                    new_input_range = Some(expanded);
+            if scale.explicit_input_range {
+                // Explicit input range provided → add range as terminal breaks
+                if let Some(ref range) = scale.input_range {
+                    add_range_boundaries_to_breaks(&mut breaks, range);
                 }
+            } else if breaks.len() >= 2 {
+                // No explicit range → set input_range from terminal breaks
+                let terminal_range = vec![
+                    breaks.first().unwrap().clone(),
+                    breaks.last().unwrap().clone(),
+                ];
+                let expanded = expand_numeric_range(&terminal_range, mult, add);
+                new_input_range = Some(expanded);
+            }
 
-                // Update the breaks in the scale
-                scale
-                    .properties
-                    .insert("breaks".to_string(), ParameterValue::Array(breaks));
+            // Update the breaks in the scale
+            scale
+                .properties
+                .insert("breaks".to_string(), ParameterValue::Array(breaks));
 
-                // Update input_range if we computed a new one
-                // Convert to proper type using transform (e.g., Number → Date for temporal)
-                if let Some(range) = new_input_range {
-                    let converted: Vec<ArrayElement> = range
-                        .iter()
-                        .map(|elem| resolved_transform.parse_value(elem))
-                        .collect();
-                    scale.input_range = Some(converted);
-                }
+            // Update input_range if we computed a new one
+            // Convert to proper type using transform (e.g., Number → Date for temporal)
+            if let Some(range) = new_input_range {
+                let converted: Vec<ArrayElement> = range
+                    .iter()
+                    .map(|elem| resolved_transform.parse_value(elem))
+                    .collect();
+                scale.input_range = Some(converted);
             }
         }
 
@@ -601,7 +490,7 @@ impl ScaleTypeTrait for Binned {
         column_name: &str,
         column_dtype: &DataType,
         scale: &super::super::Scale,
-        _type_names: &super::SqlTypeNames,
+        type_names: &super::SqlTypeNames,
     ) -> Option<String> {
         use super::super::transform::TransformKind;
 
@@ -662,11 +551,31 @@ impl ScaleTypeTrait for Binned {
                 // For temporal columns, format break values as ISO strings with CAST
                 if let Some(t) = transform {
                     let type_name = match t.transform_kind() {
-                        TransformKind::Date => "DATE",
-                        TransformKind::DateTime => "TIMESTAMP",
-                        TransformKind::Time => "TIME",
-                        _ => {
-                            // Non-temporal transform on temporal column - use raw values
+                        TransformKind::Date => type_names.date.as_deref(),
+                        TransformKind::DateTime => type_names.datetime.as_deref(),
+                        TransformKind::Time => type_names.time.as_deref(),
+                        _ => None,
+                    };
+
+                    match type_name {
+                        Some(type_name) => {
+                            let lower_iso = t
+                                .format_as_iso(lower)
+                                .unwrap_or_else(|| format!("{}", lower));
+                            let upper_iso = t
+                                .format_as_iso(upper)
+                                .unwrap_or_else(|| format!("{}", upper));
+                            let center_iso = t
+                                .format_as_iso(center)
+                                .unwrap_or_else(|| format!("{}", center));
+                            (
+                                format!("CAST('{}' AS {})", lower_iso, type_name),
+                                format!("CAST('{}' AS {})", upper_iso, type_name),
+                                format!("CAST('{}' AS {})", center_iso, type_name),
+                            )
+                        }
+                        None => {
+                            // No type name available - use raw numeric values
                             return Some(build_case_expression_numeric(
                                 column_name,
                                 &break_values,
@@ -674,21 +583,7 @@ impl ScaleTypeTrait for Binned {
                                 oob_squish,
                             ));
                         }
-                    };
-                    let lower_iso = t
-                        .format_as_iso(lower)
-                        .unwrap_or_else(|| format!("{}", lower));
-                    let upper_iso = t
-                        .format_as_iso(upper)
-                        .unwrap_or_else(|| format!("{}", upper));
-                    let center_iso = t
-                        .format_as_iso(center)
-                        .unwrap_or_else(|| format!("{}", center));
-                    (
-                        format!("CAST('{}' AS {})", lower_iso, type_name),
-                        format!("CAST('{}' AS {})", upper_iso, type_name),
-                        format!("CAST('{}' AS {})", center_iso, type_name),
-                    )
+                    }
                 } else {
                     // No transform - use raw numeric values (days/µs/ns since epoch)
                     (
@@ -706,64 +601,61 @@ impl ScaleTypeTrait for Binned {
                 )
             };
 
-            // Build the condition based on closed side and oob mode
-            // closed="left": [lower, upper) except last bin which is [lower, upper]
-            // closed="right": (lower, upper] except first bin which is [lower, upper]
-            // With oob="squish": first bin extends to -∞, last bin extends to +∞
-            let condition = if closed_left {
-                if oob_squish && is_first && is_last {
-                    // Single bin with squish: capture everything
-                    "TRUE".to_string()
-                } else if oob_squish && is_first {
-                    // First bin with squish: no lower bound, extends to -∞
-                    format!("{} < {}", column_name, upper_expr)
-                } else if oob_squish && is_last {
-                    // Last bin with squish: no upper bound, extends to +∞
-                    format!("{} >= {}", column_name, lower_expr)
-                } else if is_last {
-                    // Last bin (no squish): [lower, upper] (inclusive on both ends)
-                    format!(
-                        "{} >= {} AND {} <= {}",
-                        column_name, lower_expr, column_name, upper_expr
-                    )
-                } else {
-                    // Normal bin: [lower, upper)
-                    format!(
-                        "{} >= {} AND {} < {}",
-                        column_name, lower_expr, column_name, upper_expr
-                    )
-                }
-            } else {
-                // closed="right"
-                if oob_squish && is_first && is_last {
-                    // Single bin with squish: capture everything
-                    "TRUE".to_string()
-                } else if oob_squish && is_first {
-                    // First bin with squish: no lower bound, extends to -∞
-                    format!("{} <= {}", column_name, upper_expr)
-                } else if oob_squish && is_last {
-                    // Last bin with squish: no upper bound, extends to +∞
-                    format!("{} > {}", column_name, lower_expr)
-                } else if is_first {
-                    // First bin (no squish): [lower, upper] (inclusive on both ends)
-                    format!(
-                        "{} >= {} AND {} <= {}",
-                        column_name, lower_expr, column_name, upper_expr
-                    )
-                } else {
-                    // Normal bin: (lower, upper]
-                    format!(
-                        "{} > {} AND {} <= {}",
-                        column_name, lower_expr, column_name, upper_expr
-                    )
-                }
-            };
+            let condition = build_bin_condition(
+                column_name,
+                &lower_expr,
+                &upper_expr,
+                closed_left,
+                oob_squish,
+                is_first,
+                is_last,
+            );
 
             cases.push(format!("WHEN {} THEN {}", condition, center_expr));
         }
 
         // Build final CASE expression
         Some(format!("(CASE {} ELSE NULL END)", cases.join(" ")))
+    }
+}
+
+/// Build a SQL condition for a single bin.
+///
+/// Handles the operator selection based on closed side and bin position,
+/// and the oob_squish logic for extending first/last bins to infinity.
+fn build_bin_condition(
+    column_name: &str,
+    lower_expr: &str,
+    upper_expr: &str,
+    closed_left: bool,
+    oob_squish: bool,
+    is_first: bool,
+    is_last: bool,
+) -> String {
+    // Determine operators based on closed side and bin position
+    // closed="left": [lower, upper) except last bin which is [lower, upper]
+    // closed="right": (lower, upper] except first bin which is [lower, upper]
+    let (lower_op, upper_op) = if closed_left {
+        (">=", if is_last { "<=" } else { "<" })
+    } else {
+        (if is_first { ">=" } else { ">" }, "<=")
+    };
+
+    if oob_squish && is_first && is_last {
+        // Single bin with squish: capture everything
+        "TRUE".to_string()
+    } else if oob_squish && is_first {
+        // First bin with squish: no lower bound, extends to -∞
+        format!("{} {} {}", column_name, upper_op, upper_expr)
+    } else if oob_squish && is_last {
+        // Last bin with squish: no upper bound, extends to +∞
+        format!("{} {} {}", column_name, lower_op, lower_expr)
+    } else {
+        // Normal bin with both bounds
+        format!(
+            "{} {} {} AND {} {} {}",
+            column_name, lower_op, lower_expr, column_name, upper_op, upper_expr
+        )
     }
 }
 
@@ -785,77 +677,20 @@ fn build_case_expression_numeric(
         let is_first = i == 0;
         let is_last = i == num_bins - 1;
 
-        let condition = if closed_left {
-            if oob_squish && is_first && is_last {
-                // Single bin with squish: capture everything
-                "TRUE".to_string()
-            } else if oob_squish && is_first {
-                // First bin with squish: no lower bound, extends to -∞
-                format!("{} < {}", column_name, upper)
-            } else if oob_squish && is_last {
-                // Last bin with squish: no upper bound, extends to +∞
-                format!("{} >= {}", column_name, lower)
-            } else if is_last {
-                format!(
-                    "{} >= {} AND {} <= {}",
-                    column_name, lower, column_name, upper
-                )
-            } else {
-                format!(
-                    "{} >= {} AND {} < {}",
-                    column_name, lower, column_name, upper
-                )
-            }
-        } else if oob_squish && is_first && is_last {
-            // Single bin with squish: capture everything
-            "TRUE".to_string()
-        } else if oob_squish && is_first {
-            // First bin with squish: no lower bound, extends to -∞
-            format!("{} <= {}", column_name, upper)
-        } else if oob_squish && is_last {
-            // Last bin with squish: no upper bound, extends to +∞
-            format!("{} > {}", column_name, lower)
-        } else if is_first {
-            format!(
-                "{} >= {} AND {} <= {}",
-                column_name, lower, column_name, upper
-            )
-        } else {
-            format!(
-                "{} > {} AND {} <= {}",
-                column_name, lower, column_name, upper
-            )
-        };
+        let condition = build_bin_condition(
+            column_name,
+            &lower.to_string(),
+            &upper.to_string(),
+            closed_left,
+            oob_squish,
+            is_first,
+            is_last,
+        );
 
         cases.push(format!("WHEN {} THEN {}", condition, center));
     }
 
     format!("(CASE {} ELSE NULL END)", cases.join(" "))
-}
-
-/// Compute numeric input range as [min, max] from Columns.
-fn compute_numeric_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
-    let mut global_min: Option<f64> = None;
-    let mut global_max: Option<f64> = None;
-
-    for column in column_refs {
-        let series = column.as_materialized_series();
-        if let Ok(ca) = series.cast(&DataType::Float64) {
-            if let Ok(f64_series) = ca.f64() {
-                if let Some(min) = f64_series.min() {
-                    global_min = Some(global_min.map_or(min, |m| m.min(min)));
-                }
-                if let Some(max) = f64_series.max() {
-                    global_max = Some(global_max.map_or(max, |m| m.max(max)));
-                }
-            }
-        }
-    }
-
-    match (global_min, global_max) {
-        (Some(min), Some(max)) => Some(vec![ArrayElement::Number(min), ArrayElement::Number(max)]),
-        _ => None,
-    }
 }
 
 impl std::fmt::Display for Binned {

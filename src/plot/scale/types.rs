@@ -16,7 +16,7 @@ fn default_label_template() -> String {
 
 /// Scale configuration (from SCALE clause)
 ///
-/// New syntax: `SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]`
+/// Syntax: `SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]`
 ///
 /// Examples:
 /// - `SCALE x VIA date`
@@ -29,7 +29,7 @@ pub struct Scale {
     /// The aesthetic this scale applies to
     pub aesthetic: String,
     /// Scale type (optional, inferred if not specified)
-    /// Now specified as modifier: SCALE x VIA date, SCALE CONTINUOUS y
+    /// Specified as modifier: SCALE x VIA date, SCALE CONTINUOUS y
     pub scale_type: Option<ScaleType>,
     /// Input range specification (FROM clause)
     /// Maps to Vega-Lite's scale.domain

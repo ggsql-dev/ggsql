@@ -272,34 +272,30 @@ impl VegaLiteWriter {
     }
 
     /// Given a bin center value and breaks array, return (bin_start, bin_end).
+    /// Find the bin interval that contains the given value.
     ///
-    /// The breaks array contains bin edges [e0, e1, e2, ...]. Each bin center
-    /// is computed as (lower + upper) / 2. This function reverses that to find
-    /// which bin a center value belongs to.
-    fn center_to_bin_edges(center: f64, breaks: &[f64]) -> Option<(f64, f64)> {
-        for i in 0..breaks.len().saturating_sub(1) {
-            let lower = breaks[i];
-            let upper = breaks[i + 1];
-            let expected_center = (lower + upper) / 2.0;
-            if (center - expected_center).abs() < 1e-9 {
-                return Some((lower, upper));
-            }
+    /// The breaks array contains bin edges [e0, e1, e2, ...].
+    /// Returns the (lower, upper) edges of the bin containing the value.
+    /// Uses half-open intervals [lower, upper) except for the last bin which is [lower, upper].
+    fn find_bin_for_value(value: f64, breaks: &[f64]) -> Option<(f64, f64)> {
+        let n = breaks.len();
+        if n < 2 {
+            return None;
         }
-        None
-    }
 
-    /// Find bin edges for a value that may be a truncated center (e.g., Date columns).
-    ///
-    /// This is more flexible than `center_to_bin_edges` - it matches a value to a bin
-    /// if the value is the floor of the expected center. Used for Date columns where
-    /// the SQL produces `floor(center)` due to date truncation.
-    fn value_to_bin_edges(value: f64, breaks: &[f64]) -> Option<(f64, f64)> {
-        for i in 0..breaks.len().saturating_sub(1) {
+        for i in 0..n - 1 {
             let lower = breaks[i];
             let upper = breaks[i + 1];
-            let expected_center = (lower + upper) / 2.0;
-            // Match if value equals the floor of the expected center
-            if (value - expected_center.floor()).abs() < 1e-9 {
+            let is_last_bin = i == n - 2;
+
+            // Use [lower, upper) for all bins except the last which uses [lower, upper]
+            let in_bin = if is_last_bin {
+                value >= lower && value <= upper
+            } else {
+                value >= lower && value < upper
+            };
+
+            if in_bin {
                 return Some((lower, upper));
             }
         }
@@ -333,28 +329,16 @@ impl VegaLiteWriter {
                 // Check if this column has binned data
                 let col_name_str = col_name.to_string();
                 if let Some(breaks) = binned_columns.get(&col_name_str) {
-                    // Check if this is a temporal string (date/datetime/time may have truncated centers)
+                    // Check if this is a temporal string (date/datetime/time)
                     let temporal_info = value.as_str().and_then(Self::parse_temporal_string);
 
-                    // Try to get center as f64 - works for numeric columns
-                    let center_opt = value.as_f64().or_else(|| {
-                        // For temporal strings, use the parsed numeric value
-                        temporal_info.map(|(val, _)| val)
-                    });
+                    // Get value as f64 - works for numeric columns or parsed temporal strings
+                    let numeric_value =
+                        value.as_f64().or_else(|| temporal_info.map(|(val, _)| val));
 
-                    if let Some(center) = center_opt {
-                        // Try exact center match first, then fallback to truncated match for temporals
-                        let bin_edges = Self::center_to_bin_edges(center, breaks).or_else(|| {
-                            if temporal_info.is_some() {
-                                // Temporal columns may have truncated centers (floor)
-                                Self::value_to_bin_edges(center, breaks)
-                            } else {
-                                None
-                            }
-                        });
-
-                        if let Some((start, end)) = bin_edges {
-                            // Replace center with bin_start, preserving original value type
+                    if let Some(val) = numeric_value {
+                        if let Some((start, end)) = Self::find_bin_for_value(val, breaks) {
+                            // Replace value with bin_start, preserving original value type
                             if let Some((_, temporal_type)) = temporal_info {
                                 // Temporal column - format bin edges as ISO strings
                                 let start_str = Self::format_temporal(start, temporal_type);
@@ -382,88 +366,22 @@ impl VegaLiteWriter {
         Ok(values)
     }
 
-    /// Parse a date string (YYYY-MM-DD) to days since Unix epoch.
-    fn parse_date_to_days(s: &str) -> Option<f64> {
-        let date = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()?;
-        let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1)?;
-        Some((date - epoch).num_days() as f64)
-    }
-
-    /// Convert days since Unix epoch to ISO date string (YYYY-MM-DD).
-    fn days_to_iso_date(days: f64) -> String {
-        let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
-        let date = epoch + chrono::Duration::days(days as i64);
-        date.format("%Y-%m-%d").to_string()
-    }
-
-    /// Parse a datetime string to microseconds since Unix epoch.
-    /// Accepts formats: "YYYY-MM-DDTHH:MM:SS.sssZ" or "YYYY-MM-DDTHH:MM:SS"
-    fn parse_datetime_to_micros(s: &str) -> Option<f64> {
-        // Try with milliseconds and Z suffix first
-        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-            return Some(dt.timestamp_micros() as f64);
-        }
-        // Try without timezone
-        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f") {
-            return Some(dt.and_utc().timestamp_micros() as f64);
-        }
-        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
-            return Some(dt.and_utc().timestamp_micros() as f64);
-        }
-        None
-    }
-
-    /// Convert microseconds since Unix epoch to ISO datetime string.
-    fn micros_to_iso_datetime(micros: f64) -> String {
-        chrono::DateTime::from_timestamp_micros(micros as i64)
-            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
-            .unwrap_or_else(|| format!("{}", micros))
-    }
-
-    /// Parse a time string (HH:MM:SS or HH:MM:SS.sss) to nanoseconds since midnight.
-    fn parse_time_to_nanos(s: &str) -> Option<f64> {
-        use chrono::Timelike;
-        // Try with fractional seconds
-        if let Ok(t) = chrono::NaiveTime::parse_from_str(s, "%H:%M:%S%.f") {
-            let total_secs = t.hour() as i64 * 3600 + t.minute() as i64 * 60 + t.second() as i64;
-            let nanos = t.nanosecond() as i64;
-            return Some((total_secs * 1_000_000_000 + nanos) as f64);
-        }
-        // Try without fractional seconds
-        if let Ok(t) = chrono::NaiveTime::parse_from_str(s, "%H:%M:%S") {
-            let total_secs = t.hour() as i64 * 3600 + t.minute() as i64 * 60 + t.second() as i64;
-            return Some((total_secs * 1_000_000_000) as f64);
-        }
-        None
-    }
-
-    /// Convert nanoseconds since midnight to ISO time string.
-    fn nanos_to_iso_time(nanos: f64) -> String {
-        let nanos = nanos as i64;
-        let total_secs = nanos / 1_000_000_000;
-        let nano_part = (nanos % 1_000_000_000) as u32;
-        let hours = (total_secs / 3600) as u32;
-        let mins = ((total_secs % 3600) / 60) as u32;
-        let secs = (total_secs % 60) as u32;
-        chrono::NaiveTime::from_hms_nano_opt(hours, mins, secs, nano_part)
-            .map(|t| t.format("%H:%M:%S%.3f").to_string())
-            .unwrap_or_else(|| format!("{}ns", nanos))
-    }
-
     /// Detect the temporal type of a string value.
     /// Returns the parsed numeric value and the type.
+    ///
+    /// Uses ArrayElement's parsing methods which support comprehensive format variations.
     fn parse_temporal_string(s: &str) -> Option<(f64, TemporalType)> {
-        // Try date first (YYYY-MM-DD)
-        if let Some(days) = Self::parse_date_to_days(s) {
-            return Some((days, TemporalType::Date));
+        // Try date first (YYYY-MM-DD) - must check before datetime since dates are shorter
+        if let Some(ArrayElement::Date(days)) = ArrayElement::from_date_string(s) {
+            return Some((days as f64, TemporalType::Date));
         }
-        // Try datetime (YYYY-MM-DDTHH:MM:SS...)
-        if let Some(micros) = Self::parse_datetime_to_micros(s) {
-            return Some((micros, TemporalType::DateTime));
+        // Try datetime (various ISO formats with/without timezone)
+        if let Some(ArrayElement::DateTime(micros)) = ArrayElement::from_datetime_string(s) {
+            return Some((micros as f64, TemporalType::DateTime));
         }
-        // Try time (HH:MM:SS...)
-        if let Some(nanos) = Self::parse_time_to_nanos(s) {
-            return Some((nanos, TemporalType::Time));
+        // Try time (HH:MM:SS[.sss])
+        if let Some(ArrayElement::Time(nanos)) = ArrayElement::from_time_string(s) {
+            return Some((nanos as f64, TemporalType::Time));
         }
         None
     }
@@ -471,9 +389,9 @@ impl VegaLiteWriter {
     /// Format a numeric temporal value back to ISO string.
     fn format_temporal(value: f64, temporal_type: TemporalType) -> String {
         match temporal_type {
-            TemporalType::Date => Self::days_to_iso_date(value),
-            TemporalType::DateTime => Self::micros_to_iso_datetime(value),
-            TemporalType::Time => Self::nanos_to_iso_time(value),
+            TemporalType::Date => ArrayElement::date_to_iso(value as i32),
+            TemporalType::DateTime => ArrayElement::datetime_to_iso(value as i64),
+            TemporalType::Time => ArrayElement::time_to_iso(value as i64),
         }
     }
 
@@ -482,10 +400,18 @@ impl VegaLiteWriter {
     /// Returns a map of column name -> breaks array for all columns with binned scales.
     /// The column name uses the aesthetic-prefixed format (e.g., `__ggsql_aes_x__`) since
     /// that's what appears in the DataFrame after query execution.
+    ///
+    /// Only x and y aesthetics are collected since only those have x2/y2 counterparts
+    /// in Vega-Lite for representing bin ranges.
     fn collect_binned_columns(&self, spec: &Plot) -> HashMap<String, Vec<f64>> {
         let mut binned_columns: HashMap<String, Vec<f64>> = HashMap::new();
 
         for scale in &spec.scales {
+            // Only x and y aesthetics support bin ranges (x2/y2) in Vega-Lite
+            if scale.aesthetic != "x" && scale.aesthetic != "y" {
+                continue;
+            }
+
             // Check if this is a binned scale
             let is_binned = scale
                 .scale_type
@@ -655,7 +581,7 @@ impl VegaLiteWriter {
         &self,
         scale: &crate::plot::Scale,
         inferred: &str,
-        aesthetic: &str,
+        _aesthetic: &str,
         identity_scale: &mut bool,
     ) -> String {
         // Use scale type if explicitly specified
@@ -672,15 +598,6 @@ impl VegaLiteWriter {
                 }
             }
             .to_string()
-        } else if scale.input_range.is_some() {
-            // If domain is specified without explicit type:
-            // - For size/opacity: keep quantitative (domain sets range, not categories)
-            // - For color/x/y: treat as ordinal (discrete categories)
-            if aesthetic == "size" || aesthetic == "opacity" {
-                "quantitative".to_string()
-            } else {
-                "ordinal".to_string()
-            }
         } else {
             // Scale exists but no type specified, use inferred
             inferred.to_string()
@@ -1572,23 +1489,16 @@ impl Writer for VegaLiteWriter {
         self.validate(spec)?;
 
         // Determine which dataset key each layer should use
-        // Use layer.data_key if set (from execute.rs), otherwise fallback to legacy behavior
+        // Use layer.data_key if set (from execute.rs), otherwise use standard layer key
         let layer_data_keys: Vec<String> = spec
             .layers
             .iter()
             .enumerate()
             .map(|(idx, layer)| {
-                if let Some(ref key) = layer.data_key {
-                    key.clone()
-                } else {
-                    // Fallback: check if layer-specific data exists, otherwise use global
-                    let layer_key = naming::layer_key(idx);
-                    if data.contains_key(&layer_key) {
-                        layer_key
-                    } else {
-                        naming::GLOBAL_DATA_KEY.to_string()
-                    }
-                }
+                layer
+                    .data_key
+                    .clone()
+                    .unwrap_or_else(|| naming::layer_key(idx))
             })
             .collect();
 
@@ -1883,10 +1793,17 @@ mod tests {
     };
     use std::collections::HashMap;
 
-    /// Helper to wrap a DataFrame in a data map for testing
+    /// Helper to wrap a DataFrame in a data map for testing (uses layer 0 key)
     fn wrap_data(df: DataFrame) -> HashMap<String, DataFrame> {
+        wrap_data_for_layers(df, 1)
+    }
+
+    /// Helper to wrap a DataFrame for multiple layers (clones for each layer)
+    fn wrap_data_for_layers(df: DataFrame, num_layers: usize) -> HashMap<String, DataFrame> {
         let mut data_map = HashMap::new();
-        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
+        for i in 0..num_layers {
+            data_map.insert(naming::layer_key(i), df.clone());
+        }
         data_map
     }
 
@@ -2124,7 +2041,7 @@ mod tests {
         }
         .unwrap();
 
-        let result = writer.write(&spec, &wrap_data(df));
+        let result = writer.write(&spec, &wrap_data_for_layers(df, 2));
         assert!(result.is_err());
 
         let err = result.unwrap_err();
@@ -2623,7 +2540,7 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write(&spec, &wrap_data_for_layers(df, 2)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Should have layer array
@@ -2694,7 +2611,7 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write(&spec, &wrap_data_for_layers(df, 3)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         let layers = vl_spec["layer"].as_array().unwrap();
@@ -3340,7 +3257,7 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write(&spec, &wrap_data_for_layers(df, 2)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that both layers have the limits applied
@@ -3455,7 +3372,7 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write(&spec, &wrap_data_for_layers(df, 2)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check both layers have flipped encodings
@@ -3840,10 +3757,8 @@ mod tests {
         let values = Series::new("value".into(), &[100, 120, 110]);
         let categories = Series::new("category".into(), &["A", "A", "B"]);
         let df = DataFrame::new(vec![dates.into(), values.into(), categories.into()]).unwrap();
-        let mut data = std::collections::HashMap::new();
-        data.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
-        let json_str = writer.write(&spec, &data).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Should have detail encoding with the partition_by column (in layer[0])
@@ -3885,10 +3800,8 @@ mod tests {
             regions.into(),
         ])
         .unwrap();
-        let mut data = std::collections::HashMap::new();
-        data.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
-        let json_str = writer.write(&spec, &data).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Should have detail encoding as an array (in layer[0])
@@ -3924,10 +3837,8 @@ mod tests {
         let dates = Series::new("date".into(), &["2024-01-01", "2024-01-02"]);
         let values = Series::new("value".into(), &[100, 120]);
         let df = DataFrame::new(vec![dates.into(), values.into()]).unwrap();
-        let mut data = std::collections::HashMap::new();
-        data.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
-        let json_str = writer.write(&spec, &data).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Should NOT have detail encoding
@@ -3956,10 +3867,8 @@ mod tests {
         let dates = Series::new("date".into(), &["2024-01-01", "2024-01-02"]);
         let values = Series::new("value".into(), &[100, 120]);
         let df = DataFrame::new(vec![dates.into(), values.into()]).unwrap();
-        let mut data = std::collections::HashMap::new();
-        data.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
-        let result = writer.write(&spec, &data);
+        let result = writer.write(&spec, &wrap_data(df));
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("nonexistent_column"));
@@ -4639,47 +4548,76 @@ mod tests {
     }
 
     #[test]
-    fn test_center_to_bin_edges() {
-        // Test basic bin edge lookup
+    fn test_find_bin_for_value() {
         let breaks = vec![0.0, 10.0, 20.0, 30.0];
 
-        // Center of first bin (0+10)/2 = 5
-        let result = VegaLiteWriter::center_to_bin_edges(5.0, &breaks);
-        assert_eq!(result, Some((0.0, 10.0)));
-
-        // Center of second bin (10+20)/2 = 15
-        let result = VegaLiteWriter::center_to_bin_edges(15.0, &breaks);
-        assert_eq!(result, Some((10.0, 20.0)));
-
-        // Center of last bin (20+30)/2 = 25
-        let result = VegaLiteWriter::center_to_bin_edges(25.0, &breaks);
-        assert_eq!(result, Some((20.0, 30.0)));
-
-        // Value not matching any bin center
-        let result = VegaLiteWriter::center_to_bin_edges(7.0, &breaks);
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_center_to_bin_edges_uneven_breaks() {
-        // Non-evenly-spaced breaks
-        let breaks = vec![0.0, 10.0, 25.0, 100.0];
-
-        // Center of [0, 10] = 5
+        // Values in first bin [0, 10)
         assert_eq!(
-            VegaLiteWriter::center_to_bin_edges(5.0, &breaks),
+            VegaLiteWriter::find_bin_for_value(0.0, &breaks),
+            Some((0.0, 10.0))
+        );
+        assert_eq!(
+            VegaLiteWriter::find_bin_for_value(5.0, &breaks),
+            Some((0.0, 10.0))
+        );
+        assert_eq!(
+            VegaLiteWriter::find_bin_for_value(9.99, &breaks),
             Some((0.0, 10.0))
         );
 
-        // Center of [10, 25] = 17.5
+        // Values in second bin [10, 20)
         assert_eq!(
-            VegaLiteWriter::center_to_bin_edges(17.5, &breaks),
+            VegaLiteWriter::find_bin_for_value(10.0, &breaks),
+            Some((10.0, 20.0))
+        );
+        assert_eq!(
+            VegaLiteWriter::find_bin_for_value(15.0, &breaks),
+            Some((10.0, 20.0))
+        );
+
+        // Values in last bin [20, 30] (closed on right)
+        assert_eq!(
+            VegaLiteWriter::find_bin_for_value(20.0, &breaks),
+            Some((20.0, 30.0))
+        );
+        assert_eq!(
+            VegaLiteWriter::find_bin_for_value(25.0, &breaks),
+            Some((20.0, 30.0))
+        );
+        assert_eq!(
+            VegaLiteWriter::find_bin_for_value(30.0, &breaks),
+            Some((20.0, 30.0))
+        );
+
+        // Values outside all bins
+        assert_eq!(VegaLiteWriter::find_bin_for_value(-1.0, &breaks), None);
+        assert_eq!(VegaLiteWriter::find_bin_for_value(31.0, &breaks), None);
+    }
+
+    #[test]
+    fn test_find_bin_for_value_uneven_breaks() {
+        // Non-evenly-spaced breaks
+        let breaks = vec![0.0, 10.0, 25.0, 100.0];
+
+        // Value in [0, 10)
+        assert_eq!(
+            VegaLiteWriter::find_bin_for_value(5.0, &breaks),
+            Some((0.0, 10.0))
+        );
+
+        // Value in [10, 25)
+        assert_eq!(
+            VegaLiteWriter::find_bin_for_value(17.5, &breaks),
             Some((10.0, 25.0))
         );
 
-        // Center of [25, 100] = 62.5
+        // Value in [25, 100] (last bin, closed on right)
         assert_eq!(
-            VegaLiteWriter::center_to_bin_edges(62.5, &breaks),
+            VegaLiteWriter::find_bin_for_value(62.5, &breaks),
+            Some((25.0, 100.0))
+        );
+        assert_eq!(
+            VegaLiteWriter::find_bin_for_value(100.0, &breaks),
             Some((25.0, 100.0))
         );
     }

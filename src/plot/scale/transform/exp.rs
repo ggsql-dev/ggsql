@@ -81,10 +81,6 @@ impl TransformTrait for Exp {
         (f64::NEG_INFINITY, f64::INFINITY)
     }
 
-    fn is_value_in_domain(&self, value: f64) -> bool {
-        value.is_finite()
-    }
-
     fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
         // Breaks are in data space (exponents), not output space
         if pretty && (self.is_base10() || self.is_base2()) {
@@ -147,44 +143,6 @@ mod tests {
             assert!(
                 max.is_infinite() && max > 0.0,
                 "{}: domain max should be +∞",
-                name
-            );
-        }
-    }
-
-    #[test]
-    fn test_all_bases_is_value_in_domain() {
-        for (t, _, name) in get_transforms() {
-            // Valid values (all finite)
-            assert!(
-                t.is_value_in_domain(0.0),
-                "{}: 0.0 should be in domain",
-                name
-            );
-            assert!(
-                t.is_value_in_domain(1.0),
-                "{}: 1.0 should be in domain",
-                name
-            );
-            assert!(
-                t.is_value_in_domain(-1.0),
-                "{}: -1.0 should be in domain",
-                name
-            );
-            assert!(
-                t.is_value_in_domain(100.0),
-                "{}: 100.0 should be in domain",
-                name
-            );
-            // Invalid values
-            assert!(
-                !t.is_value_in_domain(f64::INFINITY),
-                "{}: infinity should not be in domain",
-                name
-            );
-            assert!(
-                !t.is_value_in_domain(f64::NAN),
-                "{}: NaN should not be in domain",
                 name
             );
         }

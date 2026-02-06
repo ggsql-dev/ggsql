@@ -23,10 +23,6 @@ impl TransformTrait for Square {
         (f64::NEG_INFINITY, f64::INFINITY)
     }
 
-    fn is_value_in_domain(&self, value: f64) -> bool {
-        value.is_finite()
-    }
-
     fn calculate_breaks(&self, min: f64, max: f64, n: usize, _pretty: bool) -> Vec<f64> {
         // Data-space even breaks (simple linear breaks in input space)
         // These won't be visually evenly spaced after squaring, but that's expected
@@ -71,18 +67,6 @@ mod tests {
         let (min, max) = t.allowed_domain();
         assert!(min.is_infinite() && min < 0.0);
         assert!(max.is_infinite() && max > 0.0);
-    }
-
-    #[test]
-    fn test_square_is_value_in_domain() {
-        let t = Square;
-        assert!(t.is_value_in_domain(0.0));
-        assert!(t.is_value_in_domain(1.0));
-        assert!(t.is_value_in_domain(-1.0));
-        assert!(t.is_value_in_domain(100.0));
-        assert!(t.is_value_in_domain(-100.0));
-        assert!(!t.is_value_in_domain(f64::INFINITY));
-        assert!(!t.is_value_in_domain(f64::NAN));
     }
 
     #[test]

@@ -88,10 +88,6 @@ impl TransformTrait for Log {
         (f64::MIN_POSITIVE, f64::INFINITY)
     }
 
-    fn is_value_in_domain(&self, value: f64) -> bool {
-        value > 0.0 && value.is_finite()
-    }
-
     fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
         log_breaks(min, max, n, self.base, pretty)
     }
@@ -146,49 +142,6 @@ mod tests {
             let (min, max) = t.allowed_domain();
             assert!(min > 0.0, "{}: domain min should be > 0", name);
             assert!(max.is_infinite(), "{}: domain max should be infinite", name);
-        }
-    }
-
-    #[test]
-    fn test_all_bases_is_value_in_domain() {
-        for (t, _, name) in get_transforms() {
-            // Valid values
-            assert!(
-                t.is_value_in_domain(1.0),
-                "{}: 1.0 should be in domain",
-                name
-            );
-            assert!(
-                t.is_value_in_domain(0.0001),
-                "{}: 0.0001 should be in domain",
-                name
-            );
-            assert!(
-                t.is_value_in_domain(1000.0),
-                "{}: 1000.0 should be in domain",
-                name
-            );
-            // Invalid values
-            assert!(
-                !t.is_value_in_domain(0.0),
-                "{}: 0.0 should not be in domain",
-                name
-            );
-            assert!(
-                !t.is_value_in_domain(-1.0),
-                "{}: -1.0 should not be in domain",
-                name
-            );
-            assert!(
-                !t.is_value_in_domain(f64::INFINITY),
-                "{}: infinity should not be in domain",
-                name
-            );
-            assert!(
-                !t.is_value_in_domain(f64::NAN),
-                "{}: NaN should not be in domain",
-                name
-            );
         }
     }
 

@@ -143,10 +143,6 @@ impl TransformTrait for DateTime {
         (f64::NEG_INFINITY, f64::INFINITY)
     }
 
-    fn is_value_in_domain(&self, value: f64) -> bool {
-        value.is_finite()
-    }
-
     fn transform(&self, value: f64) -> f64 {
         // Identity transform - datetimes stay in microseconds-since-epoch space
         value
@@ -437,10 +433,10 @@ mod tests {
     #[test]
     fn test_datetime_domain() {
         let t = DateTime;
-        assert!(t.is_value_in_domain(0.0));
-        assert!(t.is_value_in_domain(-1_000_000_000_000.0));
-        assert!(t.is_value_in_domain(1_000_000_000_000.0));
-        assert!(!t.is_value_in_domain(f64::INFINITY));
+        let (min, max) = t.allowed_domain();
+        // DateTime has infinite domain
+        assert!(min.is_infinite() && min.is_sign_negative());
+        assert!(max.is_infinite() && max.is_sign_positive());
     }
 
     #[test]

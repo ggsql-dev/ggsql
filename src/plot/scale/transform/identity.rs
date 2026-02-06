@@ -20,10 +20,6 @@ impl TransformTrait for Identity {
         (f64::NEG_INFINITY, f64::INFINITY)
     }
 
-    fn is_value_in_domain(&self, value: f64) -> bool {
-        value.is_finite()
-    }
-
     fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
         if pretty {
             pretty_breaks(min, max, n)
@@ -66,17 +62,6 @@ mod tests {
         let (min, max) = t.allowed_domain();
         assert!(min.is_infinite() && min.is_sign_negative());
         assert!(max.is_infinite() && max.is_sign_positive());
-    }
-
-    #[test]
-    fn test_identity_is_value_in_domain() {
-        let t = Identity;
-        assert!(t.is_value_in_domain(0.0));
-        assert!(t.is_value_in_domain(-1000.0));
-        assert!(t.is_value_in_domain(1000.0));
-        assert!(t.is_value_in_domain(0.00001));
-        assert!(!t.is_value_in_domain(f64::INFINITY));
-        assert!(!t.is_value_in_domain(f64::NAN));
     }
 
     #[test]

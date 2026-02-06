@@ -20,10 +20,6 @@ impl TransformTrait for Bool {
         (f64::NEG_INFINITY, f64::INFINITY)
     }
 
-    fn is_value_in_domain(&self, value: f64) -> bool {
-        value.is_finite()
-    }
-
     fn calculate_breaks(&self, _min: f64, _max: f64, _n: usize, _pretty: bool) -> Vec<f64> {
         // Bool transform is for discrete scales - no breaks calculation
         Vec::new()
@@ -99,16 +95,6 @@ mod tests {
         let (min, max) = t.allowed_domain();
         assert!(min.is_infinite() && min.is_sign_negative());
         assert!(max.is_infinite() && max.is_sign_positive());
-    }
-
-    #[test]
-    fn test_bool_is_value_in_domain() {
-        let t = Bool;
-        assert!(t.is_value_in_domain(0.0));
-        assert!(t.is_value_in_domain(1.0));
-        assert!(t.is_value_in_domain(-1.0));
-        assert!(!t.is_value_in_domain(f64::INFINITY));
-        assert!(!t.is_value_in_domain(f64::NAN));
     }
 
     #[test]

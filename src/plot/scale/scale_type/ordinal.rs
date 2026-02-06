@@ -4,9 +4,7 @@
 //! Unlike discrete scales (exact 1:1 mapping), ordinal scales interpolate output values
 //! to create smooth gradients for aesthetics like color, size, and opacity.
 
-use std::collections::HashMap;
-
-use polars::prelude::{Column, DataType};
+use polars::prelude::DataType;
 
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames};
@@ -115,46 +113,6 @@ impl ScaleTypeTrait for Ordinal {
         }
     }
 
-    fn allows_data_type(&self, dtype: &DataType) -> bool {
-        // Ordinal scales accept categorical types plus numeric types
-        // Numeric types are useful for ordered categories like Month (1-12), rank values, etc.
-        matches!(
-            dtype,
-            DataType::String
-                | DataType::Categorical(_, _)
-                | DataType::Boolean
-                | DataType::Int8
-                | DataType::Int16
-                | DataType::Int32
-                | DataType::Int64
-                | DataType::UInt8
-                | DataType::UInt16
-                | DataType::UInt32
-                | DataType::UInt64
-                | DataType::Float32
-                | DataType::Float64
-        )
-    }
-
-    fn resolve_input_range(
-        &self,
-        user_range: Option<&[ArrayElement]>,
-        columns: &[&Column],
-        _properties: &HashMap<String, ParameterValue>,
-    ) -> Result<Option<Vec<ArrayElement>>, String> {
-        // Same as Discrete - compute unique values from columns
-        let computed = compute_unique_values(columns);
-
-        match user_range {
-            None => Ok(computed),
-            Some(range) if super::input_range_has_nulls(range) => match computed {
-                Some(inferred) => Ok(Some(super::merge_with_inferred(range, &inferred))),
-                None => Ok(Some(range.to_vec())),
-            },
-            Some(range) => Ok(Some(range.to_vec())),
-        }
-    }
-
     fn default_output_range(
         &self,
         aesthetic: &str,
@@ -212,8 +170,8 @@ impl ScaleTypeTrait for Ordinal {
         scale: &mut super::super::Scale,
         aesthetic: &str,
     ) -> Result<(), String> {
-        use super::super::colour::{interpolate_colors, ColorSpace};
         use super::super::{palettes, OutputRange};
+        use super::size_output_range;
 
         // Get category count from input_range (key difference from Binned which uses breaks)
         let count = scale.input_range.as_ref().map(|r| r.len()).unwrap_or(0);
@@ -244,72 +202,15 @@ impl ScaleTypeTrait for Ordinal {
                     }
                 }
                 Some(OutputRange::Palette(name)) => {
-                    let palette = match aesthetic {
-                        "shape" => palettes::get_shape_palette(name),
-                        "linetype" => palettes::get_linetype_palette(name),
-                        _ => palettes::get_color_palette(name),
-                    };
-                    if let Some(palette) = palette {
-                        let arr: Vec<_> = palette
-                            .iter()
-                            .map(|s| ArrayElement::String(s.to_string()))
-                            .collect();
-                        scale.output_range = Some(OutputRange::Array(arr));
-                    }
+                    let arr = palettes::lookup_palette(aesthetic, name)?;
+                    scale.output_range = Some(OutputRange::Array(arr));
                 }
                 Some(OutputRange::Array(_)) => {}
             }
         }
 
-        // Phase 2: Interpolate to category count (like Binned, but using input_range.len())
-        if let Some(OutputRange::Array(ref arr)) = scale.output_range.clone() {
-            if matches!(aesthetic, "fill" | "stroke") && arr.len() >= 2 {
-                // Color interpolation
-                let hex_strs: Vec<&str> = arr
-                    .iter()
-                    .filter_map(|e| match e {
-                        ArrayElement::String(s) => Some(s.as_str()),
-                        _ => None,
-                    })
-                    .collect();
-                let interpolated = interpolate_colors(&hex_strs, count, ColorSpace::Oklab)?;
-                scale.output_range = Some(OutputRange::Array(
-                    interpolated.into_iter().map(ArrayElement::String).collect(),
-                ));
-            } else if matches!(aesthetic, "size" | "linewidth" | "opacity") && arr.len() >= 2 {
-                // Numeric interpolation
-                let nums: Vec<f64> = arr.iter().filter_map(|e| e.to_f64()).collect();
-                if nums.len() >= 2 {
-                    let min_val = nums[0];
-                    let max_val = nums[nums.len() - 1];
-                    let interpolated: Vec<ArrayElement> = (0..count)
-                        .map(|i| {
-                            let t = if count > 1 {
-                                i as f64 / (count - 1) as f64
-                            } else {
-                                0.5
-                            };
-                            ArrayElement::Number(min_val + t * (max_val - min_val))
-                        })
-                        .collect();
-                    scale.output_range = Some(OutputRange::Array(interpolated));
-                }
-            } else {
-                // Non-interpolatable aesthetics (shape, linetype): truncate/error like Discrete
-                if arr.len() < count {
-                    return Err(format!(
-                        "Output range has {} values but {} categories needed",
-                        arr.len(),
-                        count
-                    ));
-                }
-                if arr.len() > count {
-                    scale.output_range = Some(OutputRange::Array(
-                        arr.iter().take(count).cloned().collect(),
-                    ));
-                }
-            }
-        }
+        // Phase 2: Size/interpolate to category count
+        size_output_range(scale, aesthetic, count)?;
 
         Ok(())
     }
@@ -364,33 +265,6 @@ impl ScaleTypeTrait for Ordinal {
             allowed_values.join(", "),
             column_name
         ))
-    }
-}
-
-/// Compute unique values from columns.
-///
-/// Preserves native types and sorts accordingly:
-/// - Boolean columns → `ArrayElement::Boolean` values in logical order `[false, true]`
-/// - Integer/Float columns → `ArrayElement::Number` values sorted numerically
-/// - Date columns → `ArrayElement::Date` values sorted chronologically
-/// - DateTime columns → `ArrayElement::DateTime` values sorted chronologically
-/// - Time columns → `ArrayElement::Time` values sorted chronologically
-/// - String/Categorical columns → `ArrayElement::String` values sorted alphabetically
-///
-/// Unlike discrete scales, ordinal scales do NOT include null values in the input range
-/// (ordinal is for ordered data where null doesn't have a meaningful position).
-fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
-    if column_refs.is_empty() {
-        return None;
-    }
-
-    // Don't include nulls for ordinal scales
-    let result = super::compute_unique_values_native(column_refs, false);
-
-    if result.is_empty() {
-        None
-    } else {
-        Some(result)
     }
 }
 
@@ -594,30 +468,6 @@ mod tests {
     }
 
     #[test]
-    fn test_ordinal_allows_numeric_data_types() {
-        use super::super::ScaleTypeTrait;
-        use polars::prelude::DataType;
-
-        let ordinal = Ordinal;
-
-        // Ordinal should allow numeric types (e.g., Month 1-12)
-        assert!(ordinal.allows_data_type(&DataType::Int8));
-        assert!(ordinal.allows_data_type(&DataType::Int16));
-        assert!(ordinal.allows_data_type(&DataType::Int32));
-        assert!(ordinal.allows_data_type(&DataType::Int64));
-        assert!(ordinal.allows_data_type(&DataType::UInt8));
-        assert!(ordinal.allows_data_type(&DataType::UInt16));
-        assert!(ordinal.allows_data_type(&DataType::UInt32));
-        assert!(ordinal.allows_data_type(&DataType::UInt64));
-        assert!(ordinal.allows_data_type(&DataType::Float32));
-        assert!(ordinal.allows_data_type(&DataType::Float64));
-
-        // Also allows categorical types
-        assert!(ordinal.allows_data_type(&DataType::String));
-        assert!(ordinal.allows_data_type(&DataType::Boolean));
-    }
-
-    #[test]
     fn test_ordinal_default_transform_numeric() {
         use super::super::ScaleTypeTrait;
         use crate::plot::scale::TransformKind;
@@ -648,27 +498,5 @@ mod tests {
             ordinal.default_transform("color", Some(&DataType::Boolean)),
             TransformKind::Bool
         );
-    }
-
-    #[test]
-    fn test_ordinal_numeric_input_range_sorted_numerically() {
-        use polars::prelude::*;
-
-        // Create a numeric column with values that would sort incorrectly as strings
-        // String sort: ["1", "10", "2", "20"] vs numeric sort: [1, 2, 10, 20]
-        let series = Series::new("month".into(), vec![10, 1, 20, 2]);
-        let column = series.into_column();
-        let columns = vec![&column];
-
-        let result = compute_unique_values(&columns);
-        assert!(result.is_some());
-        let values = result.unwrap();
-
-        // Should be sorted numerically: 1, 2, 10, 20
-        assert_eq!(values.len(), 4);
-        assert_eq!(values[0], ArrayElement::Number(1.0));
-        assert_eq!(values[1], ArrayElement::Number(2.0));
-        assert_eq!(values[2], ArrayElement::Number(10.0));
-        assert_eq!(values[3], ArrayElement::Number(20.0));
     }
 }

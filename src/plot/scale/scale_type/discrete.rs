@@ -1,8 +1,6 @@
 //! Discrete scale type implementation
 
-use std::collections::HashMap;
-
-use polars::prelude::{Column, DataType};
+use polars::prelude::DataType;
 
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames};
@@ -35,15 +33,6 @@ impl ScaleTypeTrait for Discrete {
             "reverse" => Some(ParameterValue::Boolean(false)),
             _ => None,
         }
-    }
-
-    fn allows_data_type(&self, dtype: &DataType) -> bool {
-        // Discrete scales accept string, boolean, categorical data
-        // With String/Bool transforms, they can also accept other types that will be cast
-        matches!(
-            dtype,
-            DataType::String | DataType::Boolean | DataType::Categorical(_, _)
-        )
     }
 
     fn allowed_transforms(&self) -> &'static [TransformKind] {
@@ -109,22 +98,6 @@ impl ScaleTypeTrait for Discrete {
         ))
     }
 
-    fn resolve_input_range(
-        &self,
-        user_range: Option<&[ArrayElement]>,
-        columns: &[&Column],
-        _properties: &HashMap<String, ParameterValue>,
-    ) -> Result<Option<Vec<ArrayElement>>, String> {
-        // Discrete scales don't support expansion
-        match user_range {
-            Some(range) if super::input_range_has_nulls(range) => {
-                Err("Discrete scale input range cannot contain null placeholders".to_string())
-            }
-            Some(range) => Ok(Some(range.to_vec())),
-            None => Ok(compute_unique_values(columns)),
-        }
-    }
-
     fn default_output_range(
         &self,
         aesthetic: &str,
@@ -186,19 +159,8 @@ impl ScaleTypeTrait for Discrete {
             }
             Some(OutputRange::Palette(name)) => {
                 // Named palette - convert to Array
-                let palette = match aesthetic {
-                    "shape" => palettes::get_shape_palette(name),
-                    "linetype" => palettes::get_linetype_palette(name),
-                    _ => palettes::get_color_palette(name),
-                };
-                if let Some(palette) = palette {
-                    let arr: Vec<_> = palette
-                        .iter()
-                        .map(|s| ArrayElement::String(s.to_string()))
-                        .collect();
-                    scale.output_range = Some(OutputRange::Array(arr));
-                }
-                // If palette not found, leave as Palette for Vega-Lite to handle
+                let arr = palettes::lookup_palette(aesthetic, name)?;
+                scale.output_range = Some(OutputRange::Array(arr));
             }
             Some(OutputRange::Array(_)) => {
                 // Already an array, nothing to do
@@ -206,6 +168,7 @@ impl ScaleTypeTrait for Discrete {
         }
 
         // Phase 2: Size the Array to match category count
+        // Discrete scales don't interpolate - just truncate or error
         let count = scale.input_range.as_ref().map(|r| r.len()).unwrap_or(0);
         if count == 0 {
             return Ok(());
@@ -275,31 +238,6 @@ impl ScaleTypeTrait for Discrete {
             allowed_values.join(", "),
             column_name
         ))
-    }
-}
-
-/// Compute discrete input range as unique sorted values from Columns.
-///
-/// Preserves native types and sorts accordingly:
-/// - Boolean columns → `ArrayElement::Boolean` values in logical order `[false, true]`
-/// - Integer/Float columns → `ArrayElement::Number` values sorted numerically
-/// - Date columns → `ArrayElement::Date` values sorted chronologically
-/// - DateTime columns → `ArrayElement::DateTime` values sorted chronologically
-/// - Time columns → `ArrayElement::Time` values sorted chronologically
-/// - String/Categorical columns → `ArrayElement::String` values sorted alphabetically
-///
-/// `ArrayElement::Null` is appended at the end if null values exist in the data.
-fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
-    if column_refs.is_empty() {
-        return None;
-    }
-
-    let result = super::compute_unique_values_native(column_refs, true);
-
-    if result.is_empty() {
-        None
-    } else {
-        Some(result)
     }
 }
 
@@ -490,111 +428,6 @@ mod tests {
         assert!(result
             .unwrap_err()
             .contains("not supported for discrete scale"));
-    }
-
-    #[test]
-    fn test_compute_unique_values_includes_null_for_strings() {
-        use polars::prelude::*;
-
-        // Create a column with some null values
-        let series = Series::new("cat".into(), &[Some("A"), Some("B"), None, Some("C")]);
-        let column = series.into_column();
-        let columns = vec![&column];
-
-        let result = compute_unique_values(&columns);
-        assert!(result.is_some());
-        let values = result.unwrap();
-
-        // Should have A, B, C sorted, plus Null at the end
-        assert_eq!(values.len(), 4);
-        assert_eq!(values[0], ArrayElement::String("A".to_string()));
-        assert_eq!(values[1], ArrayElement::String("B".to_string()));
-        assert_eq!(values[2], ArrayElement::String("C".to_string()));
-        assert_eq!(values[3], ArrayElement::Null);
-    }
-
-    #[test]
-    fn test_compute_unique_values_includes_null_for_booleans() {
-        use polars::prelude::*;
-
-        // Create a boolean column with null
-        let series = Series::new("flag".into(), &[Some(true), Some(false), None]);
-        let column = series.into_column();
-        let columns = vec![&column];
-
-        let result = compute_unique_values(&columns);
-        assert!(result.is_some());
-        let values = result.unwrap();
-
-        // Should have false, true, null (logical order)
-        assert_eq!(values.len(), 3);
-        assert_eq!(values[0], ArrayElement::Boolean(false));
-        assert_eq!(values[1], ArrayElement::Boolean(true));
-        assert_eq!(values[2], ArrayElement::Null);
-    }
-
-    #[test]
-    fn test_compute_unique_values_no_null_when_none_present() {
-        use polars::prelude::*;
-
-        // Create a column without nulls
-        let series = Series::new("cat".into(), vec!["A", "B", "C"]);
-        let column = series.into_column();
-        let columns = vec![&column];
-
-        let result = compute_unique_values(&columns);
-        assert!(result.is_some());
-        let values = result.unwrap();
-
-        // Should have A, B, C sorted, no Null
-        assert_eq!(values.len(), 3);
-        assert_eq!(values[0], ArrayElement::String("A".to_string()));
-        assert_eq!(values[1], ArrayElement::String("B".to_string()));
-        assert_eq!(values[2], ArrayElement::String("C".to_string()));
-    }
-
-    #[test]
-    fn test_compute_unique_values_numeric_sorted_numerically() {
-        use polars::prelude::*;
-
-        // Create a column with numbers that would sort incorrectly as strings
-        // String sort: ["1", "10", "2", "20"] vs numeric sort: [1, 2, 10, 20]
-        let series = Series::new("rank".into(), vec![20, 1, 10, 2]);
-        let column = series.into_column();
-        let columns = vec![&column];
-
-        let result = compute_unique_values(&columns);
-        assert!(result.is_some());
-        let values = result.unwrap();
-
-        // Should be sorted numerically: 1, 2, 10, 20
-        assert_eq!(values.len(), 4);
-        assert_eq!(values[0], ArrayElement::Number(1.0));
-        assert_eq!(values[1], ArrayElement::Number(2.0));
-        assert_eq!(values[2], ArrayElement::Number(10.0));
-        assert_eq!(values[3], ArrayElement::Number(20.0));
-    }
-
-    #[test]
-    fn test_compute_unique_values_date_sorted_chronologically() {
-        use polars::prelude::*;
-
-        // Create a date column with dates that would sort incorrectly as strings
-        // 2024-01-01 (day 19723), 2024-02-01 (day 19754), 2024-12-01 (day 19959)
-        let series = Series::new("date".into(), &[19959i32, 19723, 19754]);
-        let date_series = series.cast(&DataType::Date).unwrap();
-        let column = date_series.into_column();
-        let columns = vec![&column];
-
-        let result = compute_unique_values(&columns);
-        assert!(result.is_some());
-        let values = result.unwrap();
-
-        // Should be sorted chronologically
-        assert_eq!(values.len(), 3);
-        assert_eq!(values[0], ArrayElement::Date(19723)); // 2024-01-01
-        assert_eq!(values[1], ArrayElement::Date(19754)); // 2024-02-01
-        assert_eq!(values[2], ArrayElement::Date(19959)); // 2024-12-01
     }
 
     // =========================================================================

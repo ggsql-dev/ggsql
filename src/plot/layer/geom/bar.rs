@@ -269,13 +269,10 @@ fn stat_bar_count(
             )
         };
 
-        // Filter NULL x values before aggregation - NULL values from binning or original data
-        // should not be counted as a separate bar
         let query_str = format!(
-            "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__ WHERE {x} IS NOT NULL GROUP BY {group}) SELECT {final} FROM __grouped__",
+            "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __grouped__",
             query = query,
             grouped = grouped_select,
-            x = x_col,
             group = group_cols,
             final = final_select
         );

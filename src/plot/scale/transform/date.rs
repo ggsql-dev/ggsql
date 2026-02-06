@@ -117,11 +117,6 @@ impl TransformTrait for Date {
         (-2_000_000.0, 2_000_000.0)
     }
 
-    fn is_value_in_domain(&self, value: f64) -> bool {
-        let (min, max) = self.allowed_domain();
-        value.is_finite() && value >= min && value <= max
-    }
-
     fn transform(&self, value: f64) -> f64 {
         // Identity transform - dates stay in days-since-epoch space
         value
@@ -406,11 +401,9 @@ mod tests {
     fn test_date_domain() {
         let t = Date;
         let (min, max) = t.allowed_domain();
+        // Date domain allows negative (before epoch) and positive dates
         assert!(min < 0.0);
         assert!(max > 0.0);
-        assert!(t.is_value_in_domain(0.0));
-        assert!(t.is_value_in_domain(-1000.0));
-        assert!(t.is_value_in_domain(1000.0));
     }
 
     #[test]

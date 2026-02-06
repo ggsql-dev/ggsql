@@ -105,10 +105,6 @@ impl TransformTrait for PseudoLog {
         (f64::NEG_INFINITY, f64::INFINITY)
     }
 
-    fn is_value_in_domain(&self, value: f64) -> bool {
-        value.is_finite()
-    }
-
     fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
         symlog_breaks(min, max, n, pretty)
     }
@@ -169,39 +165,6 @@ mod tests {
             assert!(
                 max.is_infinite() && max.is_sign_positive(),
                 "{}: domain max should be +∞",
-                name
-            );
-        }
-    }
-
-    #[test]
-    fn test_all_bases_is_value_in_domain() {
-        for (t, name) in get_transforms() {
-            // Valid values (all finite)
-            assert!(
-                t.is_value_in_domain(0.0),
-                "{}: 0.0 should be in domain",
-                name
-            );
-            assert!(
-                t.is_value_in_domain(1000.0),
-                "{}: 1000.0 should be in domain",
-                name
-            );
-            assert!(
-                t.is_value_in_domain(-1000.0),
-                "{}: -1000.0 should be in domain",
-                name
-            );
-            // Invalid values
-            assert!(
-                !t.is_value_in_domain(f64::INFINITY),
-                "{}: infinity should not be in domain",
-                name
-            );
-            assert!(
-                !t.is_value_in_domain(f64::NAN),
-                "{}: NaN should not be in domain",
                 name
             );
         }

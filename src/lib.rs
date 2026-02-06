@@ -95,10 +95,10 @@ mod integration_tests {
     use crate::writer::{VegaLiteWriter, Writer};
     use std::collections::HashMap;
 
-    /// Helper to wrap a DataFrame in a data map for testing
+    /// Helper to wrap a DataFrame in a data map for testing (uses layer 0 key)
     fn wrap_data(df: DataFrame) -> HashMap<String, DataFrame> {
         let mut data_map = HashMap::new();
-        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
+        data_map.insert(naming::layer_key(0), df);
         data_map
     }
 
