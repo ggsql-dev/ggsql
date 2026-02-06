@@ -79,6 +79,7 @@ fn stat_density(
         GgsqlError::ValidationError("Density requires 'x' aesthetic mapping".to_string())
     })?;
 
+    let range = compute_range_sql(&x, &query, execute)?;
     let bw = density_sql_bandwidth(query, group_by, &x, parameters);
 
     Ok(StatResult::Transformed {
@@ -87,6 +88,54 @@ fn stat_density(
         dummy_columns: vec![],
         consumed_aesthetics: vec!["x".to_string()],
     })
+}
+
+fn compute_range_sql(
+    value: &str,
+    from: &str,
+    execute: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+) -> Result<(f64, f64)> {
+    let query = format!(
+        "SELECT 
+          MIN({value}) AS min, 
+          MAX({value}) AS max 
+        FROM ({from}) 
+        WHERE {value} IS NOT NULL",
+        value = value,
+        from = from
+    );
+    let result = execute(&query)?;
+    let min = result
+        .column("min")
+        .and_then(|col| col.get(0))
+        .and_then(|v| v.try_extract::<f64>());
+
+    let max = result
+        .column("max")
+        .and_then(|col| col.get(0))
+        .and_then(|v| v.try_extract::<f64>());
+
+    if let (Ok(start), Ok(end)) = (min, max) {
+        if !start.is_finite() || !end.is_finite() {
+            return Err(GgsqlError::ValidationError(format!(
+                "Density layer needs finite numbers in '{}' column.",
+                value
+            )));
+        }
+        if (end - start).abs() < 1e-8 {
+            // We need to be able to compute variance for density. Having zero
+            // range is guaranteed to also have zero variance.
+            return Err(GgsqlError::ValidationError(format!(
+                "Density layer needs non-zero range data in '{}' column.",
+                value
+            )));
+        }
+        return Ok((start, end));
+    }
+    Err(GgsqlError::ReaderError(format!(
+        "Density layer failed to compute range for '{}' column.",
+        value
+    )))
 }
 
 fn density_sql_bandwidth(
@@ -117,7 +166,7 @@ fn density_sql_bandwidth(
         // When we have a user-supplied bandwidth, we don't have to compute the
         // bandwidth from the data. Instead, we just make sure the query has
         // the right shape.
-        num = num * adjust;
+        num *= adjust;
         let cte = if groups.is_empty() {
             format!("WITH bandwidth AS (SELECT {num} AS bw)", num = num)
         } else {
