@@ -165,4 +165,114 @@ impl Layer {
         }
         Ok(())
     }
+
+    /// Update layer mappings to use prefixed aesthetic column names.
+    ///
+    /// After building a layer query that creates aesthetic columns with prefixed names,
+    /// the layer's mappings need to be updated to point to these prefixed column names.
+    ///
+    /// This function converts:
+    /// - `AestheticValue::Column { name: "Date", ... }` → `AestheticValue::Column { name: "__ggsql_aes_x__", ... }`
+    /// - `AestheticValue::Literal(...)` → `AestheticValue::Column { name: "__ggsql_aes_color__", ... }`
+    ///
+    /// Note: The final rename from prefixed names to clean aesthetic names (e.g., "x")
+    /// happens in Polars after query execution, before the data goes to the writer.
+    pub fn update_mappings_for_aesthetic_columns(&mut self) {
+        use crate::naming;
+
+        for (aesthetic, value) in self.mappings.aesthetics.iter_mut() {
+            let aes_col_name = naming::aesthetic_column(aesthetic);
+            match value {
+                AestheticValue::Column {
+                    name,
+                    original_name,
+                    ..
+                } => {
+                    // Preserve the original column name for labels before overwriting
+                    if original_name.is_none() {
+                        *original_name = Some(name.clone());
+                    }
+                    // Column is now named with the prefixed aesthetic name
+                    *name = aes_col_name;
+                }
+                AestheticValue::Literal(_) => {
+                    // Literals are also columns with prefixed aesthetic name
+                    // Note: literals don't have an original_name to preserve
+                    *value = AestheticValue::standard_column(aes_col_name);
+                }
+            }
+        }
+    }
+
+    /// Update layer mappings to use prefixed aesthetic names for remapped columns.
+    ///
+    /// After remappings are applied (stat columns renamed to prefixed aesthetic names),
+    /// the layer mappings need to be updated so the writer uses the correct field names.
+    ///
+    /// For column remappings, the original name is set to the stat name (e.g., "density", "count")
+    /// so axis labels show meaningful names instead of internal prefixed names.
+    ///
+    /// For literal remappings, the value becomes a column reference pointing to the
+    /// constant column created by `apply_remappings_post_query`.
+    pub fn update_mappings_for_remappings(&mut self) {
+        use crate::naming;
+
+        // For each remapping, add the target aesthetic to mappings pointing to the prefixed name
+        for (target_aesthetic, value) in &self.remappings.aesthetics {
+            let prefixed_name = naming::aesthetic_column(target_aesthetic);
+
+            let new_value = match value {
+                AestheticValue::Column {
+                    original_name,
+                    is_dummy,
+                    ..
+                } => {
+                    // Use the stat name from remappings as the original_name for labels
+                    // The stat_col_value contains the user-specified stat name (e.g., "density", "count")
+                    AestheticValue::Column {
+                        name: prefixed_name,
+                        original_name: original_name.clone(),
+                        is_dummy: *is_dummy,
+                    }
+                }
+                AestheticValue::Literal(_) => {
+                    // Literal becomes a column reference after post-query processing
+                    // No original_name since it's a constant value
+                    AestheticValue::Column {
+                        name: prefixed_name,
+                        original_name: None,
+                        is_dummy: false,
+                    }
+                }
+            };
+
+            self.mappings
+                .aesthetics
+                .insert(target_aesthetic.clone(), new_value);
+        }
+    }
+
+    /// Add default ymin=0 for bar/histogram geoms to ensure y scale includes zero.
+    ///
+    /// Bars and histograms should visually start from a baseline (typically 0).
+    /// This adds an implicit `ymin=0` mapping to remappings if:
+    /// - The geom is Bar or Histogram
+    /// - The layer has a "y" mapping
+    /// - The layer doesn't already have a "ymin" mapping or remapping
+    pub fn add_default_ymin_for_bar_histogram(&mut self) {
+        use crate::plot::layer::geom::GeomType;
+
+        if matches!(self.geom.geom_type(), GeomType::Bar | GeomType::Histogram) {
+            // Only add if layer has y but no ymin
+            if self.mappings.aesthetics.contains_key("y")
+                && !self.mappings.aesthetics.contains_key("ymin")
+                && !self.remappings.aesthetics.contains_key("ymin")
+            {
+                self.remappings.insert(
+                    "ymin".to_string(),
+                    AestheticValue::Literal(LiteralValue::Number(0.0)),
+                );
+            }
+        }
+    }
 }

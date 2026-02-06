@@ -48,6 +48,36 @@ impl GeomAesthetics {
     }
 }
 
+/// Get all aesthetics in the same family as the given aesthetic.
+///
+/// For primary aesthetics like "x", returns all family members: `["x", "xmin", "xmax", "x2", "xend"]`.
+/// For variant aesthetics like "xmin", returns just `["xmin"]` since scales should be
+/// defined for primary aesthetics.
+/// For non-family aesthetics like "color", returns just `["color"]`.
+///
+/// This is used by scale resolution to find all columns that contribute to a scale's
+/// input range (e.g., both `ymin` and `ymax` columns contribute to the "y" scale).
+pub fn get_aesthetic_family(aesthetic: &str) -> Vec<&str> {
+    // First, determine the primary aesthetic
+    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+
+    // If aesthetic is not a primary (it's a variant), just return the aesthetic itself
+    // since scales should be defined for primary aesthetics
+    if primary != aesthetic {
+        return vec![aesthetic];
+    }
+
+    // Collect primary + all variants that map to this primary
+    let mut family = vec![primary];
+    for (variant, prim) in AESTHETIC_FAMILIES {
+        if *prim == primary {
+            family.push(*variant);
+        }
+    }
+
+    family
+}
+
 /// Default value for a layer parameter
 #[derive(Debug, Clone)]
 pub enum DefaultParamValue {
