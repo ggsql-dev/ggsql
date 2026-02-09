@@ -25,7 +25,9 @@ impl GeomTrait for Density {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["x", "color", "colour", "fill", "stroke", "opacity"],
+            supported: &[
+                "x", "weight", "color", "colour", "fill", "stroke", "opacity",
+            ],
             required: &["x"],
             hidden: &["density"],
         }
@@ -65,7 +67,7 @@ impl GeomTrait for Density {
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
-        &["x"]
+        &["x", "weight"]
     }
 
     fn apply_stat_transform(
@@ -115,18 +117,25 @@ fn stat_density(
     let x = get_column_name(aesthetics, "x").ok_or_else(|| {
         GgsqlError::ValidationError("Density requires 'x' aesthetic mapping".to_string())
     })?;
+    let weight = get_column_name(aesthetics, "weight");
 
     let (min, max) = compute_range_sql(&x, query, execute)?;
     let bw_cte = density_sql_bandwidth(query, group_by, &x, parameters);
+    let data_cte = build_data_cte(&x, weight.as_deref(), query, group_by);
     let grid_cte = build_grid_cte(group_by, query, min, max, 512);
     let kernel = choose_kde_kernel(parameters)?;
-    let density_query = compute_density(&x, query, group_by, kernel, &bw_cte, &grid_cte);
+    let density_query = compute_density(group_by, kernel, &bw_cte, &data_cte, &grid_cte);
+
+    let mut consumed = vec!["x".to_string()];
+    if weight.is_some() {
+        consumed.push("weight".to_string());
+    }
 
     Ok(StatResult::Transformed {
         query: density_query,
         stat_columns: vec!["x".to_string(), "density".to_string()],
         dummy_columns: vec![],
-        consumed_aesthetics: vec!["x".to_string()],
+        consumed_aesthetics: consumed,
     })
 }
 
@@ -310,12 +319,33 @@ fn choose_kde_kernel(parameters: &HashMap<String, ParameterValue>) -> Result<Str
         )));
         }
     };
-    // We move dividing by bandwidth outside the average computation to avoid
-    // having to apply it to every element separately.
+    // Use weighted sum for density computation
+    // Weighted: density = (1/h) × Σ(wi × K((x-xi)/h)) / Σwi
     Ok(format!(
-        "AVG({kernel}) / ANY_VALUE(bandwidth.bw)",
+        "SUM(data.weight * ({kernel})) / SUM(data.weight) / ANY_VALUE(bandwidth.bw)",
         kernel = kernel
     ))
+}
+
+fn build_data_cte(value: &str, weight: Option<&str>, from: &str, group_by: &[String]) -> String {
+    // Include weight column if provided, otherwise default to 1.0
+    let weight_col = if let Some(w) = weight {
+        format!(", {} AS weight", w)
+    } else {
+        ", 1.0 AS weight".to_string()
+    };
+
+    format!(
+        "data AS (
+          SELECT {groups}{value} AS val{weight_col}
+          FROM ({from})
+          WHERE {value} IS NOT NULL
+        )",
+        groups = with_trailing_comma(&group_by.join(", ")),
+        value = value,
+        weight_col = weight_col,
+        from = from
+    )
 }
 
 fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: usize) -> String {
@@ -359,24 +389,12 @@ fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: u
 }
 
 fn compute_density(
-    value: &str,
-    from: &str,
     group_by: &[String],
     kernel: String,
     bandwidth_cte: &str,
+    data_cte: &str,
     grid_cte: &str,
 ) -> String {
-    let data_cte = format!(
-        "data AS (
-          SELECT {groups}{value} AS val
-          FROM ({from})
-          WHERE {value} IS NOT NULL
-        )",
-        groups = with_trailing_comma(&group_by.join(", ")),
-        value = value,
-        from = from
-    );
-
     // Build bandwidth join condition
     let bandwidth_conditions = if group_by.is_empty() {
         "true".to_string()
@@ -454,13 +472,14 @@ mod tests {
         );
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let data_cte = build_data_cte("x", None, query, &groups);
         let grid_cte = build_grid_cte(&groups, query, 0.0, 10.0, 512);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
-        let sql = compute_density("x", query, &groups, kernel, &bw_cte, &grid_cte);
+        let sql = compute_density(&groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
         let expected = "WITH bandwidth AS (SELECT 0.5 AS bw),
         data AS (
-          SELECT x AS val
+          SELECT x AS val, 1.0 AS weight
           FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x))
           WHERE x IS NOT NULL
         ),
@@ -470,7 +489,7 @@ mod tests {
         )
         SELECT
           grid.x AS __ggsql_stat_x,
-          AVG((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
+          SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / SUM(data.weight) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
         FROM data
         INNER JOIN bandwidth ON true
         CROSS JOIN grid
@@ -504,13 +523,14 @@ mod tests {
         );
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let data_cte = build_data_cte("x", None, query, &groups);
         let grid_cte = build_grid_cte(&groups, query, -10.0, 10.0, 512);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
-        let sql = compute_density("x", query, &groups, kernel, &bw_cte, &grid_cte);
+        let sql = compute_density(&groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
         let expected = "WITH bandwidth AS (SELECT 0.5 AS bw, region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)) GROUP BY region, category),
         data AS (
-          SELECT region, category, x AS val
+          SELECT region, category, x AS val, 1.0 AS weight
           FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))
           WHERE x IS NOT NULL
         ),
@@ -524,7 +544,7 @@ mod tests {
         SELECT
           grid.x AS __ggsql_stat_x,
           grid.region, grid.category,
-          AVG((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
+          SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / SUM(data.weight) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
         FROM data
         INNER JOIN bandwidth ON data.region = bandwidth.region AND data.category = bandwidth.category
         CROSS JOIN grid
@@ -561,7 +581,7 @@ mod tests {
             .f64()
             .expect("density is f64")
             .into_iter()
-            .filter_map(|v| v)
+            .flatten()
             .sum();
         let integral = total * dx;
 
@@ -604,10 +624,11 @@ mod tests {
         );
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let data_cte = build_data_cte("x", None, query, &groups);
         // Use wide range to capture essentially all density mass
         let grid_cte = build_grid_cte(&groups, query, -5.0, 15.0, 512);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
-        let sql = compute_density("x", query, &groups, kernel, &bw_cte, &grid_cte);
+        let sql = compute_density(&groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
         // Execute query
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -627,7 +648,7 @@ mod tests {
             .f64()
             .expect("density is f64")
             .into_iter()
-            .filter_map(|v| v)
+            .flatten()
             .sum();
         let integral = total * dx;
 
@@ -695,6 +716,84 @@ mod tests {
     }
 
     #[test]
+    fn test_weighted_vs_unweighted_density() {
+        // Compare weighted and unweighted results
+        let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
+        let groups: Vec<String> = vec![];
+        let mut parameters = HashMap::new();
+        parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
+        parameters.insert(
+            "kernel".to_string(),
+            ParameterValue::String("gaussian".to_string()),
+        );
+
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let grid_cte = build_grid_cte(&groups, query, 0.0, 4.0, 100);
+        let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
+
+        // Unweighted (default weights of 1.0)
+        let data_cte_unweighted = build_data_cte("x", None, query, &groups);
+        let sql_unweighted = compute_density(
+            &groups,
+            kernel.clone(),
+            &bw_cte,
+            &data_cte_unweighted,
+            &grid_cte,
+        );
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let df_unweighted = reader
+            .execute_sql(&sql_unweighted)
+            .expect("SQL should execute");
+
+        // With explicit uniform weights (should be equivalent)
+        let query_weighted = "SELECT x, 1.0 AS weight FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
+        let data_cte_weighted = build_data_cte("x", Some("weight"), query_weighted, &groups);
+        let sql_weighted = compute_density(&groups, kernel, &bw_cte, &data_cte_weighted, &grid_cte);
+        let df_weighted = reader
+            .execute_sql(&sql_weighted)
+            .expect("SQL should execute");
+
+        // Results should be identical (or very close due to floating point)
+        let density_unweighted = df_unweighted
+            .column("__ggsql_stat_density")
+            .expect("density exists");
+        let density_weighted = df_weighted
+            .column("__ggsql_stat_density")
+            .expect("density exists");
+
+        let unweighted_values: Vec<f64> = density_unweighted
+            .f64()
+            .expect("f64")
+            .into_iter()
+            .flatten()
+            .collect();
+        let weighted_values: Vec<f64> = density_weighted
+            .f64()
+            .expect("f64")
+            .into_iter()
+            .flatten()
+            .collect();
+
+        assert_eq!(unweighted_values.len(), weighted_values.len());
+
+        // Check that all values are very close
+        for (i, (u, w)) in unweighted_values
+            .iter()
+            .zip(weighted_values.iter())
+            .enumerate()
+        {
+            assert!(
+                (u - w).abs() < 1e-10,
+                "Values at index {} should be equal: unweighted={}, weighted={}",
+                i,
+                u,
+                w
+            );
+        }
+    }
+
+    #[test]
     #[ignore] // Run with: cargo test bench_density_performance -- --ignored --nocapture
     fn bench_density_performance() {
         use std::time::Instant;
@@ -719,9 +818,10 @@ mod tests {
         );
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let data_cte = build_data_cte("x", None, query, &groups);
         let grid_cte = build_grid_cte(&groups, query, 0.0, 100.0, 512);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
-        let sql = compute_density("x", query, &groups, kernel, &bw_cte, &grid_cte);
+        let sql = compute_density(&groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
         // Warm-up run
         reader.execute_sql(&sql).expect("Warm-up failed");
