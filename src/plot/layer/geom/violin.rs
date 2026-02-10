@@ -18,9 +18,7 @@ impl GeomTrait for Violin {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &[
-                "x", "y", "weight", "color", "colour", "fill", "stroke", "opacity",
-            ],
+            supported: &["x", "y", "weight", "fill", "stroke", "opacity", "linewidth"],
             required: &["x", "y"],
             hidden: &["density"],
         }
