@@ -1000,6 +1000,34 @@ impl VegaLiteWriter {
             Some(json!(details))
         }
     }
+
+    /// Get effective partition_by list, including geom-specific requirements
+    ///
+    /// Some geoms require additional columns in partition_by for proper Vega-Lite rendering.
+    /// For example, violin plots need the x aesthetic in detail encoding to create separate
+    /// violins per x category (required by Vega-Lite's filled line marks).
+    fn get_effective_partition_by(
+        &self,
+        layer: &Layer,
+        encoding: &Map<String, Value>,
+    ) -> Vec<String> {
+        let mut partition_by = layer.partition_by.clone();
+
+        // Violin geoms need x in partition_by for proper Vega-Lite rendering
+        if matches!(layer.geom.geom_type(), GeomType::Violin) {
+            if let Some(x_field) = encoding
+                .get("x")
+                .and_then(|x| x.get("field"))
+                .and_then(|f| f.as_str())
+            {
+                if !partition_by.iter().any(|col| col == x_field) {
+                    partition_by.push(x_field.to_string());
+                }
+            }
+        }
+
+        partition_by
+    }
 }
 
 impl Writer for VegaLiteWriter {
@@ -1124,7 +1152,9 @@ impl Writer for VegaLiteWriter {
             }
 
             // Add detail encoding for partition_by columns (grouping)
-            if let Some(detail) = self.build_detail_encoding(&layer.partition_by) {
+            // Get effective partition_by including geom-specific requirements
+            let effective_partition_by = self.get_effective_partition_by(layer, &encoding);
+            if let Some(detail) = self.build_detail_encoding(&effective_partition_by) {
                 encoding.insert("detail".to_string(), detail);
             }
 
@@ -1329,45 +1359,7 @@ fn render_violin(encoding: &mut Map<String, Value>, mut spec: Value) -> Value {
         "filled": true
     });
 
-    // Ensure x is in detail encoding to create separate violins per x category
-    // This is needed because line marks with filled:true require detail to create separate paths
-    let x_field = encoding
-        .get("x")
-        .and_then(|x| x.get("field"))
-        .and_then(|f| f.as_str())
-        .map(|s| s.to_string());
-
-    if let Some(x_field) = x_field {
-        // Check if detail encoding exists
-        if let Some(detail) = encoding.get_mut("detail") {
-            // If detail is a single field object, convert to array and add x if not present
-            if let Some(detail_field) = detail.get("field").and_then(|f| f.as_str()) {
-                if detail_field != x_field {
-                    let existing_detail = detail.clone();
-                    *detail = json!([
-                        existing_detail,
-                        {"field": x_field, "type": "nominal"}
-                    ]);
-                }
-            } else if let Some(detail_array) = detail.as_array_mut() {
-                // Check if x is already in the detail array
-                let has_x = detail_array.iter().any(|d| {
-                    d.get("field").and_then(|f| f.as_str()) == Some(x_field.as_str())
-                });
-                if !has_x {
-                    detail_array.push(json!({"field": x_field, "type": "nominal"}));
-                }
-            }
-        } else {
-            // No detail encoding exists, add it with x field
-            encoding.insert(
-                "detail".to_string(),
-                json!({"field": x_field, "type": "nominal"})
-            );
-        }
-    }
-
-    // We need to mirror the density on both sides.
+    // Mirror the density on both sides.
     // It'll be implemented as an offset.
     let density_col = naming::stat_column("density");
     let violin_offset = format!("[datum.{density}, -datum.{density}]", density = density_col);
