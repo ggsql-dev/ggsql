@@ -39,127 +39,128 @@ assert_eq!(specs[0].layers[0].geom, Geom::line());
 */
 
 use crate::{GgsqlError, Plot, Result};
-use tree_sitter::{Node, Query, QueryCursor, StreamingIterator, Tree};
+use tree_sitter::{Language, Node, Parser, Query, QueryCursor, StreamingIterator, Tree};
 
 pub mod builder;
 pub mod error;
 pub mod splitter;
 
+pub use builder::build_ast;
 pub use error::ParseError;
-pub use splitter::split_query;
+pub use splitter::split_from_tree;
+
+/// The source tree - holds a parsed syntax tree, source text, and language together.
+/// Like Yggdrasil, it connects all parsing operations with a single root.
+#[derive(Debug)]
+pub struct SourceTree<'a> {
+    pub tree: Tree,
+    pub source: &'a str,
+    pub language: Language,
+}
+
+impl<'a> SourceTree<'a> {
+    /// Parse source and create a new SourceTree
+    pub fn new(source: &'a str) -> Result<Self> {
+        let language = tree_sitter_ggsql::language();
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&language)
+            .map_err(|e| GgsqlError::InternalError(format!("Failed to set language: {}", e)))?;
+
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| GgsqlError::ParseError("Failed to parse query".to_string()))?;
+
+        Ok(Self {
+            tree,
+            source,
+            language,
+        })
+    }
+
+    /// Validate that the parse tree has no errors
+    pub fn validate(&self) -> Result<()> {
+        if self.tree.root_node().has_error() {
+            return Err(GgsqlError::ParseError(
+                "Parse tree contains errors".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Create SourceTree from existing tree
+    pub fn from_tree(tree: Tree, source: &'a str) -> Self {
+        Self {
+            tree,
+            source,
+            language: tree_sitter_ggsql::language(),
+        }
+    }
+
+    /// Get the root node
+    pub fn root(&self) -> Node<'_> {
+        self.tree.root_node()
+    }
+
+    /// Extract text from a node
+    pub fn get_text(&self, node: &Node) -> String {
+        self.source[node.start_byte()..node.end_byte()].to_string()
+    }
+
+    /// Find all nodes matching a tree-sitter query
+    pub fn find_nodes<'b>(&self, node: &Node<'b>, query_source: &str) -> Vec<Node<'b>> {
+        let query = match Query::new(&self.language, query_source) {
+            Ok(q) => q,
+            Err(_) => return Vec::new(),
+        };
+
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&query, *node, self.source.as_bytes());
+
+        let mut results = Vec::new();
+        while let Some(match_result) = matches.next() {
+            for capture in match_result.captures {
+                results.push(capture.node);
+            }
+        }
+        results
+    }
+
+    /// Find first node matching query
+    pub fn find_node<'b>(&self, node: &Node<'b>, query: &str) -> Option<Node<'b>> {
+        self.find_nodes(node, query).into_iter().next()
+    }
+
+    /// Find first node text matching query
+    pub fn find_text(&self, node: &Node, query: &str) -> Option<String> {
+        self.find_node(node, query).map(|n| self.get_text(&n))
+    }
+
+    /// Find all node texts matching query
+    pub fn find_texts(&self, node: &Node, query: &str) -> Vec<String> {
+        self.find_nodes(node, query)
+            .iter()
+            .map(|n| self.get_text(n))
+            .collect()
+    }
+}
 
 /// Main entry point for parsing ggsql queries
 ///
 /// Takes a complete ggsql query (SQL + VISUALISE) and returns a vector of
 /// parsed specifications (one per VISUALISE statement).
 pub fn parse_query(query: &str) -> Result<Vec<Plot>> {
-    // Parse the full query using tree-sitter (includes SQL + VISUALISE portions)
-    let tree = parse_full_query(query)?;
+    // Parse the full query and create SourceTree (single parse!)
+    let source_tree = SourceTree::new(query)?;
 
-    // Build AST from the tree-sitter parse tree
-    let specs = builder::build_ast(&tree, query)?;
+    // Validate the parse tree has no errors
+    source_tree.validate()?;
+
+    // Build AST from the source tree
+    let specs = builder::build_ast(&source_tree)?;
 
     Ok(specs)
-}
-
-/// Parse the full ggsql query (SQL + VISUALISE) using tree-sitter
-fn parse_full_query(query: &str) -> Result<Tree> {
-    let mut parser = tree_sitter::Parser::new();
-
-    // Set the tree-sitter-ggsql language
-    parser
-        .set_language(&tree_sitter_ggsql::language())
-        .map_err(|e| GgsqlError::ParseError(format!("Failed to set language: {}", e)))?;
-
-    // Parse the full query (SQL + VISUALISE portions together)
-    let tree = parser
-        .parse(query, None)
-        .ok_or_else(|| GgsqlError::ParseError("Failed to parse query".to_string()))?;
-
-    // Check for parse errors
-    if tree.root_node().has_error() {
-        return Err(GgsqlError::ParseError(
-            "Parse tree contains errors".to_string(),
-        ));
-    }
-
-    Ok(tree)
-}
-
-/// Extract just the SQL portion from a ggsql query
-pub fn extract_sql(query: &str) -> Result<String> {
-    let (sql_part, _) = splitter::split_query(query)?;
-    Ok(sql_part)
-}
-
-/// Find all nodes matching a tree-sitter query
-///
-/// This function executes a tree-sitter query and returns all matching nodes.
-///
-/// # Arguments
-/// * `root` - The root node to search within
-/// * `source` - The source text
-/// * `query_source` - The tree-sitter query pattern (e.g., "(node_type) @capture")
-///
-/// # Returns
-/// A vector of all captured nodes (empty if no matches or query error)
-pub(crate) fn find_all_nodes<'a>(root: &Node<'a>, source: &str, query_source: &str) -> Vec<Node<'a>> {
-    let language = tree_sitter_ggsql::language();
-    let query = match Query::new(&language, query_source) {
-        Ok(q) => q,
-        Err(_) => return Vec::new(),
-    };
-
-    let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(&query, *root, source.as_bytes());
-
-    let mut results = Vec::new();
-    while let Some(match_result) = matches.next() {
-        for capture in match_result.captures {
-            results.push(capture.node);
-        }
-    }
-
-    results
-}
-
-/// Find and extract text from all nodes matching a tree-sitter query
-///
-/// This function collects all matching nodes and returns their text content.
-///
-/// # Arguments
-/// * `root` - The root node to search within
-/// * `source` - The source text
-/// * `query_source` - The tree-sitter query pattern (e.g., "(node_type) @capture")
-///
-/// # Returns
-/// A vector of text content from all captured nodes (empty if no matches)
-pub(crate) fn find_all_node_texts(root: &Node, source: &str, query_source: &str) -> Vec<String> {
-    find_all_nodes(root, source, query_source)
-        .iter()
-        .map(|node| get_node_text(node, source))
-        .collect()
-}
-
-/// Find and extract text from the first node matching a tree-sitter query
-///
-/// This is a general utility function that executes any tree-sitter query
-/// and returns the text content of the first captured node.
-///
-/// # Arguments
-/// * `root` - The root node to search within
-/// * `source` - The source text
-/// * `query_source` - The tree-sitter query pattern (e.g., "(node_type) @capture")
-///
-/// # Returns
-/// The text content of the first captured node, or None if no matches found
-pub(crate) fn find_node_text(root: &Node, source: &str, query_source: &str) -> Option<String> {
-    find_all_node_texts(root, source, query_source).into_iter().next()
-}
-
-/// Get text content of a node
-fn get_node_text<'a>(node: &Node, source: &'a str) -> String {
-    source[node.start_byte()..node.end_byte()].to_string()
 }
 
 #[cfg(test)]
@@ -193,7 +194,8 @@ mod tests {
             DRAW line
         "#;
 
-        let sql = extract_sql(query).unwrap();
+        let source_tree = SourceTree::new(query).unwrap();
+        let (sql, _) = splitter::split_from_tree(&source_tree).unwrap();
         assert!(sql.contains("SELECT date, revenue FROM sales"));
         assert!(sql.contains("WHERE year = 2024"));
         assert!(!sql.contains("VISUALISE"));
@@ -367,20 +369,24 @@ mod tests {
         let query = "SELECT * FROM (VALUES (1, 2)) AS t(x, y) VISUALISE x, y DRAW point";
 
         // First check if tree-sitter can parse it
-        let tree = parse_full_query(query);
-        if let Err(ref e) = tree {
+        let source_tree = SourceTree::new(query);
+        if let Err(ref e) = source_tree {
             eprintln!("Parse error: {}", e);
         }
 
         // Print the tree
-        if let Ok(ref t) = tree {
-            let root = t.root_node();
+        if let Ok(ref st) = source_tree {
+            let root = st.root();
             eprintln!("Root kind: {}", root.kind());
             eprintln!("Has error: {}", root.has_error());
             eprintln!("Tree: {}", root.to_sexp());
         }
 
-        assert!(tree.is_ok(), "Failed to parse VALUES subquery: {:?}", tree);
+        assert!(
+            source_tree.is_ok(),
+            "Failed to parse VALUES subquery: {:?}",
+            source_tree
+        );
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);

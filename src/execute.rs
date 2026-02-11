@@ -912,11 +912,15 @@ pub fn prepare_data_with_executor<F>(query: &str, execute_query: F) -> Result<Pr
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
-    // Split query into SQL and viz portions
-    let (sql_part, viz_part) = parser::split_query(query)?;
+    // Parse once and create SourceTree
+    let source_tree = parser::SourceTree::new(query)?;
+    source_tree.validate()?;
 
-    // Parse visualization portion
-    let mut specs = parser::parse_query(query)?;
+    // Split query into SQL and viz portions using existing tree
+    let (sql_part, viz_part) = parser::split_from_tree(&source_tree)?;
+
+    // Build AST from existing tree
+    let mut specs = parser::build_ast(&source_tree)?;
 
     if specs.is_empty() {
         return Err(GgsqlError::ValidationError(
