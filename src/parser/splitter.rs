@@ -4,7 +4,9 @@
 //! SELECT * FROM <source> when VISUALISE FROM is used.
 
 use crate::{GgsqlError, Result};
-use tree_sitter::{Node, Parser};
+use tree_sitter::Parser;
+
+use super::find_node_text;
 
 /// Split a ggsql query into SQL and visualization portions
 ///
@@ -69,49 +71,26 @@ pub fn split_query(query: &str) -> Result<(String, String)> {
     };
 
     // Check if any VISUALISE statement has FROM clause and inject SELECT if needed
-    let mut modified_sql = sql_text.clone();
+    let from_query = r#"
+        (visualise_statement
+          (from_clause
+            (table_ref) @table))
+    "#;
 
-    for child in root.children(&mut root.walk()) {
-        if child.kind() == "visualise_statement" {
-            // Look for FROM identifier in this visualise_statement
-            if let Some(from_identifier) = extract_from_identifier(&child, query) {
-                // Inject SELECT * FROM <source>
-                if modified_sql.trim().is_empty() {
-                    // No SQL yet - just add SELECT
-                    modified_sql = format!("SELECT * FROM {}", from_identifier);
-                } else {
-                    let trimmed = modified_sql.trim();
-                    modified_sql = format!("{} SELECT * FROM {}", trimmed, from_identifier);
-                }
-                break;
-            }
+    let modified_sql = if let Some(from_identifier) = find_node_text(&root, query, from_query) {
+        // Inject SELECT * FROM <source>
+        if sql_text.trim().is_empty() {
+            // No SQL yet - just add SELECT
+            format!("SELECT * FROM {}", from_identifier)
+        } else {
+            let trimmed = sql_text.trim();
+            format!("{} SELECT * FROM {}", trimmed, from_identifier)
         }
-    }
+    } else {
+        sql_text
+    };
 
     Ok((modified_sql, viz_text))
-}
-
-/// Extract FROM identifier or string from a visualise_statement node
-fn extract_from_identifier(node: &Node, source: &str) -> Option<String> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() != "from_clause" {
-            continue;
-        }
-        let mut from_cursor = child.walk();
-        for table_ref in child.children(&mut from_cursor) {
-            if table_ref.kind() != "table_ref" {
-                continue;
-            }
-            return Some(get_node_text(&table_ref, source).to_string());
-        }
-    }
-    None
-}
-
-/// Get text content of a node
-fn get_node_text<'a>(node: &Node, source: &'a str) -> &'a str {
-    &source[node.start_byte()..node.end_byte()]
 }
 
 #[cfg(test)]

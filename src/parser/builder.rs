@@ -9,6 +9,8 @@ use crate::{GgsqlError, Result};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
+use super::{find_all_node_texts, find_all_nodes, find_node_text};
+
 /// Build a Plot struct from a tree-sitter parse tree
 pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<Plot>> {
     let root = tree.root_node();
@@ -33,26 +35,25 @@ pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<Plot>> {
         false
     };
 
+    // Find all visualise_statement nodes
+    let query = "(visualise_statement) @viz";
+    let viz_nodes = find_all_nodes(&root, source, query);
+
     let mut specs = Vec::new();
+    for viz_node in viz_nodes {
+        let spec = build_visualise_statement(&viz_node, source)?;
 
-    // Walk through child nodes - each visualise_statement becomes a Plot
-    let mut cursor = root.walk();
-    for child in root.children(&mut cursor) {
-        if child.kind() == "visualise_statement" {
-            let spec = build_visualise_statement(&child, source)?;
-
-            // Validate VISUALISE FROM usage
-            if spec.source.is_some() && last_is_select {
-                return Err(GgsqlError::ParseError(
-                    "Cannot use VISUALISE FROM when the last SQL statement is SELECT. \
-                     Use either 'SELECT ... VISUALISE' or remove the SELECT and use \
-                     'VISUALISE FROM ...'."
-                        .to_string(),
-                ));
-            }
-
-            specs.push(spec);
+        // Validate VISUALISE FROM usage
+        if spec.source.is_some() && last_is_select {
+            return Err(GgsqlError::ParseError(
+                "Cannot use VISUALISE FROM when the last SQL statement is SELECT. \
+                 Use either 'SELECT ... VISUALISE' or remove the SELECT and use \
+                 'VISUALISE FROM ...'."
+                    .to_string(),
+            ));
         }
+
+        specs.push(spec);
     }
 
     if specs.is_empty() {
@@ -85,20 +86,21 @@ fn build_visualise_statement(node: &Node, source: &str) -> Result<Plot> {
                 spec.global_mappings.wildcard = true;
             }
             "from_clause" => {
-                for from_child in child.children(&mut child.walk()) {
-                    if from_child.kind() == "table_ref" {
-                        let text = get_node_text(&from_child, source);
-                        let first_ref = from_child.named_child(0);
-                        if let Some(ref_node) = first_ref {
-                            spec.source = Some(match ref_node.kind() {
-                                "string" => {
-                                    let path = text.trim_matches(|c| c == '\'' || c == '"');
-                                    DataSource::FilePath(path.to_string())
-                                }
-                                _ => DataSource::Identifier(text.to_string()),
-                            });
-                        }
-                        break;
+                // Find table_ref within from_clause
+                let query = "(table_ref) @ref";
+                let table_refs = find_all_nodes(&child, source, query);
+
+                if let Some(table_ref) = table_refs.first() {
+                    let text = get_node_text(table_ref, source);
+                    let first_ref = table_ref.named_child(0);
+                    if let Some(ref_node) = first_ref {
+                        spec.source = Some(match ref_node.kind() {
+                            "string" => {
+                                let path = text.trim_matches(|c| c == '\'' || c == '"');
+                                DataSource::FilePath(path.to_string())
+                            }
+                            _ => DataSource::Identifier(text.to_string()),
+                        });
                     }
                 }
             }
@@ -125,28 +127,28 @@ fn parse_global_mapping(node: &Node, source: &str) -> Result<Mappings> {
     // global_mapping: $ => $.mapping_list - contains a mapping_list child node
     let mut mappings = Mappings::new();
 
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "mapping_list" {
-            parse_mapping_list(&child, source, &mut mappings)?;
-        }
+    // Find mapping_list within global_mapping
+    let query = "(mapping_list) @list";
+    let mapping_lists = find_all_nodes(node, source, query);
+
+    for mapping_list in mapping_lists {
+        parse_mapping_list(&mapping_list, source, &mut mappings)?;
     }
+
     Ok(mappings)
 }
 
 /// Parse a mapping_list: comma-separated mapping_element nodes
 /// Shared by both global (VISUALISE) and layer (MAPPING) mappings
 fn parse_mapping_list(node: &Node, source: &str, mappings: &mut Mappings) -> Result<()> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "mapping_element" => {
-                parse_mapping_element(&child, source, mappings)?;
-            }
-            "," => continue,
-            _ => continue,
-        }
+    // Find all mapping_element nodes
+    let query = "(mapping_element) @elem";
+    let mapping_nodes = find_all_nodes(node, source, query);
+
+    for mapping_node in mapping_nodes {
+        parse_mapping_element(&mapping_node, source, mappings)?;
     }
+
     Ok(())
 }
 
@@ -165,13 +167,10 @@ fn parse_explicit_mapping(node: &Node, source: &str) -> Result<(String, Aestheti
                 for inner_child in child.children(&mut inner_cursor) {
                     match inner_child.kind() {
                         "column_reference" => {
-                            let mut ref_cursor = inner_child.walk();
-                            for ref_child in inner_child.children(&mut ref_cursor) {
-                                if ref_child.kind() == "identifier" {
-                                    value = Some(AestheticValue::standard_column(get_node_text(
-                                        &ref_child, source,
-                                    )));
-                                }
+                            // Find identifier within column_reference
+                            let query = "(identifier) @id";
+                            if let Some(identifier) = find_node_text(&inner_child, source, query) {
+                                value = Some(AestheticValue::standard_column(identifier));
                             }
                         }
                         "identifier" => {
@@ -349,14 +348,11 @@ fn parse_mapping_clause(node: &Node, source: &str) -> Result<(Mappings, Option<D
     // Parse mapping elements using the shared mapping_list structure
     // With the unified grammar, all aesthetic mappings come through mapping_list.
     // Bare identifiers here are part of the FROM clause, not mappings.
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "mapping_list" => {
-                parse_mapping_list(&child, source, &mut mappings)?;
-            }
-            _ => continue,
-        }
+    let query = "(mapping_list) @list";
+    let mapping_lists = find_all_nodes(node, source, query);
+
+    for mapping_list in mapping_lists {
+        parse_mapping_list(&mapping_list, source, &mut mappings)?;
     }
 
     // Extract layer_source field (FROM identifier or FROM 'file.csv')
@@ -406,20 +402,21 @@ fn parse_mapping_element(node: &Node, source: &str, mappings: &mut Mappings) -> 
 fn parse_setting_clause(node: &Node, source: &str) -> Result<HashMap<String, ParameterValue>> {
     let mut parameters = HashMap::new();
 
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "parameter_assignment" {
-            let (param, mut value) = parse_parameter_assignment(&child, source)?;
-            match param.as_str() {
-                "color" | "col" | "colour" | "fill" | "stroke" => {
-                    if let ParameterValue::String(color) = value {
-                        value = ParameterValue::String(color_to_hex(&color));
-                    }
+    // Find all parameter_assignment nodes
+    let query = "(parameter_assignment) @param";
+    let param_nodes = find_all_nodes(node, source, query);
+
+    for param_node in param_nodes {
+        let (param, mut value) = parse_parameter_assignment(&param_node, source)?;
+        match param.as_str() {
+            "color" | "col" | "colour" | "fill" | "stroke" => {
+                if let ParameterValue::String(color) = value {
+                    value = ParameterValue::String(color_to_hex(&color));
                 }
-                _ => {}
             }
-            parameters.insert(param, value);
+            _ => {}
         }
+        parameters.insert(param, value);
     }
 
     Ok(parameters)
@@ -427,49 +424,35 @@ fn parse_setting_clause(node: &Node, source: &str) -> Result<HashMap<String, Par
 
 /// Parse a partition_clause: PARTITION BY col1, col2, ...
 fn parse_partition_clause(node: &Node, source: &str) -> Result<Vec<String>> {
-    let mut columns = Vec::new();
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "partition_columns" {
-            let mut inner_cursor = child.walk();
-            for inner_child in child.children(&mut inner_cursor) {
-                if inner_child.kind() == "identifier" {
-                    columns.push(get_node_text(&inner_child, source));
-                }
-            }
-        }
-    }
-
-    Ok(columns)
+    let query = r#"
+        (partition_columns
+          (identifier) @col)
+    "#;
+    Ok(find_all_node_texts(node, source, query))
 }
 
 /// Parse a parameter_assignment: param => value
 fn parse_parameter_assignment(node: &Node, source: &str) -> Result<(String, ParameterValue)> {
-    let mut param_name = String::new();
-    let mut param_value = None;
+    // Extract parameter name (try identifier within parameter_name first, then fallback to raw text)
+    let name_query = r#"
+        (parameter_name
+          (identifier) @name)
+    "#;
+    let param_name = if let Some(name) = find_node_text(node, source, name_query) {
+        name
+    } else {
+        // Fallback: extract parameter_name text directly
+        find_node_text(node, source, "(parameter_name) @name")
+            .unwrap_or_default()
+    };
 
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "parameter_name" => {
-                // parameter_name -> identifier
-                let mut inner_cursor = child.walk();
-                for inner_child in child.children(&mut inner_cursor) {
-                    if inner_child.kind() == "identifier" {
-                        param_name = get_node_text(&inner_child, source);
-                    }
-                }
-                if param_name.is_empty() {
-                    param_name = get_node_text(&child, source);
-                }
-            }
-            "parameter_value" => {
-                param_value = Some(parse_parameter_value(&child, source)?);
-            }
-            _ => continue,
-        }
-    }
+    // Extract parameter value
+    let query = "(parameter_value) @value";
+    let value_nodes = find_all_nodes(node, source, query);
+    let param_value = value_nodes
+        .first()
+        .map(|node| parse_parameter_value(node, source))
+        .transpose()?;
 
     if param_name.is_empty() || param_value.is_none() {
         return Err(GgsqlError::ParseError(format!(
@@ -518,34 +501,28 @@ fn parse_parameter_value(node: &Node, source: &str) -> Result<ParameterValue> {
 /// Extracts the raw SQL text from the filter_expression and returns it verbatim.
 /// This allows any valid SQL WHERE expression to be passed to the database backend.
 fn parse_filter_clause(node: &Node, source: &str) -> Result<SqlExpression> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "filter_expression" {
-            // Extract the raw text from the filter_expression node
-            let filter_text = get_node_text(&child, source).trim().to_string();
-            return Ok(SqlExpression::new(filter_text));
-        }
-    }
+    let query = "(filter_expression) @expr";
 
-    Err(GgsqlError::ParseError(
-        "Could not find filter expression in filter clause".to_string(),
-    ))
+    if let Some(filter_text) = find_node_text(node, source, query) {
+        Ok(SqlExpression::new(filter_text.trim().to_string()))
+    } else {
+        Err(GgsqlError::ParseError(
+            "Could not find filter expression in filter clause".to_string(),
+        ))
+    }
 }
 
 /// Parse an order_clause: ORDER BY date ASC, value DESC
 fn parse_order_clause(node: &Node, source: &str) -> Result<SqlExpression> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "order_expression" {
-            // Extract the raw text from the order_expression node
-            let order_text = get_node_text(&child, source).trim().to_string();
-            return Ok(SqlExpression::new(order_text));
-        }
-    }
+    let query = "(order_expression) @expr";
 
-    Err(GgsqlError::ParseError(
-        "Could not find order expression in order clause".to_string(),
-    ))
+    if let Some(order_text) = find_node_text(node, source, query) {
+        Ok(SqlExpression::new(order_text.trim().to_string()))
+    } else {
+        Err(GgsqlError::ParseError(
+            "Could not find order expression in order clause".to_string(),
+        ))
+    }
 }
 
 /// Parse a geom_type node text into a Geom
@@ -739,31 +716,33 @@ fn parse_scale_property_value(node: &Node, source: &str) -> Result<ParameterValu
             "array" => {
                 // Parse array of values
                 let mut values = Vec::new();
-                let mut array_cursor = child.walk();
-                for array_child in child.children(&mut array_cursor) {
-                    if array_child.kind() == "array_element" {
-                        // Array elements wrap the actual values
-                        let mut elem_cursor = array_child.walk();
-                        for elem_child in array_child.children(&mut elem_cursor) {
-                            match elem_child.kind() {
-                                "string" => {
-                                    let text = get_node_text(&elem_child, source);
-                                    let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                                    values.push(ArrayElement::String(unquoted.to_string()));
-                                }
-                                "number" => {
-                                    let text = get_node_text(&elem_child, source);
-                                    if let Ok(num) = text.parse::<f64>() {
-                                        values.push(ArrayElement::Number(num));
-                                    }
-                                }
-                                "boolean" => {
-                                    let text = get_node_text(&elem_child, source);
-                                    let bool_val = text == "true";
-                                    values.push(ArrayElement::Boolean(bool_val));
-                                }
-                                _ => continue,
+
+                // Find all array_element nodes
+                let query = "(array_element) @elem";
+                let array_elements = find_all_nodes(&child, source, query);
+
+                for array_element in array_elements {
+                    // Array elements wrap the actual values
+                    let mut elem_cursor = array_element.walk();
+                    for elem_child in array_element.children(&mut elem_cursor) {
+                        match elem_child.kind() {
+                            "string" => {
+                                let text = get_node_text(&elem_child, source);
+                                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
+                                values.push(ArrayElement::String(unquoted.to_string()));
                             }
+                            "number" => {
+                                let text = get_node_text(&elem_child, source);
+                                if let Ok(num) = text.parse::<f64>() {
+                                    values.push(ArrayElement::Number(num));
+                                }
+                            }
+                            "boolean" => {
+                                let text = get_node_text(&elem_child, source);
+                                let bool_val = text == "true";
+                                values.push(ArrayElement::Boolean(bool_val));
+                            }
+                            _ => continue,
                         }
                     }
                 }
@@ -832,20 +811,8 @@ fn build_facet(node: &Node, source: &str) -> Result<Facet> {
 
 /// Parse facet variables from a facet_vars node
 fn parse_facet_vars(node: &Node, source: &str) -> Result<Vec<String>> {
-    let mut vars = Vec::new();
-    let mut cursor = node.walk();
-
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "identifier" => {
-                vars.push(get_node_text(&child, source));
-            }
-            "," => continue,
-            _ => {}
-        }
-    }
-
-    Ok(vars)
+    let query = "(identifier) @var";
+    Ok(find_all_node_texts(node, source, query))
 }
 
 /// Parse facet scales from a facet_scales node
@@ -876,14 +843,14 @@ fn build_coord(node: &Node, source: &str) -> Result<Coord> {
                 coord_type = parse_coord_type(&child, source)?;
             }
             "coord_properties" => {
-                // New grammar structure: coord_properties contains multiple coord_property
-                let mut props_cursor = child.walk();
-                for prop_node in child.children(&mut props_cursor) {
-                    if prop_node.kind() == "coord_property" {
-                        let (prop_name, prop_value) =
-                            parse_single_coord_property(&prop_node, source)?;
-                        properties.insert(prop_name, prop_value);
-                    }
+                // Find all coord_property nodes
+                let query = "(coord_property) @prop";
+                let prop_nodes = find_all_nodes(&child, source, query);
+
+                for prop_node in prop_nodes {
+                    let (prop_name, prop_value) =
+                        parse_single_coord_property(&prop_node, source)?;
+                    properties.insert(prop_name, prop_value);
                 }
             }
             _ => {}
@@ -908,23 +875,10 @@ fn parse_single_coord_property(node: &Node, source: &str) -> Result<(String, Par
     for child in node.children(&mut cursor) {
         match child.kind() {
             "coord_property_name" => {
-                // Could be a keyword or an aesthetic_name
-                let mut name_cursor = child.walk();
-                for name_child in child.children(&mut name_cursor) {
-                    match name_child.kind() {
-                        "aesthetic_name" => {
-                            prop_name = get_node_text(&name_child, source);
-                        }
-                        _ => {
-                            // Direct keyword like xlim, ylim, theta
-                            prop_name = get_node_text(&child, source);
-                            break;
-                        }
-                    }
-                }
-                if prop_name.is_empty() {
-                    prop_name = get_node_text(&child, source);
-                }
+                // Try to find aesthetic_name within coord_property_name
+                let query = "(aesthetic_name) @name";
+                prop_name = find_node_text(&child, source, query)
+                    .unwrap_or_else(|| get_node_text(&child, source));
             }
             "string" | "number" | "boolean" | "array" => {
                 prop_value = Some(parse_coord_property_value(&child, source)?);
@@ -1066,31 +1020,33 @@ fn parse_coord_property_value(node: &Node, source: &str) -> Result<ParameterValu
         "array" => {
             // Parse array of values
             let mut values = Vec::new();
-            let mut array_cursor = node.walk();
-            for array_child in node.children(&mut array_cursor) {
-                if array_child.kind() == "array_element" {
-                    // Array elements wrap the actual values
-                    let mut elem_cursor = array_child.walk();
-                    for elem_child in array_child.children(&mut elem_cursor) {
-                        match elem_child.kind() {
-                            "string" => {
-                                let text = get_node_text(&elem_child, source);
-                                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                                values.push(ArrayElement::String(unquoted.to_string()));
-                            }
-                            "number" => {
-                                let text = get_node_text(&elem_child, source);
-                                if let Ok(num) = text.parse::<f64>() {
-                                    values.push(ArrayElement::Number(num));
-                                }
-                            }
-                            "boolean" => {
-                                let text = get_node_text(&elem_child, source);
-                                let bool_val = text == "true";
-                                values.push(ArrayElement::Boolean(bool_val));
-                            }
-                            _ => continue,
+
+            // Find all array_element nodes
+            let query = "(array_element) @elem";
+            let array_elements = find_all_nodes(node, source, query);
+
+            for array_element in array_elements {
+                // Array elements wrap the actual values
+                let mut elem_cursor = array_element.walk();
+                for elem_child in array_element.children(&mut elem_cursor) {
+                    match elem_child.kind() {
+                        "string" => {
+                            let text = get_node_text(&elem_child, source);
+                            let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
+                            values.push(ArrayElement::String(unquoted.to_string()));
                         }
+                        "number" => {
+                            let text = get_node_text(&elem_child, source);
+                            if let Ok(num) = text.parse::<f64>() {
+                                values.push(ArrayElement::Number(num));
+                            }
+                        }
+                        "boolean" => {
+                            let text = get_node_text(&elem_child, source);
+                            let bool_val = text == "true";
+                            values.push(ArrayElement::Boolean(bool_val));
+                        }
+                        _ => continue,
                     }
                 }
             }
@@ -1106,33 +1062,33 @@ fn parse_coord_property_value(node: &Node, source: &str) -> Result<ParameterValu
 /// Build Labels from a label_clause node
 fn build_labels(node: &Node, source: &str) -> Result<Labels> {
     let mut labels = HashMap::new();
-    let mut cursor = node.walk();
 
-    // Iterate through label_assignment children
-    for child in node.children(&mut cursor) {
-        if child.kind() == "label_assignment" {
-            let mut assignment_cursor = child.walk();
-            let mut label_type: Option<String> = None;
-            let mut label_value: Option<String> = None;
+    // Find all label_assignment nodes
+    let query = "(label_assignment) @label";
+    let label_nodes = find_all_nodes(node, source, query);
 
-            for assignment_child in child.children(&mut assignment_cursor) {
-                match assignment_child.kind() {
-                    "label_type" => {
-                        label_type = Some(get_node_text(&assignment_child, source));
-                    }
-                    "string" => {
-                        let text = get_node_text(&assignment_child, source);
-                        // Remove quotes from string
-                        label_value =
-                            Some(text.trim_matches(|c| c == '\'' || c == '"').to_string());
-                    }
-                    _ => {}
+    for label_node in label_nodes {
+        let mut assignment_cursor = label_node.walk();
+        let mut label_type: Option<String> = None;
+        let mut label_value: Option<String> = None;
+
+        for assignment_child in label_node.children(&mut assignment_cursor) {
+            match assignment_child.kind() {
+                "label_type" => {
+                    label_type = Some(get_node_text(&assignment_child, source));
                 }
+                "string" => {
+                    let text = get_node_text(&assignment_child, source);
+                    // Remove quotes from string
+                    label_value =
+                        Some(text.trim_matches(|c| c == '\'' || c == '"').to_string());
+                }
+                _ => {}
             }
+        }
 
-            if let (Some(typ), Some(val)) = (label_type, label_value) {
-                labels.insert(typ, val);
-            }
+        if let (Some(typ), Some(val)) = (label_type, label_value) {
+            labels.insert(typ, val);
         }
     }
 
@@ -1316,17 +1272,13 @@ fn get_node_text(node: &Node, source: &str) -> String {
 
 /// Check if the last SQL statement in sql_portion is a SELECT statement
 fn check_last_statement_is_select(sql_portion_node: &Node) -> bool {
-    let mut last_statement = None;
-    let mut cursor = sql_portion_node.walk();
-
-    // Find last sql_statement node
-    for child in sql_portion_node.children(&mut cursor) {
-        if child.kind() == "sql_statement" {
-            last_statement = Some(child);
-        }
-    }
+    // Find all sql_statement nodes and get the last one (can use query for this)
+    let query = "(sql_statement) @stmt";
+    let statements = find_all_nodes(sql_portion_node, "", query);
+    let last_statement = statements.last();
 
     // Check if last statement is or ends with a SELECT
+    // But we need to check direct children only, not recursive
     if let Some(stmt) = last_statement {
         let mut stmt_cursor = stmt.walk();
         for child in stmt.children(&mut stmt_cursor) {
@@ -1345,6 +1297,8 @@ fn check_last_statement_is_select(sql_portion_node: &Node) -> bool {
 
 /// Check if a with_statement has a trailing SELECT (after the CTE definitions)
 fn with_statement_has_trailing_select(with_node: &Node) -> bool {
+    // Need to check direct children only, not recursive search
+    // A trailing SELECT means there's a select_statement after cte_definition at the same level
     let mut cursor = with_node.walk();
     let mut seen_cte_definition = false;
 
