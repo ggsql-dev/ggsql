@@ -38,7 +38,8 @@ assert_eq!(specs[0].layers[0].geom, Geom::line());
 ```
 */
 
-use crate::{Plot, Result};
+use crate::{GgsqlError, Plot, Result};
+use tree_sitter::{Node, Query, QueryCursor, StreamingIterator, Tree};
 
 pub mod builder;
 pub mod source_tree;
@@ -61,6 +62,76 @@ pub fn parse_query(query: &str) -> Result<Vec<Plot>> {
     let specs = builder::build_ast(&source_tree.tree, query)?;
 
     Ok(specs)
+}
+
+/// Find all nodes matching a tree-sitter query
+///
+/// This function executes a tree-sitter query and returns all matching nodes.
+///
+/// # Arguments
+/// * `root` - The root node to search within
+/// * `source` - The source text
+/// * `query_source` - The tree-sitter query pattern (e.g., "(node_type) @capture")
+///
+/// # Returns
+/// A vector of all captured nodes (empty if no matches or query error)
+pub(crate) fn find_all_nodes<'a>(root: &Node<'a>, source: &str, query_source: &str) -> Vec<Node<'a>> {
+    let language = tree_sitter_ggsql::language();
+    let query = match Query::new(&language, query_source) {
+        Ok(q) => q,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(&query, *root, source.as_bytes());
+
+    let mut results = Vec::new();
+    while let Some(match_result) = matches.next() {
+        for capture in match_result.captures {
+            results.push(capture.node);
+        }
+    }
+
+    results
+}
+
+/// Find and extract text from all nodes matching a tree-sitter query
+///
+/// This function collects all matching nodes and returns their text content.
+///
+/// # Arguments
+/// * `root` - The root node to search within
+/// * `source` - The source text
+/// * `query_source` - The tree-sitter query pattern (e.g., "(node_type) @capture")
+///
+/// # Returns
+/// A vector of text content from all captured nodes (empty if no matches)
+pub(crate) fn find_all_node_texts(root: &Node, source: &str, query_source: &str) -> Vec<String> {
+    find_all_nodes(root, source, query_source)
+        .iter()
+        .map(|node| get_node_text(node, source))
+        .collect()
+}
+
+/// Find and extract text from the first node matching a tree-sitter query
+///
+/// This is a general utility function that executes any tree-sitter query
+/// and returns the text content of the first captured node.
+///
+/// # Arguments
+/// * `root` - The root node to search within
+/// * `source` - The source text
+/// * `query_source` - The tree-sitter query pattern (e.g., "(node_type) @capture")
+///
+/// # Returns
+/// The text content of the first captured node, or None if no matches found
+pub(crate) fn find_node_text(root: &Node, source: &str, query_source: &str) -> Option<String> {
+    find_all_node_texts(root, source, query_source).into_iter().next()
+}
+
+/// Get text content of a node
+fn get_node_text<'a>(node: &Node, source: &'a str) -> String {
+    source[node.start_byte()..node.end_byte()].to_string()
 }
 
 #[cfg(test)]
