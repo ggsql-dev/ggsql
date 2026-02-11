@@ -14,16 +14,42 @@ env:
   # abi3 wheels built against 3.10 are forward-compatible with all later
   # Python versions, so this should be the minimum supported version.
   PYTHON_VERSION: "3.10"
-  NODE_VERSION: "20"
 
 jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Generate parser
+        working-directory: tree-sitter-ggsql
+        run: tree-sitter generate
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tree-sitter-generated
+          path: tree-sitter-ggsql/src/
+
   linux:
+    needs: generate
     runs-on: ubuntu-latest
     strategy:
       matrix:
         target: [x86_64, aarch64]
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tree-sitter-generated
+          path: tree-sitter-ggsql/src/
 
       - uses: actions/setup-python@v5
         with:
@@ -35,14 +61,7 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist --interpreter python${{ env.PYTHON_VERSION }}
           working-directory: ggsql-python
-          manylinux: auto
-          before-script-linux: |
-            # Install Node.js for tree-sitter-cli (required by build.rs).
-            # Can't use setup-node here — Linux builds run inside a
-            # manylinux Docker container where runner-level tools aren't visible.
-            curl -fsSL https://nodejs.org/dist/v20.18.1/node-v20.18.1-linux-x64.tar.xz \
-              | tar -xJ -C /usr/local --strip-components=1
-            npm install -g tree-sitter-cli
+          manylinux: 2_28
 
       - uses: actions/upload-artifact@v4
         with:
@@ -50,27 +69,26 @@ jobs:
           path: ggsql-python/dist
 
   macos:
+    needs: generate
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
           - target: x86_64
-            runner: macos-13
+            runner: macos-latest
           - target: aarch64
             runner: macos-latest
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: tree-sitter-generated
+          path: tree-sitter-ggsql/src/
+
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install tree-sitter-cli
-        run: npm install -g tree-sitter-cli
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
@@ -85,20 +103,19 @@ jobs:
           path: ggsql-python/dist
 
   windows:
+    needs: generate
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: tree-sitter-generated
+          path: tree-sitter-ggsql/src/
+
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install tree-sitter-cli
-        run: npm install -g tree-sitter-cli
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
@@ -113,9 +130,15 @@ jobs:
           path: ggsql-python/dist
 
   sdist:
+    needs: generate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tree-sitter-generated
+          path: tree-sitter-ggsql/src/
 
       - name: Build sdist
         uses: PyO3/maturin-action@v1
