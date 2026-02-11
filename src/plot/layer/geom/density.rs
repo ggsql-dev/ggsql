@@ -79,15 +79,7 @@ impl GeomTrait for Density {
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
     ) -> crate::Result<super::StatResult> {
-        stat_density(
-            query,
-            aesthetics,
-            "x",
-            None,
-            group_by,
-            parameters,
-            execute_query,
-        )
+        stat_density(query, aesthetics, "x", group_by, parameters, execute_query)
     }
 }
 
@@ -119,7 +111,6 @@ pub(crate) fn stat_density(
     query: &str,
     aesthetics: &Mappings,
     value_aesthetic: &str,
-    ortho_aesthetic: Option<&str>,
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
     execute: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
@@ -131,26 +122,15 @@ pub(crate) fn stat_density(
         ))
     })?;
     let weight = get_column_name(aesthetics, "weight");
-    let ortho = match ortho_aesthetic {
-        Some(col) => get_column_name(aesthetics, col),
-        _ => None,
-    };
-
-    // Treat the orthogonal aesthetic as a group
-    let mut group_by = group_by.to_vec();
-    if let Some(ref o) = ortho {
-        group_by.push(o.clone());
-    }
 
     let (min, max) = compute_range_sql(&value, query, execute)?;
-    let bw_cte = density_sql_bandwidth(query, &group_by, &value, parameters);
-    let data_cte = build_data_cte(&value, weight.as_deref(), query, &group_by);
-    let grid_cte = build_grid_cte(&group_by, query, min, max, 512);
+    let bw_cte = density_sql_bandwidth(query, group_by, &value, parameters);
+    let data_cte = build_data_cte(&value, weight.as_deref(), query, group_by);
+    let grid_cte = build_grid_cte(group_by, query, min, max, 512);
     let kernel = choose_kde_kernel(parameters)?;
     let density_query = compute_density(
         value_aesthetic,
-        &group_by,
-        ortho.as_deref(),
+        group_by,
         kernel,
         &bw_cte,
         &data_cte,
@@ -158,15 +138,10 @@ pub(crate) fn stat_density(
     );
 
     let mut consumed = vec![value_aesthetic.to_string()];
-    let mut stats = vec!["x".to_string(), "density".to_string()];
+    // Default stats for density (1D): grid position (x) and density value
+    let stats = vec![value_aesthetic.to_string(), "density".to_string()];
     if weight.is_some() {
         consumed.push("weight".to_string());
-    }
-    if ortho.is_some() {
-        let o = ortho_aesthetic.unwrap().to_string();
-        consumed.push(o.clone());
-        // When ortho is present, the column is renamed to "y" in compute_density
-        stats.push("y".to_string());
     }
 
     Ok(StatResult::Transformed {
@@ -437,7 +412,6 @@ fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: u
 fn compute_density(
     value_aesthetic: &str,
     group_by: &[String],
-    ortho: Option<&str>,
     kernel: String,
     bandwidth_cte: &str,
     data_cte: &str,
@@ -474,20 +448,12 @@ fn compute_density(
     );
 
     // Build group-related SQL fragments
-    let mut grid_groups: Vec<String> = group_by.iter().map(|g| format!("grid.{}", g)).collect();
+    let grid_groups: Vec<String> = group_by.iter().map(|g| format!("grid.{}", g)).collect();
     let aggregation = format!(
         "GROUP BY grid.x{grid_group_by}
         ORDER BY grid.x{grid_group_by}",
         grid_group_by = with_leading_comma(&grid_groups.join(", "))
     );
-
-    if let Some(o) = ortho {
-        let idx = group_by.iter().position(|s| s == o);
-        if let Some(i) = idx {
-            let name = if value_aesthetic == "x" { "y" } else { "x" };
-            grid_groups[i] = format!("{} AS {}", grid_groups[i], naming::stat_column(name))
-        }
-    }
 
     // Generate the density computation query
     format!(
@@ -531,7 +497,7 @@ mod tests {
         let data_cte = build_data_cte("x", None, query, &groups);
         let grid_cte = build_grid_cte(&groups, query, 0.0, 10.0, 512);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
-        let sql = compute_density("x", &groups, None, kernel, &bw_cte, &data_cte, &grid_cte);
+        let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
         let expected = "WITH bandwidth AS (SELECT 0.5 AS bw),
         data AS (
@@ -582,7 +548,7 @@ mod tests {
         let data_cte = build_data_cte("x", None, query, &groups);
         let grid_cte = build_grid_cte(&groups, query, -10.0, 10.0, 512);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
-        let sql = compute_density("x", &groups, None, kernel, &bw_cte, &data_cte, &grid_cte);
+        let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
         let expected = "WITH bandwidth AS (SELECT 0.5 AS bw, region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)) GROUP BY region, category),
         data AS (
@@ -684,7 +650,7 @@ mod tests {
         // Use wide range to capture essentially all density mass
         let grid_cte = build_grid_cte(&groups, query, -5.0, 15.0, 512);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
-        let sql = compute_density("x", &groups, None, kernel, &bw_cte, &data_cte, &grid_cte);
+        let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
         // Execute query
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -792,7 +758,6 @@ mod tests {
         let sql_unweighted = compute_density(
             "x",
             &groups,
-            None,
             kernel.clone(),
             &bw_cte,
             &data_cte_unweighted,
@@ -807,15 +772,8 @@ mod tests {
         // With explicit uniform weights (should be equivalent)
         let query_weighted = "SELECT x, 1.0 AS weight FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
         let data_cte_weighted = build_data_cte("x", Some("weight"), query_weighted, &groups);
-        let sql_weighted = compute_density(
-            "x",
-            &groups,
-            None,
-            kernel,
-            &bw_cte,
-            &data_cte_weighted,
-            &grid_cte,
-        );
+        let sql_weighted =
+            compute_density("x", &groups, kernel, &bw_cte, &data_cte_weighted, &grid_cte);
         let df_weighted = reader
             .execute_sql(&sql_weighted)
             .expect("SQL should execute");
@@ -887,7 +845,7 @@ mod tests {
         let data_cte = build_data_cte("x", None, query, &groups);
         let grid_cte = build_grid_cte(&groups, query, 0.0, 100.0, 512);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
-        let sql = compute_density("x", &groups, None, kernel, &bw_cte, &data_cte, &grid_cte);
+        let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
         // Warm-up run
         reader.execute_sql(&sql).expect("Warm-up failed");
