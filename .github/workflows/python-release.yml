@@ -61,6 +61,9 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist --interpreter python${{ env.PYTHON_VERSION }}
           working-directory: ggsql-python
+          # manylinux2014's cross-compiler is too old for the `ring` crate's
+          # aarch64 assembly (missing __ARM_ARCH). 2_28 (AlmaLinux 8, gcc 8+)
+          # provides a new enough toolchain.
           manylinux: 2_28
 
       - uses: actions/upload-artifact@v4
