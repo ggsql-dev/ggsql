@@ -109,28 +109,12 @@ pub fn validate(query: &str) -> Result<Validated> {
         }
     };
 
-    // Split using existing tree
-    let (sql_part, viz_part) = match parser::split_from_tree(&source_tree) {
-        Ok((sql, viz)) => (sql, viz),
-        Err(e) => {
-            // Split error - return as validation error
-            errors.push(ValidationError {
-                message: e.to_string(),
-                location: None,
-            });
-            return Ok(Validated {
-                sql: String::new(),
-                visual: String::new(),
-                has_visual: false,
-                tree: Some(source_tree.tree),
-                valid: false,
-                errors,
-                warnings,
-            });
-        }
-    };
+    // Extract SQL and viz portions using existing tree
+    let sql_part = source_tree.extract_sql().unwrap_or_default();
+    let viz_part = source_tree.extract_visualise().unwrap_or_default();
 
-    let has_visual = !viz_part.trim().is_empty();
+    let root = source_tree.root();
+    let has_visual = source_tree.find_node(&root, "(visualise_statement) @viz").is_some();
 
     // If no visualization, return without tree
     if !has_visual {

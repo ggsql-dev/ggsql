@@ -42,11 +42,9 @@ use crate::{Plot, Result};
 
 pub mod builder;
 pub mod source_tree;
-pub mod splitter;
 
 pub use builder::build_ast;
 pub use source_tree::SourceTree;
-pub use splitter::split_from_tree;
 
 /// Main entry point for parsing ggsql queries
 ///
@@ -97,7 +95,7 @@ mod tests {
         "#;
 
         let source_tree = SourceTree::new(query).unwrap();
-        let (sql, _) = splitter::split_from_tree(&source_tree).unwrap();
+        let sql = source_tree.extract_sql().unwrap();
         assert!(sql.contains("SELECT date, revenue FROM sales"));
         assert!(sql.contains("WHERE year = 2024"));
         assert!(!sql.contains("VISUALISE"));

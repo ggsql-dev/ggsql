@@ -335,15 +335,9 @@ fn print_table_fallback(query: &str, reader: &DuckDBReader, max_rows: usize) {
         }
     };
 
-    let (parsed, _) = match parser::split_from_tree(&source_tree) {
-        Ok((sql, viz)) => (sql, viz),
-        Err(e) => {
-            eprintln!("Failed to split query: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let sql_part = source_tree.extract_sql().unwrap_or_default();
 
-    let data = reader.execute_sql(&parsed);
+    let data = reader.execute_sql(&sql_part);
     if let Err(e) = data {
         eprintln!("Failed to execute SQL query: {}", e);
         std::process::exit(1)
