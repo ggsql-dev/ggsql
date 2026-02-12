@@ -76,8 +76,22 @@ impl<'a> SourceTree<'a> {
     }
 
     /// Find first node matching query
-    pub fn find_node<'b>(&self, node: &Node<'b>, query: &str) -> Option<Node<'b>> {
-        self.find_nodes(node, query).into_iter().next()
+    pub fn find_node<'b>(&self, node: &Node<'b>, query_source: &str) -> Option<Node<'b>> {
+        let query = match Query::new(&self.language, query_source) {
+            Ok(q) => q,
+            Err(_) => return None,
+        };
+
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&query, *node, self.source.as_bytes());
+
+        // Return the first capture immediately without collecting all results
+        if let Some(match_result) = matches.next() {
+            if let Some(capture) = match_result.captures.first() {
+                return Some(capture.node);
+            }
+        }
+        None
     }
 
     /// Find first node text matching query
