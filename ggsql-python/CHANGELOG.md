@@ -10,4 +10,12 @@ See [RELEASING.md](RELEASING.md) for release instructions.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-02-11
+
+### Fixed
+
+- `DuckDBReader.register` no longer panics on DataFrames with more than 2048 rows. The method now chunks large DataFrames to work around a bug in `duckdb-rs`'s Arrow virtual table implementation.
+
+## [0.1.0]
+
 Initial version of ggsql.
