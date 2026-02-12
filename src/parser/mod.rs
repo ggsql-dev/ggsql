@@ -239,7 +239,7 @@ mod tests {
             VISUALISE date AS x, revenue AS y
             DRAW line
             DRAW line MAPPING cost AS y
-            SCALE x SETTING type => 'date'
+            SCALE x VIA date
             LABEL title => 'Revenue and Cost Trends'
             THEME minimal
             VISUALIZE
