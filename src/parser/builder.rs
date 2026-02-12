@@ -11,6 +11,107 @@ use tree_sitter::Node;
 
 use super::SourceTree;
 
+// ============================================================================
+// Basic Type Parsers
+// ============================================================================
+
+/// Parse a string node, removing quotes
+fn parse_string_node(node: &Node, source_tree: &SourceTree) -> String {
+    let text = source_tree.get_text(node);
+    text.trim_matches(|c| c == '\'' || c == '"').to_string()
+}
+
+/// Parse a number node into f64
+fn parse_number_node(node: &Node, source_tree: &SourceTree) -> Result<f64> {
+    let text = source_tree.get_text(node);
+    text.parse::<f64>().map_err(|e| {
+        GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
+    })
+}
+
+/// Parse a boolean node
+fn parse_boolean_node(node: &Node, source_tree: &SourceTree) -> bool {
+    let text = source_tree.get_text(node);
+    text == "true"
+}
+
+/// Parse an array node into Vec<ArrayElement>
+fn parse_array_node(node: &Node, source_tree: &SourceTree) -> Result<Vec<ArrayElement>> {
+    let mut values = Vec::new();
+
+    // Find all array_element nodes
+    let query = "(array_element) @elem";
+    let array_elements = source_tree.find_nodes(node, query);
+
+    for array_element in array_elements {
+        // Array elements wrap the actual values
+        let mut elem_cursor = array_element.walk();
+        for elem_child in array_element.children(&mut elem_cursor) {
+            match elem_child.kind() {
+                "string" => {
+                    let value = parse_string_node(&elem_child, source_tree);
+                    values.push(ArrayElement::String(value));
+                }
+                "number" => {
+                    if let Ok(num) = parse_number_node(&elem_child, source_tree) {
+                        values.push(ArrayElement::Number(num));
+                    }
+                }
+                "boolean" => {
+                    let value = parse_boolean_node(&elem_child, source_tree);
+                    values.push(ArrayElement::Boolean(value));
+                }
+                _ => continue,
+            }
+        }
+    }
+
+    Ok(values)
+}
+
+/// Parse a value node directly (string, number, boolean, or array)
+fn parse_value_node(node: &Node, source_tree: &SourceTree, context: &str) -> Result<ParameterValue> {
+    match node.kind() {
+        "string" => {
+            let value = parse_string_node(node, source_tree);
+            Ok(ParameterValue::String(value))
+        }
+        "number" => {
+            let num = parse_number_node(node, source_tree)?;
+            Ok(ParameterValue::Number(num))
+        }
+        "boolean" => {
+            let bool_val = parse_boolean_node(node, source_tree);
+            Ok(ParameterValue::Boolean(bool_val))
+        }
+        "array" => {
+            let values = parse_array_node(node, source_tree)?;
+            Ok(ParameterValue::Array(values))
+        }
+        _ => Err(GgsqlError::ParseError(format!(
+            "Unexpected {} value type: {}",
+            context,
+            node.kind()
+        ))),
+    }
+}
+
+/// Parse a data source node (identifier or string file path)
+fn parse_data_source(node: &Node, source_tree: &SourceTree) -> DataSource {
+    let text = source_tree.get_text(node);
+    match node.kind() {
+        "string" => {
+            let path = parse_string_node(node, source_tree);
+            DataSource::FilePath(path)
+        }
+        _ => DataSource::Identifier(text),
+    }
+}
+
+// ============================================================================
+// AST Building
+// ============================================================================
+
 /// Build a Plot struct from a SourceTree
 pub fn build_ast(source_tree: &SourceTree) -> Result<Vec<Plot>> {
     let root = source_tree.root();
@@ -91,16 +192,8 @@ fn build_visualise_statement(node: &Node, source_tree: &SourceTree) -> Result<Pl
                 let table_refs = source_tree.find_nodes(&child, query);
 
                 if let Some(table_ref) = table_refs.first() {
-                    let text = source_tree.get_text(table_ref);
-                    let first_ref = table_ref.named_child(0);
-                    if let Some(ref_node) = first_ref {
-                        spec.source = Some(match ref_node.kind() {
-                            "string" => {
-                                let path = text.trim_matches(|c| c == '\'' || c == '"');
-                                DataSource::FilePath(path.to_string())
-                            }
-                            _ => DataSource::Identifier(text.to_string()),
-                        });
+                    if let Some(ref_node) = table_ref.named_child(0) {
+                        spec.source = Some(parse_data_source(&ref_node, source_tree));
                     }
                 }
             }
@@ -355,18 +448,8 @@ fn parse_mapping_clause(node: &Node, source_tree: &SourceTree) -> Result<(Mappin
     }
 
     // Extract layer_source field (FROM identifier or FROM 'file.csv')
-    let data_source = node.child_by_field_name("layer_source").map(|child| {
-        let text = source_tree.get_text(&child);
-        match child.kind() {
-            "identifier" => DataSource::Identifier(text.to_string()),
-            "string" => {
-                // Remove surrounding quotes
-                let path = text.trim_matches(|c| c == '\'' || c == '"');
-                DataSource::FilePath(path.to_string())
-            }
-            _ => DataSource::Identifier(text.to_string()),
-        }
-    });
+    let data_source = node.child_by_field_name("layer_source")
+        .map(|child| parse_data_source(&child, source_tree));
 
     Ok((mappings, data_source))
 }
@@ -450,7 +533,7 @@ fn parse_parameter_assignment(node: &Node, source_tree: &SourceTree) -> Result<(
     let value_nodes = source_tree.find_nodes(node, query);
     let param_value = value_nodes
         .first()
-        .map(|node| parse_parameter_value(node, source_tree))
+        .map(|node| parse_value_node(&node.child(0).unwrap(), source_tree, "parameter"))
         .transpose()?;
 
     if param_name.is_empty() || param_value.is_none() {
@@ -461,38 +544,6 @@ fn parse_parameter_assignment(node: &Node, source_tree: &SourceTree) -> Result<(
     }
 
     Ok((param_name, param_value.unwrap()))
-}
-
-/// Parse a parameter_value (string, number, or boolean)
-fn parse_parameter_value(node: &Node, source_tree: &SourceTree) -> Result<ParameterValue> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "string" => {
-                let text = source_tree.get_text(&child);
-                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                return Ok(ParameterValue::String(unquoted.to_string()));
-            }
-            "number" => {
-                let text = source_tree.get_text(&child);
-                let num = text.parse::<f64>().map_err(|e| {
-                    GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-                })?;
-                return Ok(ParameterValue::Number(num));
-            }
-            "boolean" => {
-                let text = source_tree.get_text(&child);
-                let bool_val = text == "true";
-                return Ok(ParameterValue::Boolean(bool_val));
-            }
-            _ => {}
-        }
-    }
-
-    Err(GgsqlError::ParseError(format!(
-        "Could not parse parameter value from node: {}",
-        node.kind()
-    )))
 }
 
 /// Parse a filter_clause: FILTER <raw SQL expression>
@@ -557,36 +608,27 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
 
 /// Parse a literal_value node into an AestheticValue::Literal
 fn parse_literal_value(node: &Node, source_tree: &SourceTree) -> Result<AestheticValue> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "string" => {
-                let text = source_tree.get_text(&child);
-                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                return Ok(AestheticValue::Literal(LiteralValue::String(
-                    unquoted.to_string(),
-                )));
-            }
-            "number" => {
-                let text = source_tree.get_text(&child);
-                let num = text.parse::<f64>().map_err(|e| {
-                    GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-                })?;
-                return Ok(AestheticValue::Literal(LiteralValue::Number(num)));
-            }
-            "boolean" => {
-                let text = source_tree.get_text(&child);
-                let bool_val = text == "true";
-                return Ok(AestheticValue::Literal(LiteralValue::Boolean(bool_val)));
-            }
-            _ => {}
-        }
-    }
+    // literal_value is a choice(), so it has exactly one child (validated upstream)
+    let child = node.child(0).unwrap();
 
-    Err(GgsqlError::ParseError(format!(
-        "Could not parse literal value from node: {}",
-        node.kind()
-    )))
+    match child.kind() {
+        "string" => {
+            let value = parse_string_node(&child, source_tree);
+            Ok(AestheticValue::Literal(LiteralValue::String(value)))
+        }
+        "number" => {
+            let num = parse_number_node(&child, source_tree)?;
+            Ok(AestheticValue::Literal(LiteralValue::Number(num)))
+        }
+        "boolean" => {
+            let bool_val = parse_boolean_node(&child, source_tree);
+            Ok(AestheticValue::Literal(LiteralValue::Boolean(bool_val)))
+        }
+        _ => Err(GgsqlError::ParseError(format!(
+            "Unexpected literal value type: {}",
+            child.kind()
+        ))),
+    }
 }
 
 /// Build a Scale from a scale_clause node
@@ -614,7 +656,7 @@ fn build_scale(node: &Node, source_tree: &SourceTree) -> Result<Scale> {
                             prop_name = source_tree.get_text(&prop_child);
                         }
                         "scale_property_value" => {
-                            prop_value = Some(parse_scale_property_value(&prop_child, source_tree)?);
+                            prop_value = Some(parse_value_node(&prop_child.child(0).unwrap(), source_tree, "scale property")?);
                         }
                         "=>" => continue,
                         _ => {}
@@ -688,73 +730,6 @@ fn parse_scale_type(text: &str) -> Result<ScaleType> {
             text
         ))),
     }
-}
-
-/// Parse scale property value
-fn parse_scale_property_value(node: &Node, source_tree: &SourceTree) -> Result<ParameterValue> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "string" => {
-                let text = source_tree.get_text(&child);
-                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                return Ok(ParameterValue::String(unquoted.to_string()));
-            }
-            "number" => {
-                let text = source_tree.get_text(&child);
-                let num = text.parse::<f64>().map_err(|e| {
-                    GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-                })?;
-                return Ok(ParameterValue::Number(num));
-            }
-            "boolean" => {
-                let text = source_tree.get_text(&child);
-                let bool_val = text == "true";
-                return Ok(ParameterValue::Boolean(bool_val));
-            }
-            "array" => {
-                // Parse array of values
-                let mut values = Vec::new();
-
-                // Find all array_element nodes
-                let query = "(array_element) @elem";
-                let array_elements = source_tree.find_nodes(&child, query);
-
-                for array_element in array_elements {
-                    // Array elements wrap the actual values
-                    let mut elem_cursor = array_element.walk();
-                    for elem_child in array_element.children(&mut elem_cursor) {
-                        match elem_child.kind() {
-                            "string" => {
-                                let text = source_tree.get_text(&elem_child);
-                                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                                values.push(ArrayElement::String(unquoted.to_string()));
-                            }
-                            "number" => {
-                                let text = source_tree.get_text(&elem_child);
-                                if let Ok(num) = text.parse::<f64>() {
-                                    values.push(ArrayElement::Number(num));
-                                }
-                            }
-                            "boolean" => {
-                                let text = source_tree.get_text(&elem_child);
-                                let bool_val = text == "true";
-                                values.push(ArrayElement::Boolean(bool_val));
-                            }
-                            _ => continue,
-                        }
-                    }
-                }
-                return Ok(ParameterValue::Array(values));
-            }
-            _ => {}
-        }
-    }
-
-    Err(GgsqlError::ParseError(format!(
-        "Could not parse scale property value from node: {}",
-        node.kind()
-    )))
 }
 
 /// Build a Facet from a facet_clause node
@@ -880,7 +855,7 @@ fn parse_single_coord_property(node: &Node, source_tree: &SourceTree) -> Result<
                     .unwrap_or_else(|| source_tree.get_text(&child));
             }
             "string" | "number" | "boolean" | "array" => {
-                prop_value = Some(parse_coord_property_value(&child, source_tree)?);
+                prop_value = Some(parse_value_node(&child, source_tree, "coord property")?);
             }
             "identifier" => {
                 // New: identifiers can be property values (e.g., theta = y)
@@ -996,68 +971,6 @@ fn parse_coord_type(node: &Node, source_tree: &SourceTree) -> Result<CoordType> 
     }
 }
 
-/// Parse coord property value
-fn parse_coord_property_value(node: &Node, source_tree: &SourceTree) -> Result<ParameterValue> {
-    match node.kind() {
-        "string" => {
-            let text = source_tree.get_text(node);
-            let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-            Ok(ParameterValue::String(unquoted.to_string()))
-        }
-        "number" => {
-            let text = source_tree.get_text(node);
-            let num = text.parse::<f64>().map_err(|e| {
-                GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-            })?;
-            Ok(ParameterValue::Number(num))
-        }
-        "boolean" => {
-            let text = source_tree.get_text(node);
-            let bool_val = text == "true";
-            Ok(ParameterValue::Boolean(bool_val))
-        }
-        "array" => {
-            // Parse array of values
-            let mut values = Vec::new();
-
-            // Find all array_element nodes
-            let query = "(array_element) @elem";
-            let array_elements = source_tree.find_nodes(node, query);
-
-            for array_element in array_elements {
-                // Array elements wrap the actual values
-                let mut elem_cursor = array_element.walk();
-                for elem_child in array_element.children(&mut elem_cursor) {
-                    match elem_child.kind() {
-                        "string" => {
-                            let text = source_tree.get_text(&elem_child);
-                            let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                            values.push(ArrayElement::String(unquoted.to_string()));
-                        }
-                        "number" => {
-                            let text = source_tree.get_text(&elem_child);
-                            if let Ok(num) = text.parse::<f64>() {
-                                values.push(ArrayElement::Number(num));
-                            }
-                        }
-                        "boolean" => {
-                            let text = source_tree.get_text(&elem_child);
-                            let bool_val = text == "true";
-                            values.push(ArrayElement::Boolean(bool_val));
-                        }
-                        _ => continue,
-                    }
-                }
-            }
-            Ok(ParameterValue::Array(values))
-        }
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unexpected coord property value type: {}",
-            node.kind()
-        ))),
-    }
-}
-
 /// Build Labels from a label_clause node
 fn build_labels(node: &Node, source_tree: &SourceTree) -> Result<Labels> {
     let mut labels = HashMap::new();
@@ -1077,10 +990,7 @@ fn build_labels(node: &Node, source_tree: &SourceTree) -> Result<Labels> {
                     label_type = Some(source_tree.get_text(&assignment_child));
                 }
                 "string" => {
-                    let text = source_tree.get_text(&assignment_child);
-                    // Remove quotes from string
-                    label_value =
-                        Some(text.trim_matches(|c| c == '\'' || c == '"').to_string());
+                    label_value = Some(parse_string_node(&assignment_child, source_tree));
                 }
                 _ => {}
             }
@@ -1128,7 +1038,7 @@ fn build_guide(node: &Node, source_tree: &SourceTree) -> Result<Guide> {
                                 continue;
                             }
                             if found_to {
-                                let prop_value = parse_guide_property_value(&value_child, source_tree)?;
+                                let prop_value = parse_value_node(&value_child, source_tree, "guide property")?;
                                 properties.insert(prop_name.clone(), prop_value);
                                 break;
                             }
@@ -1167,33 +1077,6 @@ fn parse_guide_type(text: &str) -> Result<GuideType> {
     }
 }
 
-/// Parse guide property value
-fn parse_guide_property_value(node: &Node, source_tree: &SourceTree) -> Result<ParameterValue> {
-    match node.kind() {
-        "string" => {
-            let text = source_tree.get_text(node);
-            let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-            Ok(ParameterValue::String(unquoted.to_string()))
-        }
-        "number" => {
-            let text = source_tree.get_text(node);
-            let num = text.parse::<f64>().map_err(|e| {
-                GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-            })?;
-            Ok(ParameterValue::Number(num))
-        }
-        "boolean" => {
-            let text = source_tree.get_text(node);
-            let bool_val = text == "true";
-            Ok(ParameterValue::Boolean(bool_val))
-        }
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unexpected guide property value type: {}",
-            node.kind()
-        ))),
-    }
-}
-
 /// Build a Theme from a theme_clause node
 fn build_theme(node: &Node, source_tree: &SourceTree) -> Result<Theme> {
     let mut style: Option<String> = None;
@@ -1218,7 +1101,7 @@ fn build_theme(node: &Node, source_tree: &SourceTree) -> Result<Theme> {
                             prop_name = source_tree.get_text(&prop_child);
                         }
                         "string" | "number" | "boolean" => {
-                            prop_value = Some(parse_theme_property_value(&prop_child, source_tree)?);
+                            prop_value = Some(parse_value_node(&prop_child, source_tree, "theme property")?);
                         }
                         "=>" => continue,
                         _ => {}
@@ -1235,33 +1118,6 @@ fn build_theme(node: &Node, source_tree: &SourceTree) -> Result<Theme> {
     }
 
     Ok(Theme { style, properties })
-}
-
-/// Parse theme property value
-fn parse_theme_property_value(node: &Node, source_tree: &SourceTree) -> Result<ParameterValue> {
-    match node.kind() {
-        "string" => {
-            let text = source_tree.get_text(node);
-            let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-            Ok(ParameterValue::String(unquoted.to_string()))
-        }
-        "number" => {
-            let text = source_tree.get_text(node);
-            let num = text.parse::<f64>().map_err(|e| {
-                GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-            })?;
-            Ok(ParameterValue::Number(num))
-        }
-        "boolean" => {
-            let text = source_tree.get_text(node);
-            let bool_val = text == "true";
-            Ok(ParameterValue::Boolean(bool_val))
-        }
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unexpected theme property value type: {}",
-            node.kind()
-        ))),
-    }
 }
 
 /// Check if the last SQL statement in sql_portion is a SELECT statement
