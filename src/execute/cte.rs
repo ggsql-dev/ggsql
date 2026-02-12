@@ -174,11 +174,7 @@ pub fn extract_trailing_select(source_tree: &SourceTree) -> Option<String> {
     }
 
     // Otherwise, look for direct SELECT statement (no WITH clause)
-    if let Some(node) = source_tree.find_node(&root, "(sql_statement (select_statement) @select)") {
-        return Some(source_tree.get_text(&node));
-    }
-
-    None
+    source_tree.find_text(&root, "(sql_statement (select_statement) @select)")
 }
 
 /// Transform global SQL for execution with temp tables
@@ -186,17 +182,20 @@ pub fn extract_trailing_select(source_tree: &SourceTree) -> Option<String> {
 /// If the SQL has a WITH clause followed by SELECT, extracts just the SELECT
 /// portion and transforms CTE references to temp table names.
 /// For SQL without WITH clause, just transforms any CTE references.
-pub fn transform_global_sql(source_tree: &SourceTree, sql: &str, materialized_ctes: &HashSet<String>) -> Option<String> {
-    // Try to extract trailing SELECT from WITH clause
-    if let Some(trailing_select) = extract_trailing_select(source_tree) {
+pub fn transform_global_sql(source_tree: &SourceTree, materialized_ctes: &HashSet<String>) -> Option<String> {
+    // Try to extract SELECT (handles both WITH...SELECT and direct SELECT)
+    if let Some(select_sql) = extract_trailing_select(source_tree) {
         // Transform CTE references in the SELECT
         Some(transform_cte_references(
-            &trailing_select,
+            &select_sql,
             materialized_ctes,
         ))
     } else if has_executable_sql(source_tree) {
-        // No WITH clause but has executable SQL - just transform references
-        Some(transform_cte_references(sql, materialized_ctes))
+        // Non-SELECT executable SQL (CREATE, INSERT, UPDATE, DELETE)
+        // OR VISUALISE FROM (which injects SELECT * FROM <source>)
+        // Extract SQL (with injection if VISUALISE FROM) and transform CTE references
+        let sql = source_tree.extract_sql()?;
+        Some(transform_cte_references(&sql, materialized_ctes))
     } else {
         // No executable SQL (just CTEs)
         None

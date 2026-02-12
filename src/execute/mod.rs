@@ -532,8 +532,8 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
     // The global result is stored as a temp table so filtered layers can query it efficiently.
     // Track whether we actually create the temp table (depends on transform_global_sql succeeding)
     let mut has_global_table = false;
-    if let Some(ref sql_text) = sql_part {
-        if let Some(transformed_sql) = cte::transform_global_sql(&source_tree, sql_text, &materialized_ctes) {
+    if sql_part.is_some() {
+        if let Some(transformed_sql) = cte::transform_global_sql(&source_tree, &materialized_ctes) {
             // Create temp table for global result
             let create_global = format!(
                 "CREATE OR REPLACE TEMP TABLE {} AS {}",
