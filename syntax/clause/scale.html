@@ -20,6 +20,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -77,6 +112,7 @@ ul.task-list li input[type="checkbox"] {
 
 
 <meta property="og:title" content="Specify aesthetic scaling with SCALE – ggsql">
+<meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
 <meta property="og:image" content="https://ggsql.org/syntax/clause/assets/logo.png">
 <meta property="og:site_name" content="ggsql">
 <meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
@@ -84,6 +120,7 @@ handle is made up of the classic database silo icon and is coloured in a
 gradient teal.
 ">
 <meta name="twitter:title" content="Specify aesthetic scaling with SCALE – ggsql">
+<meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
 <meta name="twitter:image" content="https://ggsql.org/syntax/clause/assets/logo.png">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
@@ -195,8 +232,8 @@ gradient teal.
       </button>
     </div>
   </nav>
-  <div id="quarto-announcement" data-announcement-id="a3e2a40f560b81649f1436c0b08f2025" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
-<p>ggsql is still in early development and all functionality is subject to change</p>
+  <div id="quarto-announcement" data-announcement-id="5ba53bd994f13c27f80364dba6b56481" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in early development and all functionality are subject to change</p>
 </div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
 </header>
 <!-- content -->
@@ -328,13 +365,82 @@ gradient teal.
 </li>
       </ul>
   </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">Scales</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="false">
+ <span class="menu-text">Types</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/scale/type/binned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Binned</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/scale/type/continuous.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Continuous</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/scale/type/discrete.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Discrete</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/scale/type/identity.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Identity</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/scale/type/ordinal.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Ordinal</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+          <li class="sidebar-item sidebar-item-section">
+      <span class="sidebar-item-text sidebar-link text-start">
+ <span class="menu-text">Palettes</span></span>
+  </li>
+      </ul>
+  </li>
     </ul>
     </div>
 </nav>
 <div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
-    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
-        
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#clause-syntax" id="toc-clause-syntax" class="nav-link active" data-scroll-target="#clause-syntax">Clause syntax</a>
+  <ul class="collapse">
+  <li><a href="#from" id="toc-from" class="nav-link" data-scroll-target="#from"><code>FROM</code></a></li>
+  <li><a href="#to" id="toc-to" class="nav-link" data-scroll-target="#to"><code>TO</code></a></li>
+  <li><a href="#via" id="toc-via" class="nav-link" data-scroll-target="#via"><code>VIA</code></a></li>
+  <li><a href="#setting" id="toc-setting" class="nav-link" data-scroll-target="#setting"><code>SETTING</code></a></li>
+  <li><a href="#renaming" id="toc-renaming" class="nav-link" data-scroll-target="#renaming"><code>RENAMING</code></a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
@@ -358,8 +464,79 @@ gradient teal.
 </header>
 
 
+<p>Scales are an important concept in ggsql. While DRAW clauses define what to draw and what data to base the drawing on, scales control <em>how</em> that data is interpreted, understood, and translated. Because of this a proper understanding of the <code>SCALE</code> clause is integral to releasing all the power of ggsql. Still, scales always comes with sensible defaults so unlike <code>DRAW</code> clauses you may not need them for all your visualisations.</p>
+<section id="clause-syntax" class="level2">
+<h2 class="anchored" data-anchor-id="clause-syntax">Clause syntax</h2>
+<p>The <code>SCALE</code> clause takes a number of subclauses, all of them optional:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="op">&lt;</span><span class="at">type</span><span class="op">&gt;</span> <span class="op">&lt;</span>aesthetic<span class="op">&gt;</span> <span class="kw">FROM</span> <span class="op">&lt;</span>input<span class="op">-</span><span class="at">range</span><span class="op">&gt;</span> <span class="kw">TO</span> <span class="op">&lt;</span>output<span class="op">-</span><span class="at">range</span><span class="op">&gt;</span> <span class="kw">VIA</span> <span class="op">&lt;</span>transform<span class="op">&gt;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="op">&lt;</span>parameter<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>value<span class="op">&gt;</span>, ...</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    RENAMING <span class="op">&lt;</span>break<span class="op">-</span>value<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>string<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The <code>type</code> defines the class of scale to use. It can be one of four different types:</p>
+<ul>
+<li><code>CONTINUOUS</code> to interpret and treat data as continuous</li>
+<li><code>DISCRETE</code> to interpret and treat data as discrete or categorical</li>
+<li><code>BINNED</code> to bin continuous data into discrete bins</li>
+<li><code>ORDINAL</code> to interpret discrete data as ordered</li>
+<li><code>IDENTITY</code> to let data pass through unscaled</li>
+</ul>
+<p>Read more about each type at their dedicated documentation. You do not have to specify the type as it is deduced from the transform, input range, or data if left blank.</p>
+<p>You <em>must</em> specify an aesthetic so that the scale knows which mapping it belongs to. For positional aesthetics you will provide the base name (<code>x</code> or <code>y</code>) even though you are mapping to e.g.&nbsp;<code>xmin</code>. Creating a scale for <code>colour</code> (or <code>color</code>) will create a scale for both fill and stroke colour based on the settings.</p>
+<section id="from" class="level3">
+<h3 class="anchored" data-anchor-id="from"><code>FROM</code></h3>
+<p>The <code>FROM</code> clause defines the input range of the scale, i.e.&nbsp;the values the scale translates from. If not provided, it will be deduced from the data as the range that covers all mapped data. For discrete scales the input range is defined as an array of all known values to the scale. Values from the data not present in the input range will be <code>null</code>’ed by the scale. For continuous and binned scales this is an array with two elements: the lower and upper boundaries of the scale. Either of these can be <code>null</code> in which case that value will be determined by the data (e.g.&nbsp;a range of <code>[0, null]</code> will go from 0 to the maximum value in the data). Identity scales do not have an input range.</p>
+</section>
+<section id="to" class="level3">
+<h3 class="anchored" data-anchor-id="to"><code>TO</code></h3>
+<p>The <code>TO</code> clause defines the output range of the scale, i.e.&nbsp;what the data is translated to. It can either be an array of values or the name of a known palette. Read more under the documentation for the specific scales.</p>
+</section>
+<section id="via" class="level3">
+<h3 class="anchored" data-anchor-id="via"><code>VIA</code></h3>
+<p>The <code>VIA</code> clause defines a transform which is applied to the data before mapping it to the output range. While transforms are often understood as mathematical transforms, in ggsql it also defines casting of input data. E.g. the <code>integer</code> transform cast all input to integer before mapping. Transforms also takes care of creating breaks that are meaningful for the specific transform, e.g.&nbsp;in the case of the log10 transform where breaks are created to fit the power of 10. Different transforms are available to different scale types.</p>
+</section>
+<section id="setting" class="level3">
+<h3 class="anchored" data-anchor-id="setting"><code>SETTING</code></h3>
+<p>This clause behaves much like the <code>SETTINGS</code> clause in <code>DRAW</code>, in that it allows you to fine-tune specific behavior of the scale. Permissible settings depends on the scale type and are documented there.</p>
+</section>
+<section id="renaming" class="level3">
+<h3 class="anchored" data-anchor-id="renaming"><code>RENAMING</code></h3>
+<p>This clause works much like the <code>LABEL</code> clause but works on the break names of the scale. The general syntax is that you provide the name of the break on the left and what it should appear as on the right, e.g <code>'adelie' =&gt; 'Pygoscelis adeliae'</code>. The clause is understood as a look-up table in the sense that if you provide a renaming for a break that doesn’t appear in the scale then nothing will happen and if a break exist but doesn’t have a renaming defined it will go through unaltered. To suppress the label of a specific break you can rename it to <code>null</code>, e.g.&nbsp;<code>'adelie' =&gt; null</code>. This will not remove the break, only the label.</p>
+<section id="break-formatting" class="level4">
+<h4 class="anchored" data-anchor-id="break-formatting">Break formatting</h4>
+<p>Apart from the direct renaming described above it is also possible to provide a formatting function to be applied to all breaks. The syntax for this is <code>* =&gt; '...'</code> with the content of the string on the right being a string interpolation format. The basic syntax for this is that the break value will be inserted into any place where <code>{}</code> appears. This means that e.g.&nbsp;<code>* =&gt; '{} species'</code> will result in the label “adelie species” for the break “adelie”. Besides simply inserting the value as-is, it is also possible to apply a formatter to the label before insertion by naming a formatter inside the curly braces prefixed with <code>:</code>. Known formatters are:</p>
+<ul>
+<li><code>{:Title}</code> will title-case the value (make the first letter in each work upper case) before insertion, e.g.&nbsp;<code>* =&gt; '{:Title} species'</code> will become “Adelie species” for the “adelie” break.</li>
+<li><code>{:UPPER}</code> will make the value upper-case, e.g.&nbsp;<code>* =&gt; '{:UPPER} species'</code> will become “ADELIE species” for the “adelie” break.</li>
+<li><code>{:lower}</code> works much like <code>{:UPPER}</code> but changes the value to lower-case instead.</li>
+<li><code>{:time ...}</code> will format a date/datetime/time value according to the format defined afterwards. The formatting follows strftime format using the Rust chrono library. You can see an overview of the supported syntax at the <a href="https://docs.rs/chrono/latest/chrono/format/strftime/index.html">chrono docs</a>. The basic usage is <code>* =&gt; '{:time %B %Y}</code> which would format a break at 2025-07-04 as “July 2025”.</li>
+<li><code>{:num ...}</code> will format a numeric according to the format defined afterwards. The format follows the printf format using the Rust sprintf library. The syntax is <code>%[flags][width][.precision]type</code> with the following meaning:
+<ul>
+<li><code>flags</code>: One or more modifiers:
+<ul>
+<li><code>-</code>: left-justify</li>
+<li><code>+</code>: Force sign for positive numbers</li>
+<li><code></code>: (space) Space before positive numbers</li>
+<li><code>0</code>: Zero-pad</li>
+<li><code>#</code>: Alternate form (<code>0x</code> prefix for hex, etc)</li>
+</ul></li>
+<li><code>width</code>: The minimum width of characters to render. Depending on the <code>flags</code> the string will be padded to be at least this width</li>
+<li><code>precision</code>: The maximum precision of the number. For <code>%g</code>/<code>%G</code> it is the total number of digits whereas for the rest it is the number of digits to the right of the decimal point</li>
+<li><code>type</code>: How to present the number. One of:
+<ul>
+<li><code>d</code>/<code>i</code>: Signed decimal integers</li>
+<li><code>u</code>: Unsigned decimal integers</li>
+<li><code>f</code>/<code>F</code>: Decimal floating point</li>
+<li><code>e</code>/<code>E</code>: Scientific notation</li>
+<li><code>g</code>/<code>G</code>: Shortest form of <code>e</code> and <code>f</code></li>
+<li><code>o</code>: Unsigned octal</li>
+<li><code>x</code>/<code>X</code>: Unsigned hexadecimal</li>
+</ul></li>
+</ul></li>
+</ul>
 
 
+</section>
+</section>
+</section>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
@@ -767,4 +944,4 @@ gradient teal.
 
 
 
-<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

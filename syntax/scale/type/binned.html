@@ -1,0 +1,1742 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.27">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Binned – ggsql</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<link href="../../../assets/icon.svg" rel="icon" type="image/svg+xml">
+<script src="../../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../../site_libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-8caf6eaa0938078aad3b4e3e78d03e50.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-391dc9eaa9d5ee7385b50e8209b8eefe.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-8caf6eaa0938078aad3b4e3e78d03e50.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap-906e5279b320c7a9927b2e3c4c1d4614.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark-c615a8e522208a0492fce157e4bfc72e.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-906e5279b320c7a9927b2e3c4c1d4614.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+<script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
+
+
+<meta property="og:title" content="Binned – ggsql">
+<meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
+<meta property="og:image" content="https://ggsql.org/syntax/scale/type/assets/logo.png">
+<meta property="og:site_name" content="ggsql">
+<meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
+handle is made up of the classic database silo icon and is coloured in a
+gradient teal.
+">
+<meta name="twitter:title" content="Binned – ggsql">
+<meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
+<meta name="twitter:image" content="https://ggsql.org/syntax/scale/type/assets/logo.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
+handle is made up of the classic database silo icon and is coloured in a
+gradient teal.
+">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="../../../index.html" class="navbar-brand navbar-brand-logo">
+    <img src="../../../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../../../assets/icon.svg" alt="" class="navbar-logo dark-content">
+    </a>
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">ggsql</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../installation.html"> 
+<span class="menu-text">Installing ggsql</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-syntax" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Syntax</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-syntax">    
+        <li>
+    <a class="dropdown-item" href="../../../syntax/index.html">
+ <span class="dropdown-text">Overview</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/visualise.html">
+ <span class="dropdown-text"><code>VISUALISE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/draw.html">
+ <span class="dropdown-text"><code>DRAW</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/scale.html">
+ <span class="dropdown-text"><code>SCALE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/facet.html">
+ <span class="dropdown-text"><code>FACET</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/project.html">
+ <span class="dropdown-text"><code>PROJECT</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/label.html">
+ <span class="dropdown-text"><code>LABEL</code></span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../../../examples.html"> 
+<span class="menu-text">Examples</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+    <div class="dropdown">
+      <a href="" title="" id="quarto-navigation-tool-dropdown-0" class="quarto-navigation-tool dropdown-toggle px-1" data-bs-toggle="dropdown" aria-expanded="false" role="link" aria-label=""><i class="bi bi-github"></i></a>
+      <ul class="dropdown-menu" aria-labelledby="quarto-navigation-tool-dropdown-0">
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql">
+            Source Code
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql/issues">
+            Report a Bug
+            </a>
+          </li>
+      </ul>
+    </div>
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Scales</li><li class="breadcrumb-item"><a href="../../../syntax/scale/type/binned.html">Types</a></li><li class="breadcrumb-item"><a href="../../../syntax/scale/type/binned.html">Binned</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+  <div id="quarto-announcement" data-announcement-id="5ba53bd994f13c27f80364dba6b56481" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in early development and all functionality are subject to change</p>
+</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header sidebar-header-stacked">
+      <a href="../../../index.html" class="sidebar-logo-link">
+      <img src="../../../assets/logo.png" alt="" class="sidebar-logo light-content py-0 d-lg-inline d-none">
+      <img src="../../../assets/logo.png" alt="" class="sidebar-logo dark-content py-0 d-lg-inline d-none">
+      </a>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Overview</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Main clauses</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/visualise.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>VISUALISE</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/draw.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>DRAW</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/scale.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>SCALE</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/facet.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>FACET</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/project.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>PROJECT</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/label.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>LABEL</code></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Layers</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/area.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Area</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/bar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Bar</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/boxplot.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Boxplot</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/histogram.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Histogram</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/line.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Line</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/path.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Path</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/point.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Point</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/ribbon.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Ribbon</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">Scales</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true">
+ <span class="menu-text">Types</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/type/binned.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Binned</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/type/continuous.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Continuous</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/type/discrete.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Discrete</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/type/identity.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Identity</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/type/ordinal.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Ordinal</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+          <li class="sidebar-item sidebar-item-section">
+      <span class="sidebar-item-text sidebar-link text-start">
+ <span class="menu-text">Palettes</span></span>
+  </li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#input-range" id="toc-input-range" class="nav-link active" data-scroll-target="#input-range">Input range</a>
+  <ul class="collapse">
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  </ul></li>
+  <li><a href="#output-range" id="toc-output-range" class="nav-link" data-scroll-target="#output-range">Output range</a>
+  <ul class="collapse">
+  <li><a href="#examples-1" id="toc-examples-1" class="nav-link" data-scroll-target="#examples-1">Examples</a></li>
+  </ul></li>
+  <li><a href="#transform" id="toc-transform" class="nav-link" data-scroll-target="#transform">Transform</a>
+  <ul class="collapse">
+  <li><a href="#breaks" id="toc-breaks" class="nav-link" data-scroll-target="#breaks">Breaks</a></li>
+  <li><a href="#the-size-aesthetic" id="toc-the-size-aesthetic" class="nav-link" data-scroll-target="#the-size-aesthetic">The size aesthetic</a></li>
+  <li><a href="#examples-2" id="toc-examples-2" class="nav-link" data-scroll-target="#examples-2">Examples</a></li>
+  </ul></li>
+  <li><a href="#settings" id="toc-settings" class="nav-link" data-scroll-target="#settings">Settings</a>
+  <ul class="collapse">
+  <li><a href="#examples-3" id="toc-examples-3" class="nav-link" data-scroll-target="#examples-3">Examples</a></li>
+  </ul></li>
+  <li><a href="#renaming" id="toc-renaming" class="nav-link" data-scroll-target="#renaming">Renaming</a>
+  <ul class="collapse">
+  <li><a href="#direct-renaming" id="toc-direct-renaming" class="nav-link" data-scroll-target="#direct-renaming">Direct renaming</a></li>
+  <li><a href="#label-formatting" id="toc-label-formatting" class="nav-link" data-scroll-target="#label-formatting">Label formatting</a></li>
+  <li><a href="#examples-4" id="toc-examples-4" class="nav-link" data-scroll-target="#examples-4">Examples</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Scales</li><li class="breadcrumb-item"><a href="../../../syntax/scale/type/binned.html">Types</a></li><li class="breadcrumb-item"><a href="../../../syntax/scale/type/binned.html">Binned</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">Binned</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<blockquote class="blockquote">
+<p>Scales are declared with the <a href="../../../syntax/clause/scale.html"><code>SCALE</code> clause</a>. Read the documentation for this clause for a thorough description of its syntax.</p>
+</blockquote>
+<p>The binned scale type maps continuous data types into a discrete output domain. It can either be used to bin continuous data for layers that needs a discrete scale, e.g.&nbsp;the <a href="../../../syntax/layer/bar.html">bar layer</a>, or to discretize a continuous output range to make clearer visual separation between the groups. Lastly, while generally not advised, it can also be used to map continuous data to an aesthetic that is otherwise only meaningful for discrete data (e.g.&nbsp;<code>shape</code>).</p>
+<p>The binned scale is never chosen automatically so it must be selected explicitly if needed using <code>SCALE BINNED ...</code></p>
+<section id="input-range" class="level2">
+<h2 class="anchored" data-anchor-id="input-range">Input range</h2>
+<p>The input range for binned scales are defined by their minimum and maximum values. These can be given explicitly or deduced from the mapped data. If <code>FROM</code> is omitted then the range will be given as the minimum and maximum break values, whether provided directly or calculated. If provided as an array of length 2 then the first element will set the minimum and the second element will set the maximum. If either of these elements are <code>null</code> then that part of the range will be deduced from the data. As an example <code>SCALE BINNED x FROM [0, null]</code> will set the minimum part of the range to 0 and the maximum part to the maximal value of the mapped data. However, if neither input range nor explicit breaks are provided then the input range will be modified so that the calculated bins are even sized and include all data. This means that the range in most cases will expand past the minimum and maximum data values.</p>
+<p>Positional aesthetics (<code>x</code> and <code>y</code>) will have their range expanded based on the <code>expand</code> setting. If values in the mapped data falls outside of the input domain the values will be changed based on the <code>oob</code> setting.</p>
+<p>The input range is converted to the type defined by the transform. This means that a time range can both be given as a <code>%H:%M:%S</code> string or as a numeric giving the number of nanoseconds since midnight.</p>
+<p>If your data is discrete in nature but does have ordering, consider using the <a href="../../../syntax/scale/type/ordinal.html">ordinal scale type</a>.</p>
+<section id="examples" class="level3">
+<h3 class="anchored" data-anchor-id="examples">Examples</h3>
+<section id="not-providing-input-range-will-ensure-even-bin-size" class="level4">
+<h4 class="anchored" data-anchor-id="not-providing-input-range-will-ensure-even-bin-size">Not providing input range will ensure even bin size</h4>
+<div id="8d17d9db" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> body_mass <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<div id="vis-1770900251804"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x2__":7000.0,"__ggsql_aes_x__":6000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":null,"__ggsql_aes_x__":null,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":5000.0,"__ggsql_aes_x__":4000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":110,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":6000.0,"__ggsql_aes_x__":5000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":63,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":4000.0,"__ggsql_aes_x__":3000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":156,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":3000.0,"__ggsql_aes_x__":2000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":9,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == '6000' ? '6000' : datum.label == '3000' ? '3000' : datum.label == '7000' ? '7000' : datum.label == '4000' ? '4000' : datum.label == '2000' ? '2000' : datum.label == '5000' ? '5000' : datum.label","values":[2000.0,3000.0,4000.0,5000.0,6000.0,7000.0]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":[1750.0,7250.0],"zero":false},"title":"body_mass","type":"quantitative"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '150' ? '150' : datum.label == '50' ? '50' : datum.label == '100' ? '100' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-7.800000000000001,163.8],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '150' ? '150' : datum.label == '50' ? '50' : datum.label == '100' ? '100' : datum.label","values":[0.0,50.0,100.0,150.0]},"scale":{"domain":[-7.800000000000001,163.8]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1770900251804';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="setting-input-range-will-force-boundary-of-terminal-bins" class="level4">
+<h4 class="anchored" data-anchor-id="setting-input-range-will-force-boundary-of-terminal-bins">Setting input range will force boundary of terminal bins</h4>
+<div id="11354297" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> body_mass <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span> <span class="kw">FROM</span> [<span class="dv">2700</span>, <span class="dv">6300</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div id="vis-1770900251816"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x2__":3000.0,"__ggsql_aes_x__":2700.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":6300.0,"__ggsql_aes_x__":6000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":5000.0,"__ggsql_aes_x__":4000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":110,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":6000.0,"__ggsql_aes_x__":5000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":63,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":4000.0,"__ggsql_aes_x__":3000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":156,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == '4000' ? '4000' : datum.label == '6000' ? '6000' : datum.label == '3000' ? '3000' : datum.label == '6300' ? '6300' : datum.label == '2700' ? '2700' : datum.label == '5000' ? '5000' : datum.label","values":[2700.0,3000.0,4000.0,5000.0,6000.0,6300.0]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":[2700.0,6300.0],"zero":false},"title":"body_mass","type":"quantitative"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label == '100' ? '100' : datum.label == '0' ? '0' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-7.800000000000001,163.8],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label == '100' ? '100' : datum.label == '0' ? '0' : datum.label","values":[0.0,50.0,100.0,150.0]},"scale":{"domain":[-7.800000000000001,163.8]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1770900251816';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+</section>
+</section>
+<section id="output-range" class="level2">
+<h2 class="anchored" data-anchor-id="output-range">Output range</h2>
+<p>The output range can either be given as an array of values or a named palette. For interpretable aesthetics (<code>color</code>, <code>opacity</code>, <code>size</code>, and <code>linewidth</code>) the value for each bin will be interpolated from the output range based on the central value of the bin. For linetype there is a special sequential palette which is used by default. It will construct linetype patterns that gradually increase in ink-density for the number of bins needed (up to 15 bins). For shape the values will be selected directly from the output range. If there are fewer values than there are bins an error is emitted.</p>
+<p>All aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:</p>
+<ul>
+<li><code>x</code>/<code>y</code>: Ignored (values used directly)</li>
+<li><code>stroke</code>/<code>fill</code>: The <code>navia</code> palette</li>
+<li><code>size</code>/<code>linewidth</code>: <code>[1, 6]</code> (points)</li>
+<li><code>opacity</code>: <code>[0.1, 1.0]</code> (0 being fully transparent and 1 being fully opaque)</li>
+<li><code>linetype</code>: The <code>sequential</code> palette</li>
+<li><code>shape</code>: The <code>shapes</code> palette</li>
+</ul>
+<p>While it is possible to use a binned scale to map continuous data to linetype and shape you should generally refrain from doing this. Even with the sequential linetype palette it is one of the weakest visual mappings only surpassed by shape which doesn’t show an inherent order in its representation at all.</p>
+<section id="examples-1" class="level3">
+<h3 class="anchored" data-anchor-id="examples-1">Examples</h3>
+<section id="select-a-continuous-color-palette" class="level4">
+<h4 class="anchored" data-anchor-id="select-a-continuous-color-palette">Select a continuous color palette</h4>
+<div id="d80d26b9" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span>, body_mass <span class="kw">AS</span> <span class="at">color</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">color</span> <span class="kw">TO</span> <span class="dt">viridis</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<div id="vis-1770900251828"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.1,"__ggsql_aes_y__":18.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.5,"__ggsql_aes_y__":17.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.3,"__ggsql_aes_y__":18.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":null,"__ggsql_aes_stroke__":null,"__ggsql_aes_x__":null,"__ggsql_aes_y__":null,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.7,"__ggsql_aes_y__":19.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.3,"__ggsql_aes_y__":20.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.9,"__ggsql_aes_y__":17.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":39.2,"__ggsql_aes_y__":19.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":34.1,"__ggsql_aes_y__":18.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":42.0,"__ggsql_aes_y__":20.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.8,"__ggsql_aes_y__":17.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.8,"__ggsql_aes_y__":17.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":41.1,"__ggsql_aes_y__":17.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.6,"__ggsql_aes_y__":21.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":34.6,"__ggsql_aes_y__":21.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.6,"__ggsql_aes_y__":17.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.7,"__ggsql_aes_y__":19.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":42.5,"__ggsql_aes_y__":20.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":34.4,"__ggsql_aes_y__":18.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.0,"__ggsql_aes_y__":21.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.8,"__ggsql_aes_y__":18.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.7,"__ggsql_aes_y__":18.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":35.9,"__ggsql_aes_y__":19.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.2,"__ggsql_aes_y__":18.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.8,"__ggsql_aes_y__":17.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":35.3,"__ggsql_aes_y__":18.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.6,"__ggsql_aes_y__":18.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.5,"__ggsql_aes_y__":17.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.9,"__ggsql_aes_y__":18.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.5,"__ggsql_aes_y__":18.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.5,"__ggsql_aes_y__":16.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.2,"__ggsql_aes_y__":18.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.5,"__ggsql_aes_y__":17.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.9,"__ggsql_aes_y__":18.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.4,"__ggsql_aes_y__":17.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":39.2,"__ggsql_aes_y__":21.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.8,"__ggsql_aes_y__":20.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":42.2,"__ggsql_aes_y__":18.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.6,"__ggsql_aes_y__":19.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":39.8,"__ggsql_aes_y__":19.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.5,"__ggsql_aes_y__":18.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.8,"__ggsql_aes_y__":18.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.0,"__ggsql_aes_y__":18.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":44.1,"__ggsql_aes_y__":19.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.0,"__ggsql_aes_y__":16.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":39.6,"__ggsql_aes_y__":18.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":41.1,"__ggsql_aes_y__":19.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":2500,"__ggsql_aes_stroke__":2500,"__ggsql_aes_x__":37.5,"__ggsql_aes_y__":18.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.0,"__ggsql_aes_y__":17.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":42.3,"__ggsql_aes_y__":21.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.6,"__ggsql_aes_y__":17.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":40.1,"__ggsql_aes_y__":18.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":35.0,"__ggsql_aes_y__":17.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":42.0,"__ggsql_aes_y__":19.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":2500,"__ggsql_aes_stroke__":2500,"__ggsql_aes_x__":34.5,"__ggsql_aes_y__":18.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":41.4,"__ggsql_aes_y__":18.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.0,"__ggsql_aes_y__":17.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.6,"__ggsql_aes_y__":18.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":2500,"__ggsql_aes_stroke__":2500,"__ggsql_aes_x__":36.5,"__ggsql_aes_y__":16.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.6,"__ggsql_aes_y__":19.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":35.7,"__ggsql_aes_y__":16.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":41.3,"__ggsql_aes_y__":21.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.6,"__ggsql_aes_y__":17.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":41.1,"__ggsql_aes_y__":18.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":2500,"__ggsql_aes_stroke__":2500,"__ggsql_aes_x__":36.4,"__ggsql_aes_y__":17.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":41.6,"__ggsql_aes_y__":18.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":35.5,"__ggsql_aes_y__":16.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":41.1,"__ggsql_aes_y__":19.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":35.9,"__ggsql_aes_y__":16.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":41.8,"__ggsql_aes_y__":19.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":33.5,"__ggsql_aes_y__":19.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.7,"__ggsql_aes_y__":18.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.6,"__ggsql_aes_y__":17.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.8,"__ggsql_aes_y__":18.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":35.5,"__ggsql_aes_y__":17.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":42.8,"__ggsql_aes_y__":18.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.9,"__ggsql_aes_y__":16.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.2,"__ggsql_aes_y__":19.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.2,"__ggsql_aes_y__":16.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":42.1,"__ggsql_aes_y__":19.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":34.6,"__ggsql_aes_y__":17.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":42.9,"__ggsql_aes_y__":17.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.7,"__ggsql_aes_y__":18.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":35.1,"__ggsql_aes_y__":19.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.3,"__ggsql_aes_y__":17.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":41.3,"__ggsql_aes_y__":20.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.3,"__ggsql_aes_y__":19.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.9,"__ggsql_aes_y__":18.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.3,"__ggsql_aes_y__":19.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.9,"__ggsql_aes_y__":18.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":35.7,"__ggsql_aes_y__":18.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":41.1,"__ggsql_aes_y__":18.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":34.0,"__ggsql_aes_y__":17.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":39.6,"__ggsql_aes_y__":18.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.2,"__ggsql_aes_y__":17.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":40.8,"__ggsql_aes_y__":18.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.1,"__ggsql_aes_y__":18.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":40.3,"__ggsql_aes_y__":18.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":2500,"__ggsql_aes_stroke__":2500,"__ggsql_aes_x__":33.1,"__ggsql_aes_y__":16.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":43.2,"__ggsql_aes_y__":18.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":35.0,"__ggsql_aes_y__":17.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":41.0,"__ggsql_aes_y__":20.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.7,"__ggsql_aes_y__":16.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":37.8,"__ggsql_aes_y__":20.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":2500,"__ggsql_aes_stroke__":2500,"__ggsql_aes_x__":37.9,"__ggsql_aes_y__":18.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.7,"__ggsql_aes_y__":18.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.6,"__ggsql_aes_y__":17.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.2,"__ggsql_aes_y__":20.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.1,"__ggsql_aes_y__":17.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":43.2,"__ggsql_aes_y__":19.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.1,"__ggsql_aes_y__":16.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.6,"__ggsql_aes_y__":20.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.7,"__ggsql_aes_y__":17.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":42.2,"__ggsql_aes_y__":19.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.6,"__ggsql_aes_y__":20.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":42.7,"__ggsql_aes_y__":18.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":2500,"__ggsql_aes_stroke__":2500,"__ggsql_aes_x__":38.6,"__ggsql_aes_y__":17.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.3,"__ggsql_aes_y__":20.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":35.7,"__ggsql_aes_y__":17.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":41.1,"__ggsql_aes_y__":18.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.2,"__ggsql_aes_y__":17.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.7,"__ggsql_aes_y__":19.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.2,"__ggsql_aes_y__":17.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":41.4,"__ggsql_aes_y__":18.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":35.2,"__ggsql_aes_y__":15.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":40.6,"__ggsql_aes_y__":19.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.8,"__ggsql_aes_y__":17.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":41.5,"__ggsql_aes_y__":18.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.0,"__ggsql_aes_y__":17.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":44.1,"__ggsql_aes_y__":18.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.5,"__ggsql_aes_y__":17.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":43.1,"__ggsql_aes_y__":19.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.8,"__ggsql_aes_y__":18.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":37.5,"__ggsql_aes_y__":18.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":38.1,"__ggsql_aes_y__":17.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":41.1,"__ggsql_aes_y__":17.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":35.6,"__ggsql_aes_y__":17.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.2,"__ggsql_aes_y__":20.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.0,"__ggsql_aes_y__":16.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":39.7,"__ggsql_aes_y__":17.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.2,"__ggsql_aes_y__":17.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.6,"__ggsql_aes_y__":17.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":32.1,"__ggsql_aes_y__":15.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.7,"__ggsql_aes_y__":17.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.3,"__ggsql_aes_y__":16.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":39.0,"__ggsql_aes_y__":18.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":39.2,"__ggsql_aes_y__":18.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.6,"__ggsql_aes_y__":18.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.0,"__ggsql_aes_y__":17.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":37.8,"__ggsql_aes_y__":18.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":36.0,"__ggsql_aes_y__":17.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":41.5,"__ggsql_aes_y__":18.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.1,"__ggsql_aes_y__":13.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.0,"__ggsql_aes_y__":16.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":48.7,"__ggsql_aes_y__":14.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.0,"__ggsql_aes_y__":15.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":47.6,"__ggsql_aes_y__":14.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.5,"__ggsql_aes_y__":13.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.4,"__ggsql_aes_y__":14.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":46.7,"__ggsql_aes_y__":15.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":43.3,"__ggsql_aes_y__":13.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":46.8,"__ggsql_aes_y__":15.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":40.9,"__ggsql_aes_y__":13.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":49.0,"__ggsql_aes_y__":16.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.5,"__ggsql_aes_y__":13.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":48.4,"__ggsql_aes_y__":14.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.8,"__ggsql_aes_y__":14.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":49.3,"__ggsql_aes_y__":15.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":42.0,"__ggsql_aes_y__":13.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6500,"__ggsql_aes_stroke__":6500,"__ggsql_aes_x__":49.2,"__ggsql_aes_y__":15.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.2,"__ggsql_aes_y__":14.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":48.7,"__ggsql_aes_y__":15.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.2,"__ggsql_aes_y__":14.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":45.1,"__ggsql_aes_y__":14.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.5,"__ggsql_aes_y__":14.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":46.3,"__ggsql_aes_y__":15.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":42.9,"__ggsql_aes_y__":13.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":46.1,"__ggsql_aes_y__":15.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":44.5,"__ggsql_aes_y__":14.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":47.8,"__ggsql_aes_y__":15.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":48.2,"__ggsql_aes_y__":14.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.0,"__ggsql_aes_y__":15.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":47.3,"__ggsql_aes_y__":15.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":42.8,"__ggsql_aes_y__":14.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":45.1,"__ggsql_aes_y__":14.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6500,"__ggsql_aes_stroke__":6500,"__ggsql_aes_x__":59.6,"__ggsql_aes_y__":17.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":49.1,"__ggsql_aes_y__":14.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":48.4,"__ggsql_aes_y__":16.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":42.6,"__ggsql_aes_y__":13.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":44.4,"__ggsql_aes_y__":17.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":44.0,"__ggsql_aes_y__":13.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":48.7,"__ggsql_aes_y__":15.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":42.7,"__ggsql_aes_y__":13.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":49.6,"__ggsql_aes_y__":16.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.3,"__ggsql_aes_y__":13.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":49.6,"__ggsql_aes_y__":15.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.5,"__ggsql_aes_y__":15.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":43.6,"__ggsql_aes_y__":13.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.5,"__ggsql_aes_y__":13.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.5,"__ggsql_aes_y__":15.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":44.9,"__ggsql_aes_y__":13.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":45.2,"__ggsql_aes_y__":15.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.6,"__ggsql_aes_y__":14.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":48.5,"__ggsql_aes_y__":14.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.1,"__ggsql_aes_y__":14.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.1,"__ggsql_aes_y__":15.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.5,"__ggsql_aes_y__":14.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":45.0,"__ggsql_aes_y__":15.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":43.8,"__ggsql_aes_y__":13.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":45.5,"__ggsql_aes_y__":15.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":43.2,"__ggsql_aes_y__":14.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.4,"__ggsql_aes_y__":15.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.3,"__ggsql_aes_y__":13.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":46.2,"__ggsql_aes_y__":14.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.7,"__ggsql_aes_y__":13.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":54.3,"__ggsql_aes_y__":15.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.8,"__ggsql_aes_y__":14.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":49.8,"__ggsql_aes_y__":16.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.2,"__ggsql_aes_y__":14.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":49.5,"__ggsql_aes_y__":16.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":43.5,"__ggsql_aes_y__":14.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.7,"__ggsql_aes_y__":15.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":47.7,"__ggsql_aes_y__":15.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":46.4,"__ggsql_aes_y__":15.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":48.2,"__ggsql_aes_y__":15.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":46.5,"__ggsql_aes_y__":14.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.4,"__ggsql_aes_y__":15.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":48.6,"__ggsql_aes_y__":16.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":47.5,"__ggsql_aes_y__":14.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6500,"__ggsql_aes_stroke__":6500,"__ggsql_aes_x__":51.1,"__ggsql_aes_y__":16.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.2,"__ggsql_aes_y__":13.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":45.2,"__ggsql_aes_y__":16.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":49.1,"__ggsql_aes_y__":14.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":52.5,"__ggsql_aes_y__":15.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":47.4,"__ggsql_aes_y__":14.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.0,"__ggsql_aes_y__":15.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":44.9,"__ggsql_aes_y__":13.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.8,"__ggsql_aes_y__":17.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":43.4,"__ggsql_aes_y__":14.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":51.3,"__ggsql_aes_y__":14.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":47.5,"__ggsql_aes_y__":14.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":52.1,"__ggsql_aes_y__":17.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":47.5,"__ggsql_aes_y__":15.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":52.2,"__ggsql_aes_y__":17.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":45.5,"__ggsql_aes_y__":14.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":49.5,"__ggsql_aes_y__":16.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":44.5,"__ggsql_aes_y__":14.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.8,"__ggsql_aes_y__":15.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":49.4,"__ggsql_aes_y__":15.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.9,"__ggsql_aes_y__":14.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":48.4,"__ggsql_aes_y__":14.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":51.1,"__ggsql_aes_y__":16.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":48.5,"__ggsql_aes_y__":15.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":55.9,"__ggsql_aes_y__":17.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":47.2,"__ggsql_aes_y__":15.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":49.1,"__ggsql_aes_y__":15.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":47.3,"__ggsql_aes_y__":13.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":46.8,"__ggsql_aes_y__":16.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":41.7,"__ggsql_aes_y__":14.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":53.4,"__ggsql_aes_y__":15.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":43.3,"__ggsql_aes_y__":14.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":48.1,"__ggsql_aes_y__":15.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.5,"__ggsql_aes_y__":15.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":49.8,"__ggsql_aes_y__":15.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":43.5,"__ggsql_aes_y__":15.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":51.5,"__ggsql_aes_y__":16.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.2,"__ggsql_aes_y__":14.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":55.1,"__ggsql_aes_y__":16.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":44.5,"__ggsql_aes_y__":15.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6500,"__ggsql_aes_stroke__":6500,"__ggsql_aes_x__":48.8,"__ggsql_aes_y__":16.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":47.2,"__ggsql_aes_y__":13.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":null,"__ggsql_aes_stroke__":null,"__ggsql_aes_x__":null,"__ggsql_aes_y__":null,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.8,"__ggsql_aes_y__":14.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":50.4,"__ggsql_aes_y__":15.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":45.2,"__ggsql_aes_y__":14.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5500,"__ggsql_aes_stroke__":5500,"__ggsql_aes_x__":49.9,"__ggsql_aes_y__":16.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":46.5,"__ggsql_aes_y__":17.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":50.0,"__ggsql_aes_y__":19.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":51.3,"__ggsql_aes_y__":19.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":45.4,"__ggsql_aes_y__":18.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":52.7,"__ggsql_aes_y__":19.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":45.2,"__ggsql_aes_y__":17.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":46.1,"__ggsql_aes_y__":18.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":51.3,"__ggsql_aes_y__":18.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":46.0,"__ggsql_aes_y__":18.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":51.3,"__ggsql_aes_y__":19.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":46.6,"__ggsql_aes_y__":17.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":51.7,"__ggsql_aes_y__":20.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":47.0,"__ggsql_aes_y__":17.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":52.0,"__ggsql_aes_y__":18.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":45.9,"__ggsql_aes_y__":17.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":50.5,"__ggsql_aes_y__":19.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":50.3,"__ggsql_aes_y__":20.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":58.0,"__ggsql_aes_y__":17.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":46.4,"__ggsql_aes_y__":18.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":49.2,"__ggsql_aes_y__":18.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":42.4,"__ggsql_aes_y__":17.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":48.5,"__ggsql_aes_y__":17.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":2500,"__ggsql_aes_stroke__":2500,"__ggsql_aes_x__":43.2,"__ggsql_aes_y__":16.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":50.6,"__ggsql_aes_y__":19.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":46.7,"__ggsql_aes_y__":17.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":52.0,"__ggsql_aes_y__":19.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":50.5,"__ggsql_aes_y__":18.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":49.5,"__ggsql_aes_y__":19.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":46.4,"__ggsql_aes_y__":17.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":52.8,"__ggsql_aes_y__":20.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":40.9,"__ggsql_aes_y__":16.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":54.2,"__ggsql_aes_y__":20.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":42.5,"__ggsql_aes_y__":16.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":51.0,"__ggsql_aes_y__":18.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":49.7,"__ggsql_aes_y__":18.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":47.5,"__ggsql_aes_y__":16.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":47.6,"__ggsql_aes_y__":18.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":52.0,"__ggsql_aes_y__":20.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":2500,"__ggsql_aes_stroke__":2500,"__ggsql_aes_x__":46.9,"__ggsql_aes_y__":16.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":53.5,"__ggsql_aes_y__":19.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":49.0,"__ggsql_aes_y__":19.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":46.2,"__ggsql_aes_y__":17.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":50.9,"__ggsql_aes_y__":19.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":45.5,"__ggsql_aes_y__":17.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":50.9,"__ggsql_aes_y__":17.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":50.8,"__ggsql_aes_y__":18.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":50.1,"__ggsql_aes_y__":17.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":49.0,"__ggsql_aes_y__":19.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":51.5,"__ggsql_aes_y__":18.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":49.8,"__ggsql_aes_y__":17.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":48.1,"__ggsql_aes_y__":16.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":51.4,"__ggsql_aes_y__":19.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":45.7,"__ggsql_aes_y__":17.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":50.7,"__ggsql_aes_y__":19.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":42.5,"__ggsql_aes_y__":17.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":52.2,"__ggsql_aes_y__":18.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":45.2,"__ggsql_aes_y__":16.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":49.3,"__ggsql_aes_y__":19.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":50.2,"__ggsql_aes_y__":18.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":45.6,"__ggsql_aes_y__":19.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":51.9,"__ggsql_aes_y__":19.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":46.8,"__ggsql_aes_y__":16.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":45.7,"__ggsql_aes_y__":17.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":55.8,"__ggsql_aes_y__":19.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":43.5,"__ggsql_aes_y__":18.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":49.6,"__ggsql_aes_y__":18.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":4500,"__ggsql_aes_stroke__":4500,"__ggsql_aes_x__":50.8,"__ggsql_aes_y__":19.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":3500,"__ggsql_aes_stroke__":3500,"__ggsql_aes_x__":50.2,"__ggsql_aes_y__":18.7,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"__ggsql_aes_stroke__","type":"nominal"},{"field":"__ggsql_aes_fill__","type":"nominal"}],"fill":{"bin":"binned","field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == '6000' ? '6000' : datum.label == '7000' ? '7000' : datum.label == '5000' ? '5000' : datum.label == '4000' ? '4000' : datum.label == '2000' ? '2000' : datum.label == '3000' ? '3000' : datum.label","values":[2000.0,3000.0,4000.0,5000.0,6000.0,7000.0]},"scale":{"domain":[1750.0,7250.0],"range":["#440154","#3a528b","#208f8c","#5cc862","#fde724"]},"title":"body_mass","type":"quantitative"},"stroke":{"bin":"binned","field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == '3000' ? '3000' : datum.label == '4000' ? '4000' : datum.label == '5000' ? '5000' : datum.label == '6000' ? '6000' : datum.label == '7000' ? '7000' : datum.label == '2000' ? '2000' : datum.label","values":[2000.0,3000.0,4000.0,5000.0,6000.0,7000.0]},"scale":{"domain":[1750.0,7250.0],"range":["#440154","#3a528b","#208f8c","#5cc862","#fde724"]},"title":"body_mass","type":"quantitative"},"x":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '40' ? '40' : datum.label == '50' ? '50' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_x__","scale":{"domain":[30.725,60.975],"zero":false},"title":"bill_len","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '20' ? '20' : datum.label == '14' ? '14' : datum.label == '18' ? '18' : datum.label == '16' ? '16' : datum.label","values":[14.0,16.0,18.0,20.0]},"field":"__ggsql_aes_y__","scale":{"domain":[12.68,21.92],"zero":false},"title":"bill_dep","type":"quantitative"}},"mark":{"clip":true,"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1770900251828';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+</section>
+</section>
+<section id="transform" class="level2">
+<h2 class="anchored" data-anchor-id="transform">Transform</h2>
+<p>The transform of the scale both defines how the input data is parsed as well as any mathematical transform applied before it is mapped to the output range. The default transform is deduced from a combination of the mapped data and the aesthetic the scale is applied to.</p>
+<ul>
+<li><code>linear</code>: The default transform unless stated otherwise. Creates a linear mapping between the input and output range.</li>
+<li><code>log</code>/<code>log2</code>/<code>ln</code>: Creates a mapping between the logarithm of the input to the output range.</li>
+<li><code>exp10</code>/<code>exp2</code>/<code>exp</code>: Inverse of the log transforms</li>
+<li><code>sqrt</code>: Creates a mapping between the square root of the input to the output range.</li>
+<li><code>square</code>: Inverse of <code>sqrt</code> transform</li>
+<li><code>asinh</code>: Creates a mapping between the inverse hyperbolic sine of the input to the output range. This approaches the natural logarithm but is well defined for negative values as well, which can make it a good choice for transforming values that exhibit logarithmic growth but span positive and negative values.</li>
+<li><code>pseudo_log</code>/<code>pseudo_log2</code>/<code>pseudo_ln</code>: A slightly different transform that exhibit the same characteristics as <code>asinh</code> but where it is possible to choose the base of the logarithm it should approach.</li>
+<li><code>integer</code>: Like <code>linear</code> but will convert input to integer by removing the decimal part.</li>
+<li><code>date</code>: Default when mapping a DATE column. Like <code>linear</code> but will cast input to date if not already (for strings this assumes the date is formatted as YYYY-MM-DD, for numbers it will be the number of days since 1970-01-01).</li>
+<li><code>datetime</code>: Default when mapping a DATETIME column. Like <code>linear</code> but will cast input to datetime if not already (for strings a range of different permutations of the YYYY-MM-DDTHH:MM:SS.fTZ is tried, for number it will be the number of microseconds since 1970-01-01T00:00:00).</li>
+<li><code>time</code>: Default when mapping a TIME column. Like <code>linear</code> but will cast input to time if not already (for strings it assumes the time is formatted as HH:MM:SS.f with both the fractional and second part optional, for number it will be the number of nanoseconds since start of measurement).</li>
+</ul>
+<section id="breaks" class="level3">
+<h3 class="anchored" data-anchor-id="breaks">Breaks</h3>
+<p>If not provided explicitly by the user the breaks for the scales will be calculated for you. The transform will be responsible for the algorithm used to find good break values. It will use the breaks setting and the pretty setting and make a best effort at honouring this.</p>
+<p>Since breaks are not just presentational as it is with continuous scales the choice of transform and break calculation can impact further processing in the pipeline and change its result.</p>
+<ul>
+<li><code>linear</code>:
+<ul>
+<li><code>pretty =&gt; true</code>: Will use Wilkinsons Extended algorithm to attempt to find nice breaks in the given interval close to the number of breaks requested</li>
+<li><code>pretty =&gt; false</code>: Will produce the requested number of evenly spaced breaks within the scale range</li>
+</ul></li>
+<li><code>log</code>/<code>log2</code>/<code>ln</code>:
+<ul>
+<li><code>pretty =&gt; true</code>: Will use the 1-2-5 pattern and thin down to approximately the requested number of breaks</li>
+<li><code>pretty =&gt; false</code>: Breaks will be exclusively at the power of the base (e.g.&nbsp;1, 10, 100, 1000 for log10)</li>
+</ul></li>
+<li><code>exp10</code>/<code>exp2</code>/<code>exp</code>: Same logic as the log breaks but in the inverse direction</li>
+<li><code>sqrt</code>/<code>square</code>: Like <code>linear</code> but the range is first converted to sqrt space and the breaks are then converted back</li>
+<li><code>asinh</code>/<code>pseudo_log</code>/<code>pseudo_log2</code>/<code>pseudo_ln</code>: Like <code>log</code> but includes zero and negates the breaks for the negative part</li>
+<li><code>integer</code>: Like <code>linear</code> except disallowing breaks at fractional parts</li>
+<li><code>date</code>/<code>datetime</code>/<code>time</code>:
+<ul>
+<li><code>breaks =&gt; &lt;interval&gt;</code>: If breaks are given as an interval (e.g.&nbsp;<code>week</code>, <code>30 seconds</code> or <code>5 years</code>) then the breaks will get that spacing aligned at the interval boundary (Jan 1 for years, etc). This ignores the <code>pretty</code> setting</li>
+<li><code>pretty =&gt; true</code>: An appropriate interval is chosen that approximates the requested number of breaks and then used as above</li>
+<li><code>pretty =&gt; false</code>: Linear spacing in integer space as close to the requested number of breaks</li>
+</ul></li>
+</ul>
+</section>
+<section id="the-size-aesthetic" class="level3">
+<h3 class="anchored" data-anchor-id="the-size-aesthetic">The size aesthetic</h3>
+<p>The size aesthetic requires special attention. To the user, size is given as radius in points (1/72 inch), but internally the provided values are converted to area, and the scale operates on area transformed values. This means that while you provide the output range in radius, the scaling is proportional to the area, even when using the default linear transform. While this seems somewhat complicated we have chosen this approach to satisfy two opposing needs:</p>
+<ol type="1">
+<li>Humans are better at understanding a size when provided as radius/diameter</li>
+<li>When making comparison between shape sizes we should compare area</li>
+</ol>
+<p>If you wish to scale by the radius (not advised) you should do so using the <code>square</code> transform (<code>SCALE BINNED size VIA square</code>)</p>
+</section>
+<section id="examples-2" class="level3">
+<h3 class="anchored" data-anchor-id="examples-2">Examples</h3>
+<section id="turn-off-pretty-to-get-exact-bins-between-range" class="level4">
+<h4 class="anchored" data-anchor-id="turn-off-pretty-to-get-exact-bins-between-range">Turn off pretty to get exact bins between range</h4>
+<div id="48b97118" class="cell" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> body_mass <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> pretty <span class="op">=&gt;</span> false</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<div id="vis-1770900251840"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x2__":3840.0,"__ggsql_aes_x__":3180.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":119,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":3180.0,"__ggsql_aes_x__":2520.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":23,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":5820.0,"__ggsql_aes_x__":5160.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":44,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":6480.0,"__ggsql_aes_x__":5820.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":null,"__ggsql_aes_x__":null,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":5160.0,"__ggsql_aes_x__":4500.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":65,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":4500.0,"__ggsql_aes_x__":3840.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == '6480' ? '6480' : datum.label == '3840' ? '3840' : datum.label == '2520' ? '2520' : datum.label == '3180' ? '3180' : datum.label == '4500' ? '4500' : datum.label == '5160' ? '5160' : datum.label == '5820' ? '5820' : datum.label","values":[2520.0,3180.0,3840.0,4500.0,5160.0,5820.0,6480.0]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":[2322.0,6678.0],"zero":false},"title":"body_mass","type":"quantitative"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '100' ? '100' : datum.label == '75' ? '75' : datum.label == '0' ? '0' : datum.label == '25' ? '25' : datum.label == '50' ? '50' : datum.label","values":[0.0,25.0,50.0,75.0,100.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-5.95,124.95],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '100' ? '100' : datum.label == '75' ? '75' : datum.label == '0' ? '0' : datum.label == '25' ? '25' : datum.label == '50' ? '50' : datum.label","values":[0.0,25.0,50.0,75.0,100.0]},"scale":{"domain":[-5.95,124.95]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1770900251840';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="use-a-date-transform-to-bin-on-months" class="level4">
+<h4 class="anchored" data-anchor-id="use-a-date-transform-to-bin-on-months">Use a date transform to bin on months</h4>
+<div id="8d6ee81b" class="cell" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Temp <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">boxplot</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span> <span class="kw">VIA</span> <span class="dt">date</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="st">'month'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<div id="vis-1770900251858"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x2__":"1973-08-01","__ggsql_aes_x__":"1973-07-01","__ggsql_aes_y2__":86.5,"__ggsql_aes_y__":81.5,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_x2__":"1973-10-01","__ggsql_aes_x__":"1973-09-01","__ggsql_aes_y2__":81.5,"__ggsql_aes_y__":71.0,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_x2__":"1973-07-01","__ggsql_aes_x__":"1973-06-01","__ggsql_aes_y2__":83.5,"__ggsql_aes_y__":76.0,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_x2__":"1973-06-01","__ggsql_aes_x__":"1973-05-01","__ggsql_aes_y2__":70.5,"__ggsql_aes_y__":60.0,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_x2__":"1973-09-01","__ggsql_aes_x__":"1973-08-01","__ggsql_aes_y2__":89.5,"__ggsql_aes_y__":79.0,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_x2__":"1973-10-01","__ggsql_aes_x__":"1973-09-01","__ggsql_aes_y2__":63.0,"__ggsql_aes_y__":71.0,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_x2__":"1973-07-01","__ggsql_aes_x__":"1973-06-01","__ggsql_aes_y2__":65.0,"__ggsql_aes_y__":76.0,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_x2__":"1973-06-01","__ggsql_aes_x__":"1973-05-01","__ggsql_aes_y2__":56.0,"__ggsql_aes_y__":60.0,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_x2__":"1973-09-01","__ggsql_aes_x__":"1973-08-01","__ggsql_aes_y2__":72.0,"__ggsql_aes_y__":79.0,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_x2__":"1973-08-01","__ggsql_aes_x__":"1973-07-01","__ggsql_aes_y2__":74.0,"__ggsql_aes_y__":81.5,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_x2__":"1973-08-01","__ggsql_aes_x__":"1973-07-01","__ggsql_aes_y2__":null,"__ggsql_aes_y__":84.0,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_x2__":"1973-10-01","__ggsql_aes_x__":"1973-09-01","__ggsql_aes_y2__":null,"__ggsql_aes_y__":76.5,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_x2__":"1973-07-01","__ggsql_aes_x__":"1973-06-01","__ggsql_aes_y2__":null,"__ggsql_aes_y__":78.5,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_x2__":"1973-06-01","__ggsql_aes_x__":"1973-05-01","__ggsql_aes_y2__":null,"__ggsql_aes_y__":66.0,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_x2__":"1973-09-01","__ggsql_aes_x__":"1973-08-01","__ggsql_aes_y2__":null,"__ggsql_aes_y__":83.5,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_x2__":"1973-08-01","__ggsql_aes_x__":"1973-07-01","__ggsql_aes_y2__":null,"__ggsql_aes_y__":73.0,"__ggsql_source__":"__ggsql_layer_0__outlier"},{"__ggsql_aes_x2__":"1973-08-01","__ggsql_aes_x__":"1973-07-01","__ggsql_aes_y2__":92.0,"__ggsql_aes_y__":86.5,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_x2__":"1973-10-01","__ggsql_aes_x__":"1973-09-01","__ggsql_aes_y2__":93.0,"__ggsql_aes_y__":81.5,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_x2__":"1973-07-01","__ggsql_aes_x__":"1973-06-01","__ggsql_aes_y2__":93.0,"__ggsql_aes_y__":83.5,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_x2__":"1973-06-01","__ggsql_aes_x__":"1973-05-01","__ggsql_aes_y2__":81.0,"__ggsql_aes_y__":70.5,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_x2__":"1973-09-01","__ggsql_aes_x__":"1973-08-01","__ggsql_aes_y2__":97.0,"__ggsql_aes_y__":89.5,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"}]},"height":"container","layer":[{"encoding":{"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'outlier' ? 'outlier' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"timeFormat(datum.value, '%Y-%m-%d') == '1973-10-01' ? '1973-10-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-08-01' ? '1973-08-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-06-01' ? '1973-06-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-04-01' ? '1973-04-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-07-01' ? '1973-07-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-05-01' ? '1973-05-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-09-01' ? '1973-09-01' : datum.label","values":["1973-04-01","1973-05-01","1973-06-01","1973-07-01","1973-08-01","1973-09-01","1973-10-01"]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":["1973-03-22","1973-10-10"],"zero":false},"title":"Date","type":"temporal"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '90' ? '90' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_y__","scale":{"domain":[53.95,99.05],"zero":false},"title":"Temp","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '90' ? '90' : datum.label","values":[60.0,70.0,80.0,90.0]},"scale":{"domain":[53.95,99.05]},"title":null,"type":"quantitative"}},"mark":{"stroke":"black","strokeWidth":1.0,"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_0__outlier","field":"__ggsql_source__"}}]},{"encoding":{"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'outlier' ? 'outlier' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"timeFormat(datum.value, '%Y-%m-%d') == '1973-10-01' ? '1973-10-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-08-01' ? '1973-08-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-06-01' ? '1973-06-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-04-01' ? '1973-04-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-07-01' ? '1973-07-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-05-01' ? '1973-05-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-09-01' ? '1973-09-01' : datum.label","values":["1973-04-01","1973-05-01","1973-06-01","1973-07-01","1973-08-01","1973-09-01","1973-10-01"]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":["1973-03-22","1973-10-10"],"zero":false},"title":"Date","type":"temporal"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '90' ? '90' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_y__","scale":{"domain":[53.95,99.05],"zero":false},"title":"Temp","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '90' ? '90' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_y2__","scale":{"domain":[53.95,99.05],"zero":false},"title":null,"type":"quantitative"}},"mark":{"size":1.0,"stroke":"black","type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__lower_whisker","field":"__ggsql_source__"}}]},{"encoding":{"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'outlier' ? 'outlier' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"timeFormat(datum.value, '%Y-%m-%d') == '1973-10-01' ? '1973-10-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-08-01' ? '1973-08-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-06-01' ? '1973-06-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-04-01' ? '1973-04-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-07-01' ? '1973-07-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-05-01' ? '1973-05-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-09-01' ? '1973-09-01' : datum.label","values":["1973-04-01","1973-05-01","1973-06-01","1973-07-01","1973-08-01","1973-09-01","1973-10-01"]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":["1973-03-22","1973-10-10"],"zero":false},"title":"Date","type":"temporal"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '90' ? '90' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_y__","scale":{"domain":[53.95,99.05],"zero":false},"title":"Temp","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '90' ? '90' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_y2__","scale":{"domain":[53.95,99.05],"zero":false},"title":null,"type":"quantitative"}},"mark":{"size":1.0,"stroke":"black","type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__upper_whisker","field":"__ggsql_source__"}}]},{"encoding":{"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'outlier' ? 'outlier' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"timeFormat(datum.value, '%Y-%m-%d') == '1973-10-01' ? '1973-10-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-08-01' ? '1973-08-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-06-01' ? '1973-06-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-04-01' ? '1973-04-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-07-01' ? '1973-07-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-05-01' ? '1973-05-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-09-01' ? '1973-09-01' : datum.label","values":["1973-04-01","1973-05-01","1973-06-01","1973-07-01","1973-08-01","1973-09-01","1973-10-01"]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":["1973-03-22","1973-10-10"],"zero":false},"title":"Date","type":"temporal"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '90' ? '90' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_y__","scale":{"domain":[53.95,99.05],"zero":false},"title":"Temp","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '90' ? '90' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_y2__","scale":{"domain":[53.95,99.05],"zero":false},"title":null,"type":"quantitative"}},"mark":{"align":"center","color":"#FFFFFF00","stroke":"black","strokeWidth":1.0,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__box","field":"__ggsql_source__"}}]},{"encoding":{"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'outlier' ? 'outlier' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"timeFormat(datum.value, '%Y-%m-%d') == '1973-10-01' ? '1973-10-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-08-01' ? '1973-08-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-06-01' ? '1973-06-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-04-01' ? '1973-04-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-07-01' ? '1973-07-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-05-01' ? '1973-05-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-09-01' ? '1973-09-01' : datum.label","values":["1973-04-01","1973-05-01","1973-06-01","1973-07-01","1973-08-01","1973-09-01","1973-10-01"]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":["1973-03-22","1973-10-10"],"zero":false},"title":"Date","type":"temporal"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '90' ? '90' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_y__","scale":{"domain":[53.95,99.05],"zero":false},"title":"Temp","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '90' ? '90' : datum.label","values":[60.0,70.0,80.0,90.0]},"scale":{"domain":[53.95,99.05]},"title":null,"type":"quantitative"}},"mark":{"align":"center","stroke":"black","strokeWidth":1.0,"type":"tick","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__median","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1770900251858';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+</section>
+</section>
+<section id="settings" class="level2">
+<h2 class="anchored" data-anchor-id="settings">Settings</h2>
+<p>The following settings are recognised by binned scales:</p>
+<ul>
+<li><code>expand</code> (only for <code>x</code>/<code>y</code>): Either a scalar number or 2-length array of numbers. Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to <code>0.05</code> (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e.&nbsp;if setting the range as <code>SCALE x FROM [0, null]</code> expansion will only be applied to the upper range.</li>
+<li><code>oob</code>: How should values outside of the scale input range be treated. One of <code>'censor'</code> (set to <code>null</code>), or <code>'squish'</code> (set to the nearest bin). Default is <code>'censor'</code>. When set to <code>'squish'</code> the terminal bin labels will be removed to reflect that they extend to -Inf and Inf.</li>
+<li><code>breaks</code>: Either a scalar as described in <a href="#breaks">the section on breaks</a>, or an array of values to place breaks at. Defaults to <code>5</code>.</li>
+<li><code>pretty</code>: A boolean indicating which algorithm to use for automatic calculation of breaks as described in <a href="#breaks">the section on breaks</a>. Defaults to <code>true</code>.</li>
+<li><code>reverse</code>: A boolean indicating whether the scale direction should be reversed. Defaults to <code>false</code>.</li>
+<li><code>closed</code>: Either <code>'left'</code> or <code>'right'</code>. Determines which bin a value will be part of when it lies on the boundary. Defaults to <code>'left'</code></li>
+</ul>
+<section id="examples-3" class="level3">
+<h3 class="anchored" data-anchor-id="examples-3">Examples</h3>
+<section id="use-oob-squish-to-add-data-outside-range-to-terminal-bins" class="level4">
+<h4 class="anchored" data-anchor-id="use-oob-squish-to-add-data-outside-range-to-terminal-bins">Use oob =&gt; ‘squish’ to add data outside range to terminal bins</h4>
+<div id="9a0edfec" class="cell" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> body_mass <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> </span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>        oob <span class="op">=&gt;</span> <span class="st">'squish'</span>, </span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>        <span class="at">breaks</span> <span class="op">=&gt;</span> [<span class="dv">4000</span>, <span class="dv">4250</span>, <span class="dv">4500</span>, <span class="dv">4750</span>, <span class="dv">5000</span>, <span class="dv">5250</span>, <span class="dv">5500</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<div id="vis-1770900251869"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x2__":4500.0,"__ggsql_aes_x__":4250.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":31,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":5000.0,"__ggsql_aes_x__":4750.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":23,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":null,"__ggsql_aes_x__":null,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":5250.0,"__ggsql_aes_x__":5000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":18,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":4750.0,"__ggsql_aes_x__":4500.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":28,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":4250.0,"__ggsql_aes_x__":4000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":193,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":5500.0,"__ggsql_aes_x__":5250.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":49,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == '4750' ? '4750' : datum.label == '5500' ? '' : datum.label == '5000' ? '5000' : datum.label == '4000' ? '' : datum.label == '4250' ? '4250' : datum.label == '4500' ? '4500' : datum.label == '5250' ? '5250' : datum.label","values":[4250.0,4500.0,4750.0,5000.0,5250.0]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":[3925.0,5575.0],"zero":false},"title":"body_mass","type":"quantitative"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '200' ? '200' : datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label == '100' ? '100' : datum.label","values":[0.0,50.0,100.0,150.0,200.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-9.65,202.65],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '200' ? '200' : datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label == '100' ? '100' : datum.label","values":[0.0,50.0,100.0,150.0,200.0]},"scale":{"domain":[-9.65,202.65]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1770900251869';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+</section>
+</section>
+<section id="renaming" class="level2">
+<h2 class="anchored" data-anchor-id="renaming">Renaming</h2>
+<p>Breaks are generally named by their value. However, you may wish to rename one, several, or all of these. The <code>RENAMING</code> clause allows you to do that both by directly renaming a specific break or by providing a formatting function.</p>
+<section id="direct-renaming" class="level3">
+<h3 class="anchored" data-anchor-id="direct-renaming">Direct renaming</h3>
+<p>When you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding <code>RENAMING 0 =&gt; 'Nil'</code> will ensure that if there is a break at 0 it will appear as “Nil” on the legend/axis</p>
+</section>
+<section id="label-formatting" class="level3">
+<h3 class="anchored" data-anchor-id="label-formatting">Label formatting</h3>
+<p>Besides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g.&nbsp;add a prefix or suffix. The syntax for this is <code>RENAMING * =&gt; '... {} ...'</code>. The current label will be inserted into the <code>{}</code> to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to binned scales are the <code>:time</code> and <code>:num</code> formatters which lets you control how temporal and numeric values are presented. You can read more about these formatters in <a href="../../../syntax/clause/scale.html#break-formatting">the break formatting section of the <code>SCALE</code> documentation</a></p>
+<p>You can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.</p>
+</section>
+<section id="examples-4" class="level3">
+<h3 class="anchored" data-anchor-id="examples-4">Examples</h3>
+<section id="rename-a-select-break" class="level4">
+<h4 class="anchored" data-anchor-id="rename-a-select-break">Rename a select break</h4>
+<div id="6fd082b5" class="cell" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span> </span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    RENAMING <span class="dv">50</span> <span class="op">=&gt;</span> <span class="st">'Fifty'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<div id="vis-1770900251880"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x2__":18.0,"__ggsql_aes_x__":16.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":104,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":16.0,"__ggsql_aes_x__":14.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":null,"__ggsql_aes_x__":null,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":20.0,"__ggsql_aes_x__":18.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":112,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":22.0,"__ggsql_aes_x__":20.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":23,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":14.0,"__ggsql_aes_x__":12.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":21,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == '14' ? '14' : datum.label == '16' ? '16' : datum.label == '18' ? '18' : datum.label == '20' ? '20' : datum.label == '12' ? '12' : datum.label == '50' ? 'Fifty' : datum.label == '22' ? '22' : datum.label","values":[12.0,14.0,16.0,18.0,20.0,22.0]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":[11.5,22.5],"zero":false},"title":"bill_dep","type":"quantitative"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label == '0' ? '0' : datum.label == '25' ? '25' : datum.label == '75' ? '75' : datum.label","values":[0.0,25.0,50.0,75.0,100.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-5.6000000000000005,117.6],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label == '0' ? '0' : datum.label == '25' ? '25' : datum.label == '75' ? '75' : datum.label","values":[0.0,25.0,50.0,75.0,100.0]},"scale":{"domain":[-5.6000000000000005,117.6]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1770900251880';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="adding-suffix-to-break-labels" class="level4">
+<h4 class="anchored" data-anchor-id="adding-suffix-to-break-labels">Adding suffix to break labels</h4>
+<div id="4859a876" class="cell" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span> </span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    RENAMING <span class="op">*</span> <span class="op">=&gt;</span> <span class="st">'{} mm'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<div id="vis-1770900251890"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x2__":18.0,"__ggsql_aes_x__":16.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":104,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":16.0,"__ggsql_aes_x__":14.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":null,"__ggsql_aes_x__":null,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":20.0,"__ggsql_aes_x__":18.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":112,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":22.0,"__ggsql_aes_x__":20.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":23,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":14.0,"__ggsql_aes_x__":12.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":21,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == '20' ? '20 mm' : datum.label == '22' ? '22 mm' : datum.label == '12' ? '12 mm' : datum.label == '18' ? '18 mm' : datum.label == '16' ? '16 mm' : datum.label == '14' ? '14 mm' : datum.label","values":[12.0,14.0,16.0,18.0,20.0,22.0]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":[11.5,22.5],"zero":false},"title":"bill_dep","type":"quantitative"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '25' ? '25' : datum.label == '0' ? '0' : datum.label == '50' ? '50' : datum.label == '75' ? '75' : datum.label == '100' ? '100' : datum.label","values":[0.0,25.0,50.0,75.0,100.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-5.6000000000000005,117.6],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '25' ? '25' : datum.label == '0' ? '0' : datum.label == '50' ? '50' : datum.label == '75' ? '75' : datum.label == '100' ? '100' : datum.label","values":[0.0,25.0,50.0,75.0,100.0]},"scale":{"domain":[-5.6000000000000005,117.6]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1770900251890';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="using-a-formatter-to-control-number-formats" class="level4">
+<h4 class="anchored" data-anchor-id="using-a-formatter-to-control-number-formats">Using a formatter to control number formats</h4>
+<div id="e5ae094e" class="cell" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    RENAMING <span class="op">*</span> <span class="op">=&gt;</span> <span class="st">'{:num %.1f}'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<div id="vis-1770900251901"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x2__":18.0,"__ggsql_aes_x__":16.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":104,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":16.0,"__ggsql_aes_x__":14.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":null,"__ggsql_aes_x__":null,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":20.0,"__ggsql_aes_x__":18.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":112,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":22.0,"__ggsql_aes_x__":20.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":23,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":14.0,"__ggsql_aes_x__":12.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":21,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == '20' ? '20.0' : datum.label == '14' ? '14.0' : datum.label == '18' ? '18.0' : datum.label == '22' ? '22.0' : datum.label == '12' ? '12.0' : datum.label == '16' ? '16.0' : datum.label","values":[12.0,14.0,16.0,18.0,20.0,22.0]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":[11.5,22.5],"zero":false},"title":"bill_dep","type":"quantitative"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '25' ? '25' : datum.label == '0' ? '0' : datum.label == '75' ? '75' : datum.label == '100' ? '100' : datum.label","values":[0.0,25.0,50.0,75.0,100.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-5.6000000000000005,117.6],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '25' ? '25' : datum.label == '0' ? '0' : datum.label == '75' ? '75' : datum.label == '100' ? '100' : datum.label","values":[0.0,25.0,50.0,75.0,100.0]},"scale":{"domain":[-5.6000000000000005,117.6]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1770900251901';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+
+
+</section>
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/ggsql\.org");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>
