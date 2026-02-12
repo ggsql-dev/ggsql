@@ -163,7 +163,7 @@ pub fn validate(query: &str) -> Result<Validated> {
     }
 
     // Build AST from existing tree for validation
-    let plots = match parser::build_ast(&source_tree) {
+    let plots = match parser::build_ast(&source_tree.tree, query) {
         Ok(p) => p,
         Err(e) => {
             errors.push(ValidationError {

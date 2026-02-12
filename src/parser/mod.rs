@@ -46,21 +46,21 @@ pub mod splitter;
 
 pub use builder::build_ast;
 pub use source_tree::SourceTree;
-pub use splitter::split_from_tree;
+pub use splitter::{split_from_tree, split_query};
 
 /// Main entry point for parsing ggsql queries
 ///
 /// Takes a complete ggsql query (SQL + VISUALISE) and returns a vector of
 /// parsed specifications (one per VISUALISE statement).
 pub fn parse_query(query: &str) -> Result<Vec<Plot>> {
-    // Parse the full query and create SourceTree (single parse!)
+    // Parse the full query and create SourceTree
     let source_tree = SourceTree::new(query)?;
 
     // Validate the parse tree has no errors
     source_tree.validate()?;
 
-    // Build AST from the source tree
-    let specs = builder::build_ast(&source_tree)?;
+    // Build AST from the parse tree
+    let specs = builder::build_ast(&source_tree.tree, query)?;
 
     Ok(specs)
 }

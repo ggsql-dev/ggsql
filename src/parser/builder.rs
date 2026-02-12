@@ -587,7 +587,7 @@ fn parse_literal_value(node: &Node, source: &str) -> Result<AestheticValue> {
             "string" => {
                 let text = get_node_text(&child, source);
                 let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                return Ok(AestheticValue::Literal(LiteralValue::String(
+                return Ok(AestheticValue::Literal(ParameterValue::String(
                     unquoted.to_string(),
                 )));
             }
@@ -596,12 +596,12 @@ fn parse_literal_value(node: &Node, source: &str) -> Result<AestheticValue> {
                 let num = text.parse::<f64>().map_err(|e| {
                     GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
                 })?;
-                return Ok(AestheticValue::Literal(LiteralValue::Number(num)));
+                return Ok(AestheticValue::Literal(ParameterValue::Number(num)));
             }
             "boolean" => {
                 let text = get_node_text(&child, source);
                 let bool_val = text == "true";
-                return Ok(AestheticValue::Literal(LiteralValue::Boolean(bool_val)));
+                return Ok(AestheticValue::Literal(ParameterValue::Boolean(bool_val)));
             }
             _ => {}
         }
