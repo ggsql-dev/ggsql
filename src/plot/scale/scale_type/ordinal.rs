@@ -27,7 +27,7 @@ impl ScaleTypeTrait for Ordinal {
         match dtype {
             // Accept discrete types
             DataType::String | DataType::Boolean | DataType::Categorical(_, _) => Ok(()),
-            // Reject numeric types
+            // Accept integer types (useful for ordered categories like years, rankings)
             DataType::Int8
             | DataType::Int16
             | DataType::Int32
@@ -35,10 +35,13 @@ impl ScaleTypeTrait for Ordinal {
             | DataType::UInt8
             | DataType::UInt16
             | DataType::UInt32
-            | DataType::UInt64
-            | DataType::Float32
-            | DataType::Float64 => Err("Ordinal scale cannot be used with numeric data. \
-                 Use CONTINUOUS or BINNED scale type instead, or ensure the column contains categorical data.".to_string()),
+            | DataType::UInt64 => Ok(()),
+            // Reject float types (use CONTINUOUS or BINNED instead)
+            DataType::Float32 | DataType::Float64 => Err(
+                "Ordinal scale cannot be used with floating-point data. \
+                 Use CONTINUOUS or BINNED scale type instead."
+                    .to_string(),
+            ),
             // Reject temporal types
             DataType::Date => Err("Ordinal scale cannot be used with Date data. \
                  Use CONTINUOUS scale type instead (dates are treated as continuous temporal data).".to_string()),
@@ -49,7 +52,7 @@ impl ScaleTypeTrait for Ordinal {
             // Other types - provide generic message
             other => Err(format!(
                 "Ordinal scale cannot be used with {:?} data. \
-                 Ordinal scales require categorical data (String, Boolean, or Categorical).",
+                 Ordinal scales require categorical data (String, Boolean, Integer, or Categorical).",
                 other
             )),
         }
@@ -60,11 +63,12 @@ impl ScaleTypeTrait for Ordinal {
     }
 
     fn allowed_transforms(&self) -> &'static [TransformKind] {
-        // Same as Discrete - categorical transforms only
+        // Categorical transforms plus Integer for ordered numeric categories
         &[
             TransformKind::Identity,
             TransformKind::String,
             TransformKind::Bool,
+            TransformKind::Integer,
         ]
     }
 
@@ -282,6 +286,7 @@ impl ScaleTypeTrait for Ordinal {
             .filter_map(|e| match e {
                 ArrayElement::String(s) => Some(format!("'{}'", s.replace('\'', "''"))),
                 ArrayElement::Boolean(b) => Some(if *b { "true".into() } else { "false".into() }),
+                ArrayElement::Number(n) => Some(n.to_string()),
                 _ => None,
             })
             .collect();
@@ -331,6 +336,7 @@ mod tests {
         assert!(allowed.contains(&TransformKind::Identity));
         assert!(allowed.contains(&TransformKind::String));
         assert!(allowed.contains(&TransformKind::Bool));
+        assert!(allowed.contains(&TransformKind::Integer));
         assert!(!allowed.contains(&TransformKind::Log10));
     }
 
@@ -555,18 +561,30 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_dtype_rejects_numeric() {
+    fn test_validate_dtype_accepts_integer() {
         use super::super::ScaleTypeTrait;
         use polars::prelude::DataType;
 
         let ordinal = Ordinal;
-        let result = ordinal.validate_dtype(&DataType::Int64);
+        // Integers are valid for ordinal scales (years, rankings, etc.)
+        assert!(ordinal.validate_dtype(&DataType::Int32).is_ok());
+        assert!(ordinal.validate_dtype(&DataType::Int64).is_ok());
+        assert!(ordinal.validate_dtype(&DataType::UInt8).is_ok());
+    }
+
+    #[test]
+    fn test_validate_dtype_rejects_float() {
+        use super::super::ScaleTypeTrait;
+        use polars::prelude::DataType;
+
+        let ordinal = Ordinal;
+        let result = ordinal.validate_dtype(&DataType::Float64);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("numeric"));
+        assert!(err.contains("floating-point"));
         assert!(err.contains("CONTINUOUS") || err.contains("BINNED"));
 
-        let result = ordinal.validate_dtype(&DataType::Float64);
+        let result = ordinal.validate_dtype(&DataType::Float32);
         assert!(result.is_err());
     }
 
