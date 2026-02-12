@@ -234,6 +234,15 @@ pub fn has_executable_sql(source_tree: &SourceTree) -> bool {
         }
     }
 
+    // Check for VISUALISE FROM (which injects SELECT * FROM <source>)
+    let visualise_from = r#"
+        (visualise_statement
+          (from_clause) @from)
+    "#;
+    if source_tree.find_node(&root, visualise_from).is_some() {
+        return true;
+    }
+
     false
 }
 
