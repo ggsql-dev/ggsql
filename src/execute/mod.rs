@@ -492,11 +492,16 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
 ) -> Result<PreparedData> {
     let execute_query = |sql: &str| reader.execute_sql(sql);
     let type_names = reader.sql_type_names();
-    // Split query into SQL and viz portions
-    let (sql_part, viz_part) = parser::split_query(query)?;
 
-    // Parse visualization portion
-    let mut specs = parser::parse_query(query)?;
+    // Parse once and create SourceTree
+    let source_tree = parser::SourceTree::new(query)?;
+    source_tree.validate()?;
+
+    // Split query into SQL and viz portions using existing tree
+    let (sql_part, viz_part) = parser::split_from_tree(&source_tree)?;
+
+    // Build AST from existing tree
+    let mut specs = parser::build_ast(&source_tree.tree, query)?;
 
     if specs.is_empty() {
         return Err(GgsqlError::ValidationError(
@@ -511,8 +516,8 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
         ));
     }
 
-    // Extract CTE definitions from the global SQL (in declaration order)
-    let ctes = cte::extract_ctes(&sql_part);
+    // Extract CTE definitions from the source tree (in declaration order)
+    let ctes = cte::extract_ctes(&source_tree);
 
     // Materialize CTEs as temporary tables
     // This creates __ggsql_cte_<name>__ tables that persist for the session
@@ -527,7 +532,7 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
     // Track whether we actually create the temp table (depends on transform_global_sql succeeding)
     let mut has_global_table = false;
     if !sql_part.trim().is_empty() {
-        if let Some(transformed_sql) = cte::transform_global_sql(&sql_part, &materialized_ctes) {
+        if let Some(transformed_sql) = cte::transform_global_sql(&source_tree, &sql_part, &materialized_ctes) {
             // Create temp table for global result
             let create_global = format!(
                 "CREATE OR REPLACE TEMP TABLE {} AS {}",

@@ -32,9 +32,9 @@ pub fn split_from_tree(source_tree: &SourceTree) -> Result<(String, String)> {
     let root = source_tree.root();
 
     // Check if tree-sitter found any VISUALISE statements
-    let has_visualise_statement = root
-        .children(&mut root.walk())
-        .any(|n| n.kind() == "visualise_statement");
+    let has_visualise_statement = source_tree
+        .find_node(&root, "(visualise_statement) @viz")
+        .is_some();
 
     // If there's no VISUALISE statement, check if query contains VISUALISE FROM
     // This catches malformed queries like "CREATE TABLE x VISUALISE FROM x" (no semicolon)
@@ -51,14 +51,9 @@ pub fn split_from_tree(source_tree: &SourceTree) -> Result<(String, String)> {
 
     // Find the first VISUALISE statement to determine split point
     // Use byte offset instead of node boundaries to handle parse errors in SQL portion
-    let mut first_viz_start: Option<usize> = None;
-    let mut cursor = root.walk();
-    for child in root.children(&mut cursor) {
-        if child.kind() == "visualise_statement" {
-            first_viz_start = Some(child.start_byte());
-            break;
-        }
-    }
+    let first_viz_start = source_tree
+        .find_node(&root, "(visualise_statement) @viz")
+        .map(|node| node.start_byte());
 
     let (sql_text, viz_text) = if let Some(viz_start) = first_viz_start {
         // Split at the first VISUALISE keyword
