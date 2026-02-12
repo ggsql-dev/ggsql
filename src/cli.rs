@@ -11,7 +11,7 @@ use std::path::PathBuf;
 #[cfg(feature = "duckdb")]
 use ggsql::reader::{DuckDBReader, Reader};
 #[cfg(feature = "duckdb")]
-use ggsql::validate;
+use ggsql::validate::validate;
 
 #[cfg(feature = "vegalite")]
 use ggsql::writer::{VegaLiteWriter, Writer};
