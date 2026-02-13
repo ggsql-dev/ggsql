@@ -2236,9 +2236,7 @@ fn render_boxplot(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{
-        ArrayElement, Labels, Layer, OutputRange, ParameterValue, Scale,
-    };
+    use crate::plot::{ArrayElement, Labels, Layer, OutputRange, ParameterValue, Scale};
     use std::collections::HashMap;
 
     /// Helper to wrap a DataFrame in a data map for testing (uses layer 0 key)

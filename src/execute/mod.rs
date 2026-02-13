@@ -499,7 +499,10 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
 
     // Check if query has VISUALISE statements
     let root = source_tree.root();
-    if source_tree.find_node(&root, "(visualise_statement) @viz").is_none() {
+    if source_tree
+        .find_node(&root, "(visualise_statement) @viz")
+        .is_none()
+    {
         return Err(GgsqlError::ValidationError(
             "No visualization specifications found".to_string(),
         ));

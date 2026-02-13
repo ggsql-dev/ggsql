@@ -114,7 +114,9 @@ pub fn validate(query: &str) -> Result<Validated> {
     let viz_part = source_tree.extract_visualise().unwrap_or_default();
 
     let root = source_tree.root();
-    let has_visual = source_tree.find_node(&root, "(visualise_statement) @viz").is_some();
+    let has_visual = source_tree
+        .find_node(&root, "(visualise_statement) @viz")
+        .is_some();
 
     // If no visualization, return without tree
     if !has_visual {

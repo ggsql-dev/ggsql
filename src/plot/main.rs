@@ -24,8 +24,8 @@ use std::collections::HashMap;
 
 // Re-export input types
 pub use super::types::{
-    AestheticValue, ArrayElement, ColumnInfo, DataSource, DefaultAestheticValue,
-    Mappings, ParameterValue, Schema, SqlExpression,
+    AestheticValue, ArrayElement, ColumnInfo, DataSource, DefaultAestheticValue, Mappings,
+    ParameterValue, Schema, SqlExpression,
 };
 
 // Re-export Geom and related types from the layer::geom module
@@ -245,7 +245,9 @@ mod tests {
         assert_eq!(layer.geom, Geom::point());
         assert_eq!(layer.get_column("x"), Some("date"));
         assert_eq!(layer.get_column("y"), Some("revenue"));
-        assert!(matches!(layer.get_literal("color"), Some(ParameterValue::String(s)) if s == "blue"));
+        assert!(
+            matches!(layer.get_literal("color"), Some(ParameterValue::String(s)) if s == "blue")
+        );
         assert!(layer.filter.is_none());
     }
 

@@ -22,7 +22,7 @@ THEME minimal
 - 507-line Tree-sitter grammar (simplified, no external scanner)
 - Full bindings: Rust, C, Python, Node.js with tree-sitter integration
 - Syntax highlighting support via Tree-sitter queries
-- 166 total tests (comprehensive parser, builder, and integration tests)
+- 916 total tests (174 parser tests, comprehensive builder and integration tests)
 - End-to-end working pipeline: SQL → Data → Visualization
 - Coordinate transformations: Cartesian (xlim/ylim), Flip, Polar
 - VISUALISE FROM shorthand syntax with automatic SELECT injection
@@ -287,7 +287,7 @@ pub fn parse_query(query: &str) -> Result<Vec<Plot>> {
     source_tree.validate()?;
 
     // Build AST from parse tree
-    let specs = builder::build_ast(&source_tree.tree, query)?;
+    let specs = builder::build_ast(&source_tree)?;
     Ok(specs)
 }
 ```

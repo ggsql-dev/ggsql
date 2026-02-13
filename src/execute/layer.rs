@@ -161,9 +161,9 @@ pub fn literal_to_series(name: &str, lit: &ParameterValue, len: usize) -> polars
         ParameterValue::Number(n) => Series::new(name.into(), vec![*n; len]),
         ParameterValue::String(s) => Series::new(name.into(), vec![s.as_str(); len]),
         ParameterValue::Boolean(b) => Series::new(name.into(), vec![*b; len]),
-        ParameterValue::Array(_) | ParameterValue::Null => unreachable!(
-            "Grammar prevents arrays and null in literal aesthetic mappings"
-        ),
+        ParameterValue::Array(_) | ParameterValue::Null => {
+            unreachable!("Grammar prevents arrays and null in literal aesthetic mappings")
+        }
     }
 }
 

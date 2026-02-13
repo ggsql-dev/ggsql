@@ -254,7 +254,8 @@ pub fn add_literal_columns_to_type_info(layers: &[Layer], layer_type_info: &mut 
                         "Grammar prevents arrays and null in literal aesthetic mappings"
                     ),
                 };
-                let is_discrete = matches!(lit, ParameterValue::String(_) | ParameterValue::Boolean(_));
+                let is_discrete =
+                    matches!(lit, ParameterValue::String(_) | ParameterValue::Boolean(_));
                 let col_name = naming::aesthetic_column(aesthetic);
 
                 // Only add if not already present
@@ -320,7 +321,10 @@ pub fn build_aesthetic_schema(layer: &Layer, schema: &Schema) -> Schema {
                 aesthetic_schema.push(ColumnInfo {
                     name: aes_col_name,
                     dtype,
-                    is_discrete: matches!(lit, ParameterValue::String(_) | ParameterValue::Boolean(_)),
+                    is_discrete: matches!(
+                        lit,
+                        ParameterValue::String(_) | ParameterValue::Boolean(_)
+                    ),
                     min: None,
                     max: None,
                 });

@@ -14,9 +14,7 @@ pub use geom::{
     DefaultParam, DefaultParamValue, Geom, GeomAesthetics, GeomTrait, GeomType, StatResult,
 };
 
-use crate::plot::types::{
-    AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression,
-};
+use crate::plot::types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression};
 
 /// A single visualization layer (from DRAW clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

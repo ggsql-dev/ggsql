@@ -115,7 +115,10 @@ impl<'a> SourceTree<'a> {
         let root = self.root();
 
         // Check if there's any VISUALISE statement
-        if self.find_node(&root, "(visualise_statement) @viz").is_none() {
+        if self
+            .find_node(&root, "(visualise_statement) @viz")
+            .is_none()
+        {
             // No VISUALISE at all - return entire source as SQL
             return Some(self.source.to_string());
         }
@@ -225,7 +228,8 @@ mod tests {
 
     #[test]
     fn test_extract_sql_visualise_from_with_cte() {
-        let query = "WITH cte AS (SELECT * FROM x) VISUALISE FROM cte DRAW point MAPPING a AS x, b AS y";
+        let query =
+            "WITH cte AS (SELECT * FROM x) VISUALISE FROM cte DRAW point MAPPING a AS x, b AS y";
         let tree = SourceTree::new(query).unwrap();
 
         let sql = tree.extract_sql().unwrap();
@@ -299,7 +303,8 @@ mod tests {
 
     #[test]
     fn test_extract_sql_visualise_from_file_path_double_quotes() {
-        let query = r#"VISUALISE FROM "data/sales.parquet"  DRAW bar MAPPING region AS x, total AS y"#;
+        let query =
+            r#"VISUALISE FROM "data/sales.parquet"  DRAW bar MAPPING region AS x, total AS y"#;
         let tree = SourceTree::new(query).unwrap();
 
         let sql = tree.extract_sql().unwrap();
@@ -431,11 +436,17 @@ mod tests {
         let value_nodes = tree.find_nodes(&root, value_query);
 
         // Should find multiple nodes
-        assert!(!value_nodes.is_empty(), "Should find string and identifier nodes");
+        assert!(
+            !value_nodes.is_empty(),
+            "Should find string and identifier nodes"
+        );
 
         let texts: Vec<String> = value_nodes.iter().map(|n| tree.get_text(n)).collect();
         // Verify alternation pattern works - should find both string and identifier values
-        assert!(texts.iter().any(|t| t.contains("red")), "Should find string 'red'");
+        assert!(
+            texts.iter().any(|t| t.contains("red")),
+            "Should find string 'red'"
+        );
         assert!(texts.iter().any(|t| t == "x"), "Should find identifier x");
     }
 

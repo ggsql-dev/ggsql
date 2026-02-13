@@ -34,9 +34,9 @@ pub fn literal_to_sql(lit: &ParameterValue) -> String {
                 "FALSE".to_string()
             }
         }
-        ParameterValue::Array(_) | ParameterValue::Null => unreachable!(
-            "Grammar prevents arrays and null in literal aesthetic mappings"
-        ),
+        ParameterValue::Array(_) | ParameterValue::Null => {
+            unreachable!("Grammar prevents arrays and null in literal aesthetic mappings")
+        }
     }
 }
 
