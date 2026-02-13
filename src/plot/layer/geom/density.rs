@@ -4,7 +4,8 @@ use super::{GeomAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
-        geom::types::get_column_name, DefaultParam, DefaultParamValue, ParameterValue, StatResult,
+        geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
+        ParameterValue, StatResult,
     },
     GgsqlError, Mappings, Result,
 };
@@ -25,9 +26,7 @@ impl GeomTrait for Density {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &[
-                "x", "weight", "color", "colour", "fill", "stroke", "opacity",
-            ],
+            supported: &["x", "weight", "fill", "stroke", "opacity"],
             required: &["x"],
             hidden: &["density"],
         }
@@ -58,8 +57,11 @@ impl GeomTrait for Density {
         ]
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, &'static str)] {
-        &[("x", "x"), ("density", "y")]
+    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
+        &[
+            ("x", DefaultAestheticValue::Column("x")),
+            ("density", DefaultAestheticValue::Column("y")),
+        ]
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {

@@ -2,7 +2,10 @@
 
 use super::{GeomAesthetics, GeomTrait, GeomType, StatResult};
 use crate::{
-    plot::{geom::types::get_column_name, DefaultParam, DefaultParamValue, ParameterValue},
+    plot::{
+        geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
+        ParameterValue,
+    },
     GgsqlError, Mappings, Result,
 };
 use std::collections::HashMap;
@@ -45,8 +48,8 @@ impl GeomTrait for Violin {
         ]
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, &'static str)] {
-        &[("y", "y")]
+    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
+        &[("y", DefaultAestheticValue::Column("y"))]
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
