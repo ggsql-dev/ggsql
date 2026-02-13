@@ -86,9 +86,11 @@ fn main() {
     let src_dir = grammar_dir.join("src");
     let parser_c = src_dir.join("parser.c");
 
-    // Only regenerate if parser.c doesn't exist (e.g., after a fresh grammar change).
-    // The generated files are committed to the repo following standard tree-sitter
-    // practice, so most builds (including CI) skip this step entirely.
+    // Only regenerate if parser.c doesn't exist (e.g., after a fresh checkout or when
+    // the generated files have not been produced yet). While tree-sitter projects
+    // typically commit generated files to the repo, this project's CI workflow
+    // explicitly runs `tree-sitter generate` to ensure the committed and generated
+    // sources stay consistent, rather than relying solely on the committed output.
     if !parser_c.exists() {
         let tree_sitter = find_tree_sitter().unwrap_or_else(|| {
             panic!(
