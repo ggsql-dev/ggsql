@@ -506,7 +506,7 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
     }
 
     // Build AST from existing tree
-    let mut specs = parser::build_ast(&source_tree.tree, query)?;
+    let mut specs = parser::build_ast(&source_tree)?;
 
     if specs.is_empty() {
         return Err(GgsqlError::ValidationError(
