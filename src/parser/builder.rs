@@ -217,7 +217,7 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
             }
             "global_mapping" => {
                 // Parse global mapping (may include wildcard and/or explicit mappings)
-                spec.global_mappings = parse_global_mapping(&child, source)?;
+                spec.global_mappings = parse_mapping(&child, source)?;
             }
             "wildcard_mapping" => {
                 // Handle standalone wildcard (*) mapping
@@ -298,61 +298,21 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
 // Mapping Building
 // ============================================================================
 
-/// Parse global_mapping node into Mappings struct
-/// global_mapping contains a mapping_list child node
-fn parse_global_mapping(node: &Node, source: &SourceTree) -> Result<Mappings> {
-    // global_mapping: $ => $.mapping_list - contains a mapping_list child node
+/// Parse mapping elements from a node containing mappings and return a Mappings struct
+/// Used by global_mapping (VISUALISE), mapping_clause (MAPPING), and remapping_clause (REMAPPING)
+/// Tree-sitter recursively finds mapping_element nodes within the nested mapping_list
+fn parse_mapping(node: &Node, source: &SourceTree) -> Result<Mappings> {
     let mut mappings = Mappings::new();
 
-    // Find mapping_list within global_mapping
-    let query = "(mapping_list) @list";
-    let mapping_lists = source.find_nodes(node, query);
-
-    for mapping_list in mapping_lists {
-        parse_mapping_list(&mapping_list, source, &mut mappings)?;
-    }
-
-    Ok(mappings)
-}
-
-/// Parse a mapping_clause: MAPPING col AS x, "blue" AS color [FROM source]
-/// Returns (aesthetics as Mappings, optional data source)
-fn parse_mapping_clause(
-    node: &Node,
-    source: &SourceTree,
-) -> Result<(Mappings, Option<DataSource>)> {
-    let mut mappings = Mappings::new();
-
-    // Parse mapping elements using the shared mapping_list structure
-    // With the unified grammar, all aesthetic mappings come through mapping_list.
-    // Bare identifiers here are part of the FROM clause, not mappings.
-    let query = "(mapping_list) @list";
-    let mapping_lists = source.find_nodes(node, query);
-
-    for mapping_list in mapping_lists {
-        parse_mapping_list(&mapping_list, source, &mut mappings)?;
-    }
-
-    // Extract layer_source field (FROM identifier or FROM 'file.csv')
-    let data_source = node
-        .child_by_field_name("layer_source")
-        .map(|child| parse_data_source(&child, source));
-
-    Ok((mappings, data_source))
-}
-
-/// Parse a mapping_list: comma-separated mapping_element nodes
-/// Shared by both global (VISUALISE) and layer (MAPPING) mappings
-fn parse_mapping_list(node: &Node, source: &SourceTree, mappings: &mut Mappings) -> Result<()> {
-    // Find all mapping_element nodes
+    // Find all mapping_element nodes (recursively searches within mapping_list if present)
     let query = "(mapping_element) @elem";
     let mapping_nodes = source.find_nodes(node, query);
 
     for mapping_node in mapping_nodes {
-        parse_mapping_element(&mapping_node, source, mappings)?;
+        parse_mapping_element(&mapping_node, source, &mut mappings)?;
     }
 
-    Ok(())
+    Ok(mappings)
 }
 
 /// Parse a mapping_element: wildcard, explicit, or implicit mapping
@@ -443,14 +403,15 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
                 geom = parse_geom_type(&geom_text)?;
             }
             "mapping_clause" => {
-                let (aes, src) = parse_mapping_clause(&child, source)?;
-                aesthetics = aes;
-                layer_source = src;
+                // Parse aesthetic mappings and optional data source
+                aesthetics = parse_mapping(&child, source)?;
+                layer_source = child
+                    .child_by_field_name("layer_source")
+                    .map(|src| parse_data_source(&src, source));
             }
             "remapping_clause" => {
-                // Reuse parse_mapping_clause - remapping has same syntax, just different semantics
-                let (remap, _) = parse_mapping_clause(&child, source)?;
-                remappings = remap;
+                // Parse stat result remappings (same syntax as mapping_clause)
+                remappings = parse_mapping(&child, source)?;
             }
             "setting_clause" => {
                 parameters = parse_setting_clause(&child, source)?;
