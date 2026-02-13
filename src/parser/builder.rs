@@ -3390,4 +3390,108 @@ mod tests {
             crate::plot::ScaleTypeKind::Ordinal
         );
     }
+
+    // ========================================================================
+    // Basic Type Parser Tests
+    // ========================================================================
+
+    fn make_source(query: &str) -> SourceTree<'_> {
+        SourceTree::new(query).unwrap()
+    }
+
+    #[test]
+    fn test_parse_string_node() {
+        let source = make_source("VISUALISE DRAW point LABEL title => 'hello world'");
+        let root = source.root();
+
+        let string_node = source.find_node(&root, "(string) @s").unwrap();
+        let parsed = parse_string_node(&string_node, &source);
+        assert_eq!(parsed, "hello world");
+    }
+
+    #[test]
+    fn test_parse_number_node() {
+        // Test integers
+        let source = make_source("VISUALISE DRAW point COORD SETTING xlim => [0, 100]");
+        let root = source.root();
+
+        let numbers = source.find_nodes(&root, "(number) @n");
+        assert_eq!(numbers.len(), 2);
+        assert_eq!(parse_number_node(&numbers[0], &source).unwrap(), 0.0);
+        assert_eq!(parse_number_node(&numbers[1], &source).unwrap(), 100.0);
+
+        // Test floats
+        let source2 = make_source("VISUALISE DRAW point COORD SETTING ylim => [-10.5, 20.75]");
+        let root2 = source2.root();
+
+        let numbers2 = source2.find_nodes(&root2, "(number) @n");
+        assert_eq!(parse_number_node(&numbers2[0], &source2).unwrap(), -10.5);
+        assert_eq!(parse_number_node(&numbers2[1], &source2).unwrap(), 20.75);
+    }
+
+    #[test]
+    fn test_parse_array_node() {
+        // Test array of strings
+        let source = make_source("VISUALISE DRAW point SCALE x FROM ['a', 'b', 'c']");
+        let root = source.root();
+
+        let array_node = source.find_node(&root, "(array) @arr").unwrap();
+        let parsed = parse_array_node(&array_node, &source).unwrap();
+
+        assert_eq!(parsed.len(), 3);
+        assert!(matches!(parsed[0], ArrayElement::String(ref s) if s == "a"));
+        assert!(matches!(parsed[1], ArrayElement::String(ref s) if s == "b"));
+        assert!(matches!(parsed[2], ArrayElement::String(ref s) if s == "c"));
+
+        // Test array of numbers
+        let source2 = make_source("VISUALISE DRAW point COORD SETTING xlim => [0, 50, 100]");
+        let root2 = source2.root();
+
+        let array_node2 = source2.find_node(&root2, "(array) @arr").unwrap();
+        let parsed2 = parse_array_node(&array_node2, &source2).unwrap();
+
+        assert_eq!(parsed2.len(), 3);
+        assert!(matches!(parsed2[0], ArrayElement::Number(n) if n == 0.0));
+        assert!(matches!(parsed2[1], ArrayElement::Number(n) if n == 50.0));
+        assert!(matches!(parsed2[2], ArrayElement::Number(n) if n == 100.0));
+    }
+
+    #[test]
+    fn test_parse_data_source() {
+        // Test identifier
+        let source = make_source("VISUALISE FROM sales DRAW bar");
+        let root = source.root();
+
+        let from_node = source.find_node(&root, "(table_ref) @ref").unwrap();
+        let parsed = parse_data_source(&from_node, &source);
+        assert!(matches!(parsed, DataSource::Identifier(ref name) if name == "sales"));
+
+        // Test file path - table_ref contains a string child
+        let source2 = make_source("VISUALISE FROM 'data.csv' DRAW bar");
+        let root2 = source2.root();
+
+        let from_node2 = source2.find_node(&root2, "(table_ref) @ref").unwrap();
+        let string_node = source2.find_node(&from_node2, "(string) @s").unwrap();
+        let parsed2 = parse_data_source(&string_node, &source2);
+        assert!(matches!(parsed2, DataSource::FilePath(ref path) if path == "data.csv"));
+    }
+
+    #[test]
+    fn test_parse_literal_value() {
+        // Test string literal
+        let source = make_source("VISUALISE DRAW point MAPPING 'red' AS color");
+        let root = source.root();
+
+        let literal_node = source.find_node(&root, "(literal_value) @lit").unwrap();
+        let parsed = parse_literal_value(&literal_node, &source).unwrap();
+        assert!(matches!(parsed, AestheticValue::Literal(ParameterValue::String(ref s)) if s == "red"));
+
+        // Test number literal
+        let source2 = make_source("VISUALISE DRAW point MAPPING 42 AS size");
+        let root2 = source2.root();
+
+        let literal_node2 = source2.find_node(&root2, "(literal_value) @lit").unwrap();
+        let parsed2 = parse_literal_value(&literal_node2, &source2).unwrap();
+        assert!(matches!(parsed2, AestheticValue::Literal(ParameterValue::Number(n)) if n == 42.0));
+    }
 }

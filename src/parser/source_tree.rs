@@ -322,4 +322,208 @@ mod tests {
         // The file path inside the CTE should remain as-is (part of the WITH clause)
         assert!(sql.contains("'raw.csv'"));
     }
+
+    // ========================================================================
+    // Query Method Tests: find_node()
+    // ========================================================================
+
+    #[test]
+    fn test_find_node_basic() {
+        let query = "SELECT x, y FROM data VISUALISE DRAW point MAPPING x AS x, y AS y";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Find visualise_statement
+        let viz_query = "(visualise_statement) @viz";
+        let viz_node = tree.find_node(&root, viz_query);
+        assert!(viz_node.is_some());
+        assert_eq!(viz_node.unwrap().kind(), "visualise_statement");
+    }
+
+    #[test]
+    fn test_find_node_returns_first_match() {
+        let query = "SELECT x, y FROM data VISUALISE DRAW point DRAW line";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Find draw_clause - should return first one
+        let draw_query = "(draw_clause) @draw";
+        let draw_node = tree.find_node(&root, draw_query);
+        assert!(draw_node.is_some());
+
+        // Verify it's the first draw clause by checking it contains "point"
+        let text = tree.get_text(&draw_node.unwrap());
+        assert!(text.contains("point"));
+    }
+
+    #[test]
+    fn test_find_node_not_found() {
+        let query = "SELECT x, y FROM data";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Try to find visualise_statement in query without VISUALISE
+        let viz_query = "(visualise_statement) @viz";
+        let viz_node = tree.find_node(&root, viz_query);
+        assert!(viz_node.is_none());
+    }
+
+    #[test]
+    fn test_find_node_with_alternation() {
+        let query = "SELECT x, y FROM data VISUALISE DRAW point";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Use alternation pattern to match any identifier type (like in scale parsers)
+        let ident_query = "[(identifier) (bare_identifier) (quoted_identifier)] @id";
+        let ident_nodes = tree.find_nodes(&root, ident_query);
+
+        // Should find multiple identifiers (x, y, data, point, etc.)
+        assert!(!ident_nodes.is_empty());
+
+        // Verify find_node returns the first one
+        let first_ident = tree.find_node(&root, ident_query);
+        assert!(first_ident.is_some());
+    }
+
+    // ========================================================================
+    // Query Method Tests: find_nodes()
+    // ========================================================================
+
+    #[test]
+    fn test_find_nodes_multiple_matches() {
+        let query = "SELECT x, y FROM data VISUALISE DRAW point DRAW line DRAW bar";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Find all draw_clause nodes
+        let draw_query = "(draw_clause) @draw";
+        let draw_nodes = tree.find_nodes(&root, draw_query);
+        assert_eq!(draw_nodes.len(), 3);
+
+        // Verify they contain the expected geoms
+        let texts: Vec<String> = draw_nodes.iter().map(|n| tree.get_text(n)).collect();
+        assert!(texts[0].contains("point"));
+        assert!(texts[1].contains("line"));
+        assert!(texts[2].contains("bar"));
+    }
+
+    #[test]
+    fn test_find_nodes_empty() {
+        let query = "SELECT x, y FROM data";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Try to find draw_clause in query without VISUALISE
+        let draw_query = "(draw_clause) @draw";
+        let draw_nodes = tree.find_nodes(&root, draw_query);
+        assert!(draw_nodes.is_empty());
+    }
+
+    #[test]
+    fn test_find_nodes_with_alternation() {
+        let query = "VISUALISE DRAW point MAPPING 'red' AS color, x AS x";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Match both string and identifier nodes using alternation (like in TO clause parsing)
+        let value_query = "[(string) (identifier)] @val";
+        let value_nodes = tree.find_nodes(&root, value_query);
+
+        // Should find multiple nodes
+        assert!(!value_nodes.is_empty(), "Should find string and identifier nodes");
+
+        let texts: Vec<String> = value_nodes.iter().map(|n| tree.get_text(n)).collect();
+        // Verify alternation pattern works - should find both string and identifier values
+        assert!(texts.iter().any(|t| t.contains("red")), "Should find string 'red'");
+        assert!(texts.iter().any(|t| t == "x"), "Should find identifier x");
+    }
+
+    // ========================================================================
+    // Query Method Tests: find_text() and find_texts()
+    // ========================================================================
+
+    #[test]
+    fn test_find_text_basic() {
+        let query = "SELECT x, y FROM data VISUALISE DRAW point";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Find geom_type text
+        let geom_query = "(geom_type) @geom";
+        let geom_text = tree.find_text(&root, geom_query);
+        assert_eq!(geom_text, Some("point".to_string()));
+    }
+
+    #[test]
+    fn test_find_text_not_found() {
+        let query = "SELECT x, y FROM data";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Try to find geom_type in query without VISUALISE
+        let geom_query = "(geom_type) @geom";
+        let geom_text = tree.find_text(&root, geom_query);
+        assert!(geom_text.is_none());
+    }
+
+    #[test]
+    fn test_find_texts_multiple() {
+        let query = "SELECT x, y FROM data VISUALISE DRAW point DRAW line DRAW bar";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Find all geom_type texts
+        let geom_query = "(geom_type) @geom";
+        let geom_texts = tree.find_texts(&root, geom_query);
+        assert_eq!(geom_texts.len(), 3);
+        assert_eq!(geom_texts, vec!["point", "line", "bar"]);
+    }
+
+    #[test]
+    fn test_find_texts_empty() {
+        let query = "SELECT x, y FROM data";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Try to find geom_type in query without VISUALISE
+        let geom_query = "(geom_type) @geom";
+        let geom_texts = tree.find_texts(&root, geom_query);
+        assert!(geom_texts.is_empty());
+    }
+
+    #[test]
+    fn test_find_texts_with_alternation() {
+        let query = "SELECT col1, col2 FROM data";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Match multiple identifier types (commonly used pattern in scale parsers)
+        let ident_query = "[(identifier) (bare_identifier) (quoted_identifier)] @id";
+        let ident_texts = tree.find_texts(&root, ident_query);
+
+        // Should find identifiers: col1, col2, data
+        assert!(ident_texts.len() >= 3);
+        assert!(ident_texts.contains(&"col1".to_string()));
+        assert!(ident_texts.contains(&"col2".to_string()));
+        assert!(ident_texts.contains(&"data".to_string()));
+    }
+
+    // ========================================================================
+    // Query Method Tests: get_text()
+    // ========================================================================
+
+    #[test]
+    fn test_get_text_with_identifiers() {
+        let query = "SELECT column_name FROM table_name";
+        let tree = SourceTree::new(query).unwrap();
+        let root = tree.root();
+
+        // Find identifier nodes and extract text
+        let ident_query = "(identifier) @id";
+        let ident_texts = tree.find_texts(&root, ident_query);
+        assert!(ident_texts.len() >= 2);
+        assert!(ident_texts.contains(&"column_name".to_string()));
+        assert!(ident_texts.contains(&"table_name".to_string()));
+    }
 }
