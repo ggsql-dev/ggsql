@@ -149,7 +149,6 @@ fn plus_coords() -> Vec<Vec<(f64, f64)>> {
     ]
 }
 
-
 /// Horizontal line at y=0.
 fn stroke_coords() -> Vec<Vec<(f64, f64)>> {
     vec![vec![(-0.8, 0.0), (0.8, 0.0)]]
@@ -218,10 +217,10 @@ fn circle_plus_coords() -> Vec<Vec<(f64, f64)>> {
 
         // Inner corner point
         let (cx, cy) = match q {
-            0 => (g, g),    // top-right
-            1 => (-g, g),   // top-left
-            2 => (-g, -g),  // bottom-left
-            _ => (g, -g),   // bottom-right
+            0 => (g, g),   // top-right
+            1 => (-g, g),  // top-left
+            2 => (-g, -g), // bottom-left
+            _ => (g, -g),  // bottom-right
         };
         points.push((cx, cy));
 
