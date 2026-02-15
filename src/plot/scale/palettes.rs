@@ -2063,7 +2063,7 @@ pub fn get_shape_palette(name: &str) -> Option<&'static [&'static str]> {
 /// Look up a linetype palette by name.
 pub fn get_linetype_palette(name: &str) -> Option<&'static [&'static str]> {
     match name.to_lowercase().as_str() {
-        "linetypes" | "default" => Some(LINETYPES),
+        "categorical" | "default" => Some(LINETYPES),
         _ => None,
     }
 }

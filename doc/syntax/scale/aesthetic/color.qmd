@@ -355,3 +355,14 @@ Use a cyclic palette:
 #### For paired/related categories
 
 - **`paired`** - Light-dark pairs show relationships
+
+## Accessibility
+- *Don't rely on color alone:* Use redundant encoding by combining color with shape, pattern, or direct labels. This ensures information is accessible when color cannot be perceived.
+- *Choose colorblind-safe palettes:* Approximately 8% of men and 0.5% of women have some form of color vision deficiency. Palettes like `viridis`, `cividis`, and the Crameri scientific palettes are designed to be distinguishable by colorblind viewers.
+- *Avoid red-green combinations:* Red-green color blindness (deuteranopia/protanopia) is the most common form. Avoid using red and green as the only distinguishing colors between categories.
+- *Ensure sufficient contrast:* Light colors on light backgrounds or dark colors on dark backgrounds can be difficult to perceive. Aim for a contrast ratio of at least 3:1 for graphical elements.
+- *Test in grayscale:* Print or display your visualization in grayscale to verify that information is still distinguishable without color. Palettes like `viridis` and `cividis` maintain luminance variation when desaturated.
+- *Limit the number of colors:* Most people can only reliably distinguish 6-8 colors at a glance. For more categories, consider grouping, faceting, or interactive filtering instead of adding more colors.
+- *Use perceptually uniform palettes:* Palettes where equal data differences produce equal perceived color differences prevent visual distortion of your data. The Crameri and matplotlib palettes (`viridis`, `plasma`, etc.) are perceptually uniform.
+- *Consider cultural associations:* Colors carry different meanings across cultures (e.g., red can signify danger, luck, or political affiliation). Be mindful of unintended connotations in your audience.
+- *Provide alternatives:* When possible, offer a data table or text description alongside color-encoded visualizations for users who cannot perceive the colors.
