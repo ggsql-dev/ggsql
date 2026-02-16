@@ -60,6 +60,7 @@ use std::collections::HashMap;
 fn build_label_expr(
     mappings: &HashMap<String, Option<String>>,
     time_format: Option<&str>,
+    null_key: Option<&str>,
 ) -> String {
     if mappings.is_empty() {
         return "datum.label".to_string();
@@ -75,17 +76,22 @@ fn build_label_expr(
         .iter()
         .map(|(from, to)| {
             let from_escaped = from.replace('\'', "\\'");
+
+            // For threshold scales, the first terminal uses null instead of string comparison
+            let condition = if null_key == Some(from.as_str()) {
+                "datum.label == null".to_string()
+            } else {
+                format!("{} == '{}'", comparison_expr, from_escaped)
+            };
+
             match to {
                 Some(label) => {
                     let to_escaped = label.replace('\'', "\\'");
-                    format!(
-                        "{} == '{}' ? '{}'",
-                        comparison_expr, from_escaped, to_escaped
-                    )
+                    format!("{} ? '{}'", condition, to_escaped)
                 }
                 None => {
                     // NULL suppresses the label (empty string)
-                    format!("{} == '{}' ? ''", comparison_expr, from_escaped)
+                    format!("{} ? ''", condition)
                 }
             }
         })
@@ -94,6 +100,83 @@ fn build_label_expr(
     // Fallback to original label
     parts.push("datum.label".to_string());
     parts.join(" : ")
+}
+
+/// Build label mappings for threshold scale symbol legends
+///
+/// Maps Vega-Lite's auto-generated range labels to our desired labels.
+/// VL format: "<low> – <high>" for most bins (en-dash U+2013), "≥ <low>" for last bin.
+///
+/// # Arguments
+/// * `breaks` - All break values including terminals [0, 25, 50, 75, 100]
+/// * `label_mapping` - Our desired labels keyed by break value string
+/// * `closed` - Which side of bin is closed: "left" (default) or "right"
+///
+/// # Returns
+/// HashMap mapping Vega-Lite's predicted labels to our replacement labels
+fn build_symbol_legend_label_mapping(
+    breaks: &[ArrayElement],
+    label_mapping: &HashMap<String, Option<String>>,
+    closed: &str,
+) -> HashMap<String, Option<String>> {
+    let mut result = HashMap::new();
+
+    // We have N breaks = N-1 bins
+    // legend.values has N-1 entries (last terminal excluded for symbol legends)
+    if breaks.len() < 2 {
+        return result;
+    }
+    let num_bins = breaks.len() - 1;
+
+    for i in 0..num_bins {
+        let lower = &breaks[i];
+        let upper = &breaks[i + 1];
+        let lower_str = lower.to_key_string();
+        let upper_str = upper.to_key_string();
+
+        // Get our desired label for this bin (keyed by lower bound)
+        let our_label = label_mapping.get(&lower_str).cloned().flatten();
+
+        // Predict Vega-Lite's generated label
+        // All but last: "<lower> – <upper>" (en-dash U+2013 with spaces)
+        // Last bin: "≥ <lower>" (greater-than-or-equal U+2265)
+        let vl_label = if i == num_bins - 1 {
+            format!("≥ {}", lower_str)
+        } else {
+            format!("{} – {}", lower_str, upper_str)
+        };
+
+        // Check if terminals are suppressed (mapped to None)
+        let lower_suppressed = label_mapping.get(&lower_str) == Some(&None);
+        let upper_suppressed = label_mapping.get(&upper_str) == Some(&None);
+
+        // Get labels for building range format (fall back to break values)
+        let lower_label = our_label.clone().unwrap_or_else(|| lower_str.clone());
+        let upper_label = label_mapping
+            .get(&upper_str)
+            .cloned()
+            .flatten()
+            .unwrap_or_else(|| upper_str.clone());
+
+        // Determine the replacement label
+        // Priority: terminal suppression → range format with custom labels
+        let replacement = if i == 0 && lower_suppressed {
+            // First bin with suppressed lower terminal → open format
+            let symbol = if closed == "right" { "≤" } else { "<" };
+            Some(format!("{} {}", symbol, upper_label))
+        } else if i == num_bins - 1 && upper_suppressed {
+            // Last bin with suppressed upper terminal → open format
+            let symbol = if closed == "right" { ">" } else { "≥" };
+            Some(format!("{} {}", symbol, lower_label))
+        } else {
+            // Use range format with custom labels: "<lower_label> – <upper_label>"
+            Some(format!("{} – {}", lower_label, upper_label))
+        };
+
+        result.insert(vl_label, replacement);
+    }
+
+    result
 }
 
 /// Vega-Lite JSON writer
@@ -457,6 +540,31 @@ impl VegaLiteWriter {
             .unwrap_or(false)
     }
 
+    /// Count the number of binned non-positional scales in the spec.
+    /// This is used to determine if legends should use symbol style (which requires
+    /// removing the last terminal value) or gradient style (which keeps all values).
+    fn count_binned_legend_scales(&self, spec: &Plot) -> usize {
+        spec.scales
+            .iter()
+            .filter(|scale| {
+                // Check if binned
+                let is_binned = scale
+                    .scale_type
+                    .as_ref()
+                    .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
+                    .unwrap_or(false);
+
+                // Check if non-positional (legend aesthetic)
+                let is_legend_aesthetic = !matches!(
+                    scale.aesthetic.as_str(),
+                    "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
+                );
+
+                is_binned && is_legend_aesthetic
+            })
+            .count()
+    }
+
     /// Unify multiple datasets into a single dataset with source identification.
     ///
     /// This concatenates all layer datasets into one unified dataset, adding a
@@ -719,6 +827,14 @@ impl VegaLiteWriter {
                 // Track if we're using a color range array (needs gradient legend)
                 let mut needs_gradient_legend = false;
 
+                // Track if this is a binned non-positional aesthetic (needs threshold scale)
+                // Computed early so we can skip normal domain handling for threshold scales
+                let is_binned_legend = is_binned
+                    && !matches!(
+                        aesthetic,
+                        "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
+                    );
+
                 // Use scale properties from the primary aesthetic's scale
                 // (same scale lookup as used above for field_type)
                 if let Some(scale) = spec.find_scale(primary) {
@@ -726,10 +842,13 @@ impl VegaLiteWriter {
                     use crate::plot::{ArrayElement, OutputRange};
 
                     // Apply domain from input_range (FROM clause)
-                    if let Some(ref domain_values) = scale.input_range {
-                        let domain_json: Vec<Value> =
-                            domain_values.iter().map(|elem| elem.to_json()).collect();
-                        scale_obj.insert("domain".to_string(), json!(domain_json));
+                    // Skip for threshold scales - they use internal breaks as domain instead
+                    if !is_binned_legend {
+                        if let Some(ref domain_values) = scale.input_range {
+                            let domain_json: Vec<Value> =
+                                domain_values.iter().map(|elem| elem.to_json()).collect();
+                            scale_obj.insert("domain".to_string(), json!(domain_json));
+                        }
                     }
 
                     // Apply range from output_range (TO clause)
@@ -850,6 +969,25 @@ impl VegaLiteWriter {
                         }
                     }
 
+                    // Handle binned non-positional aesthetics with threshold scale
+                    // For legends (fill, stroke, color, etc.), binned scales should use threshold
+                    // scale type to show discrete color blocks instead of a smooth gradient
+                    if is_binned_legend {
+                        scale_obj.insert("type".to_string(), json!("threshold"));
+
+                        // Threshold domain = internal breaks (excluding first and last terminal bounds)
+                        // breaks = [0, 25, 50, 75, 100] → domain = [25, 50, 75]
+                        if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
+                            if breaks.len() > 2 {
+                                let internal_breaks: Vec<Value> = breaks[1..breaks.len() - 1]
+                                    .iter()
+                                    .map(|e| e.to_json())
+                                    .collect();
+                                scale_obj.insert("domain".to_string(), json!(internal_breaks));
+                            }
+                        }
+                    }
+
                     // Handle reverse property (SETTING clause)
                     use crate::plot::ParameterValue;
                     if let Some(ParameterValue::Boolean(true)) = scale.properties.get("reverse") {
@@ -895,45 +1033,75 @@ impl VegaLiteWriter {
                     // For binned scales, we still need to set axis.values manually because
                     // Vega-Lite's automatic tick placement with bin:"binned" only works for equal-width bins
                     if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
-                        // Filter out values that have label_mapping = None (suppressed labels)
-                        // This respects decisions made during scale resolution
-                        let values: Vec<Value> = breaks
-                            .iter()
-                            .filter(|e| {
-                                if let Some(ref label_mapping) = scale.label_mapping {
-                                    // Keep value only if it's not mapped to None
-                                    let key = e.to_key_string();
-                                    !matches!(label_mapping.get(&key), Some(None))
-                                } else {
-                                    true // No label_mapping, keep all values
-                                }
-                            })
-                            .map(|e| e.to_json())
-                            .collect();
+                        // Get all break values (filtering is applied selectively below)
+                        let all_values: Vec<Value> =
+                            breaks.iter().map(|e| e.to_json()).collect();
 
                         // Positional aesthetics use axis.values, others use legend.values
                         if matches!(
                             aesthetic,
                             "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
                         ) {
+                            // For positional aesthetics (axes), filter out values that have
+                            // label_mapping = None (suppressed terminal breaks from oob='squish')
+                            let axis_values: Vec<Value> =
+                                if let Some(ref label_mapping) = scale.label_mapping {
+                                    breaks
+                                        .iter()
+                                        .filter(|e| {
+                                            let key = e.to_key_string();
+                                            !matches!(label_mapping.get(&key), Some(None))
+                                        })
+                                        .map(|e| e.to_json())
+                                        .collect()
+                                } else {
+                                    all_values.clone()
+                                };
+
                             // Add to axis object
                             if !encoding.get("axis").is_some_and(|v| v.is_null()) {
                                 let axis = encoding.get_mut("axis").and_then(|v| v.as_object_mut());
                                 if let Some(axis_map) = axis {
-                                    axis_map.insert("values".to_string(), json!(values));
+                                    axis_map.insert("values".to_string(), json!(axis_values));
                                 } else {
-                                    encoding["axis"] = json!({"values": values});
+                                    encoding["axis"] = json!({"values": axis_values});
                                 }
                             }
                         } else {
                             // Add to legend object for non-positional aesthetics
+                            // Note: We use all_values here (no filtering of suppressed labels)
+                            // because legends should show all bins, unlike axes where terminal
+                            // breaks may be suppressed by oob='squish'.
+                            // For threshold (binned) scales, symbol legends need the last terminal
+                            // removed to avoid an extra symbol. Gradient legends (fill/stroke alone)
+                            // keep all values.
+                            let legend_values = if is_binned_legend {
+                                // Determine if this is a symbol legend case:
+                                // - Not fill/stroke (always symbol legend)
+                                // - OR multiple binned legend scales (forces symbol legend)
+                                let binned_legend_count = self.count_binned_legend_scales(spec);
+                                let is_gradient_aesthetic =
+                                    matches!(aesthetic, "fill" | "stroke");
+                                let uses_symbol_legend =
+                                    !is_gradient_aesthetic || binned_legend_count > 1;
+
+                                if uses_symbol_legend && !all_values.is_empty() {
+                                    // Remove the last terminal for symbol legends
+                                    all_values[..all_values.len() - 1].to_vec()
+                                } else {
+                                    all_values
+                                }
+                            } else {
+                                all_values
+                            };
+
                             if !encoding.get("legend").is_some_and(|v| v.is_null()) {
                                 let legend =
                                     encoding.get_mut("legend").and_then(|v| v.as_object_mut());
                                 if let Some(legend_map) = legend {
-                                    legend_map.insert("values".to_string(), json!(values));
+                                    legend_map.insert("values".to_string(), json!(legend_values));
                                 } else {
-                                    encoding["legend"] = json!({"values": values});
+                                    encoding["legend"] = json!({"values": legend_values});
                                 }
                             }
                         }
@@ -956,7 +1124,60 @@ impl VegaLiteWriter {
                                         TransformKind::Time => Some("%H:%M:%S"),
                                         _ => None,
                                     });
-                            let label_expr = build_label_expr(label_mapping, time_format);
+
+                            // For threshold scales (binned legends), determine if symbol legend
+                            // Symbol legends need different label handling: VL generates range-style
+                            // labels like "0 – 25", "25 – 50", "≥ 75" which we need to map
+                            let (filtered_mapping, null_key) = if is_binned_legend {
+                                let binned_legend_count = self.count_binned_legend_scales(spec);
+                                let is_gradient_aesthetic =
+                                    matches!(aesthetic, "fill" | "stroke");
+                                let uses_symbol_legend =
+                                    !is_gradient_aesthetic || binned_legend_count > 1;
+
+                                if uses_symbol_legend {
+                                    // Symbol legend: map VL's range-style labels to our labels
+                                    let closed = scale
+                                        .properties
+                                        .get("closed")
+                                        .and_then(|v| {
+                                            if let ParameterValue::String(s) = v {
+                                                Some(s.as_str())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .unwrap_or("left");
+
+                                    if let Some(ParameterValue::Array(breaks)) =
+                                        scale.properties.get("breaks")
+                                    {
+                                        let symbol_mapping = build_symbol_legend_label_mapping(
+                                            breaks,
+                                            label_mapping,
+                                            closed,
+                                        );
+                                        (symbol_mapping, None) // No null_key for symbol legends
+                                    } else {
+                                        (label_mapping.clone(), None)
+                                    }
+                                } else {
+                                    // Gradient legend: use null_key for first terminal
+                                    let first_key = scale.properties.get("breaks").and_then(|b| {
+                                        if let ParameterValue::Array(breaks) = b {
+                                            breaks.first().map(|e| e.to_key_string())
+                                        } else {
+                                            None
+                                        }
+                                    });
+                                    (label_mapping.clone(), first_key)
+                                }
+                            } else {
+                                (label_mapping.clone(), None)
+                            };
+
+                            let label_expr =
+                                build_label_expr(&filtered_mapping, time_format, null_key.as_deref());
 
                             if matches!(
                                 aesthetic,
@@ -7151,5 +7372,780 @@ mod tests {
                 i
             );
         }
+    }
+
+    #[test]
+    fn test_binned_fill_scale_uses_threshold_type() {
+        // Test that binned non-positional aesthetics use threshold scale type
+        // for proper discrete color legend rendering
+        use crate::plot::scale::Scale;
+        use crate::plot::{ArrayElement, ParameterValue, ScaleType};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "fill".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a binned scale for fill with breaks
+        let mut scale = Scale::new("fill");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(75.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 45, 80],
+            "value" => &[10.0, 45.0, 80.0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The fill encoding should have scale.type = "threshold"
+        let scale_type = &vl_spec["layer"][0]["encoding"]["fill"]["scale"]["type"];
+        assert_eq!(
+            scale_type, "threshold",
+            "Binned fill scale should use threshold type"
+        );
+    }
+
+    #[test]
+    fn test_binned_fill_scale_threshold_domain() {
+        // Test that threshold domain is internal breaks (excluding terminals)
+        // breaks = [0, 25, 50, 75, 100] → domain = [25, 50, 75]
+        use crate::plot::scale::Scale;
+        use crate::plot::{ArrayElement, ParameterValue, ScaleType};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "fill".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a binned scale for fill with breaks
+        let mut scale = Scale::new("fill");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(75.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 45, 80],
+            "value" => &[10.0, 45.0, 80.0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The fill encoding should have domain with internal breaks only
+        let domain = &vl_spec["layer"][0]["encoding"]["fill"]["scale"]["domain"];
+        assert!(domain.is_array(), "Threshold scale should have domain array");
+        let domain_arr = domain.as_array().unwrap();
+        assert_eq!(
+            domain_arr.len(),
+            3,
+            "Domain should have 3 internal breaks (excluding 0 and 100)"
+        );
+        assert_eq!(domain_arr[0], 25.0);
+        assert_eq!(domain_arr[1], 50.0);
+        assert_eq!(domain_arr[2], 75.0);
+    }
+
+    #[test]
+    fn test_binned_fill_scale_legend_values() {
+        // Test that legend.values contains all breaks including terminals
+        use crate::plot::scale::Scale;
+        use crate::plot::{ArrayElement, ParameterValue, ScaleType};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "fill".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a binned scale for fill with breaks
+        let mut scale = Scale::new("fill");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(75.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 45, 80],
+            "value" => &[10.0, 45.0, 80.0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The fill encoding should have legend.values with all breaks
+        let legend_values = &vl_spec["layer"][0]["encoding"]["fill"]["legend"]["values"];
+        assert!(
+            legend_values.is_array(),
+            "Legend should have values array for all breaks"
+        );
+        let values_arr = legend_values.as_array().unwrap();
+        assert_eq!(
+            values_arr.len(),
+            5,
+            "Legend.values should have all 5 breaks including terminals"
+        );
+        assert_eq!(values_arr[0], 0.0);
+        assert_eq!(values_arr[4], 100.0);
+    }
+
+    #[test]
+    fn test_binned_fill_scale_label_expr_null_key() {
+        // Test that labelExpr uses datum.label == null for first terminal
+        use crate::plot::scale::Scale;
+        use crate::plot::{ArrayElement, ParameterValue, ScaleType};
+        use std::collections::HashMap;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "fill".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a binned scale for fill with breaks and label_mapping
+        let mut scale = Scale::new("fill");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(75.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+
+        // Add label_mapping to trigger labelExpr generation
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("0".to_string(), Some("Low".to_string()));
+        label_mapping.insert("25".to_string(), Some("Medium-Low".to_string()));
+        label_mapping.insert("50".to_string(), Some("Medium".to_string()));
+        label_mapping.insert("75".to_string(), Some("Medium-High".to_string()));
+        label_mapping.insert("100".to_string(), Some("High".to_string()));
+        scale.label_mapping = Some(label_mapping);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 45, 80],
+            "value" => &[10.0, 45.0, 80.0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The fill encoding should have legend.labelExpr with null check for first terminal
+        let label_expr = &vl_spec["layer"][0]["encoding"]["fill"]["legend"]["labelExpr"];
+        assert!(label_expr.is_string(), "labelExpr should be a string");
+        let expr_str = label_expr.as_str().unwrap();
+
+        // First terminal (0) should use datum.label == null
+        assert!(
+            expr_str.contains("datum.label == null"),
+            "labelExpr should use null check for first terminal: {}",
+            expr_str
+        );
+
+        // Other breaks should use string comparison
+        assert!(
+            expr_str.contains("datum.label == '25'"),
+            "labelExpr should use string comparison for non-first breaks: {}",
+            expr_str
+        );
+    }
+
+    #[test]
+    fn test_binned_positional_scale_not_threshold() {
+        // Test that binned positional aesthetics (x, y) don't use threshold scale
+        use crate::plot::scale::Scale;
+        use crate::plot::{ArrayElement, ParameterValue, ScaleType};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a binned scale for y (positional)
+        let mut scale = Scale::new("y");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(75.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "value" => &[10.0, 45.0, 80.0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The y encoding should NOT have scale.type = "threshold"
+        let scale_type = &vl_spec["layer"][0]["encoding"]["y"]["scale"]["type"];
+        assert!(
+            scale_type.is_null() || scale_type != "threshold",
+            "Binned positional scale should not use threshold type"
+        );
+
+        // But axis.values should still be set
+        let axis_values = &vl_spec["layer"][0]["encoding"]["y"]["axis"]["values"];
+        assert!(
+            axis_values.is_array(),
+            "Binned positional scale should have axis.values"
+        );
+    }
+
+    #[test]
+    fn test_build_label_expr_with_null_key() {
+        // Test the build_label_expr function with null_key parameter
+        use std::collections::HashMap;
+
+        // Test with null_key for first terminal
+        let mut mappings = HashMap::new();
+        mappings.insert("0".to_string(), Some("Low".to_string()));
+        mappings.insert("25".to_string(), Some("Medium".to_string()));
+
+        let expr = build_label_expr(&mappings, None, Some("0"));
+
+        // First terminal should use null comparison
+        assert!(
+            expr.contains("datum.label == null ? 'Low'"),
+            "First terminal should use null comparison: {}",
+            expr
+        );
+
+        // Second entry should use string comparison
+        assert!(
+            expr.contains("datum.label == '25' ? 'Medium'"),
+            "Non-first entries should use string comparison: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_build_label_expr_without_null_key() {
+        // Test the build_label_expr function without null_key (normal case)
+        use std::collections::HashMap;
+
+        let mut mappings = HashMap::new();
+        mappings.insert("0".to_string(), Some("Low".to_string()));
+        mappings.insert("25".to_string(), Some("Medium".to_string()));
+
+        let expr = build_label_expr(&mappings, None, None);
+
+        // Both entries should use string comparison
+        assert!(
+            expr.contains("datum.label == '0' ? 'Low'"),
+            "Without null_key, should use string comparison: {}",
+            expr
+        );
+        assert!(
+            expr.contains("datum.label == '25' ? 'Medium'"),
+            "Without null_key, should use string comparison: {}",
+            expr
+        );
+        assert!(
+            !expr.contains("datum.label == null"),
+            "Without null_key, should not use null comparison: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_binned_color_scale_symbol_legend_removes_last_terminal() {
+        // Test that binned color scale (not fill/stroke) uses symbol legend
+        // which removes the last terminal from legend.values
+        use crate::plot::scale::Scale;
+        use crate::plot::{ArrayElement, ParameterValue, ScaleType};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "color".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a binned scale for color (not fill/stroke, so symbol legend)
+        let mut scale = Scale::new("color");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(75.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 45, 80],
+            "value" => &[10.0, 45.0, 80.0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The color encoding should have legend.values with last terminal removed
+        let legend_values = &vl_spec["layer"][0]["encoding"]["color"]["legend"]["values"];
+        assert!(
+            legend_values.is_array(),
+            "Legend should have values array"
+        );
+        let values_arr = legend_values.as_array().unwrap();
+        assert_eq!(
+            values_arr.len(),
+            4,
+            "Symbol legend should have 4 values (last terminal 100 removed)"
+        );
+        assert_eq!(values_arr[0], 0.0);
+        assert_eq!(values_arr[3], 75.0);
+        // 100 should NOT be in the values
+        assert!(
+            !values_arr.iter().any(|v| v == &json!(100.0)),
+            "Last terminal (100) should be removed from symbol legend"
+        );
+    }
+
+    #[test]
+    fn test_multiple_binned_scales_both_use_symbol_legend() {
+        // Test that when there are multiple binned non-positional scales,
+        // both use symbol legend (last terminal removed)
+        use crate::plot::scale::Scale;
+        use crate::plot::{ArrayElement, ParameterValue, ScaleType};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "fill".to_string(),
+                AestheticValue::standard_column("value1".to_string()),
+            )
+            .with_aesthetic(
+                "size".to_string(),
+                AestheticValue::standard_column("value2".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add binned scale for fill
+        let mut fill_scale = Scale::new("fill");
+        fill_scale.scale_type = Some(ScaleType::binned());
+        fill_scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        spec.scales.push(fill_scale);
+
+        // Add binned scale for size
+        let mut size_scale = Scale::new("size");
+        size_scale.scale_type = Some(ScaleType::binned());
+        size_scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+            ]),
+        );
+        spec.scales.push(size_scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 45, 80],
+            "value1" => &[10.0, 60.0, 90.0],
+            "value2" => &[5.0, 30.0, 45.0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Fill scale (normally gradient) should use symbol legend when multiple scales exist
+        let fill_legend_values = &vl_spec["layer"][0]["encoding"]["fill"]["legend"]["values"];
+        assert!(fill_legend_values.is_array());
+        let fill_values = fill_legend_values.as_array().unwrap();
+        assert_eq!(
+            fill_values.len(),
+            2,
+            "Fill with multiple binned scales should have 2 values (100 removed)"
+        );
+        assert!(!fill_values.iter().any(|v| v == &json!(100.0)));
+
+        // Size scale should also use symbol legend
+        let size_legend_values = &vl_spec["layer"][0]["encoding"]["size"]["legend"]["values"];
+        assert!(size_legend_values.is_array());
+        let size_values = size_legend_values.as_array().unwrap();
+        assert_eq!(
+            size_values.len(),
+            2,
+            "Size should have 2 values (50 removed)"
+        );
+        assert!(!size_values.iter().any(|v| v == &json!(50.0)));
+    }
+
+    #[test]
+    fn test_single_binned_fill_keeps_all_terminals() {
+        // Test that a single binned fill scale (gradient legend) keeps all terminals
+        use crate::plot::scale::Scale;
+        use crate::plot::{ArrayElement, ParameterValue, ScaleType};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "fill".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add only one binned fill scale (gradient legend case)
+        let mut scale = Scale::new("fill");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(75.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 45, 80],
+            "value" => &[10.0, 45.0, 80.0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Single fill scale should keep all values (gradient legend)
+        let legend_values = &vl_spec["layer"][0]["encoding"]["fill"]["legend"]["values"];
+        assert!(legend_values.is_array());
+        let values_arr = legend_values.as_array().unwrap();
+        assert_eq!(
+            values_arr.len(),
+            5,
+            "Single fill (gradient legend) should keep all 5 breaks"
+        );
+        assert_eq!(values_arr[0], 0.0);
+        assert_eq!(values_arr[4], 100.0);
+    }
+
+    #[test]
+    fn test_build_symbol_legend_label_mapping_basic() {
+        // Test the build_symbol_legend_label_mapping function directly
+        use super::build_symbol_legend_label_mapping;
+
+        let breaks = vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(25.0),
+            ArrayElement::Number(50.0),
+            ArrayElement::Number(75.0),
+            ArrayElement::Number(100.0),
+        ];
+
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("0".to_string(), Some("Low".to_string()));
+        label_mapping.insert("25".to_string(), Some("Medium".to_string()));
+        label_mapping.insert("50".to_string(), Some("High".to_string()));
+        label_mapping.insert("75".to_string(), Some("Very High".to_string()));
+        label_mapping.insert("100".to_string(), Some("Max".to_string())); // Will be excluded
+
+        let result = build_symbol_legend_label_mapping(&breaks, &label_mapping, "left");
+
+        // VL generates: "0 – 25", "25 – 50", "50 – 75", "≥ 75"
+        // We map to range format using custom labels: "lower_label – upper_label"
+        assert_eq!(result.get("0 – 25"), Some(&Some("Low – Medium".to_string())));
+        assert_eq!(result.get("25 – 50"), Some(&Some("Medium – High".to_string())));
+        assert_eq!(result.get("50 – 75"), Some(&Some("High – Very High".to_string())));
+        assert_eq!(result.get("≥ 75"), Some(&Some("Very High – Max".to_string())));
+
+        // Should not include a mapping for the last terminal value directly
+        assert!(result.get("100").is_none());
+    }
+
+    #[test]
+    fn test_symbol_legend_label_expr_uses_range_format() {
+        // Test that symbol legend labelExpr maps VL's range labels to our labels
+        use crate::plot::scale::Scale;
+        use crate::plot::{ArrayElement, ParameterValue, ScaleType};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "color".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add binned color scale (symbol legend case)
+        let mut scale = Scale::new("color");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(75.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        // Add label renaming
+        let mut labels = HashMap::new();
+        labels.insert("0".to_string(), Some("Low".to_string()));
+        labels.insert("25".to_string(), Some("Medium".to_string()));
+        labels.insert("50".to_string(), Some("High".to_string()));
+        labels.insert("75".to_string(), Some("Very High".to_string()));
+        scale.label_mapping = Some(labels);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 45, 80],
+            "value" => &[10.0, 45.0, 80.0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that labelExpr contains VL's range-style format
+        let label_expr = &vl_spec["layer"][0]["encoding"]["color"]["legend"]["labelExpr"];
+        assert!(label_expr.is_string());
+        let expr = label_expr.as_str().unwrap();
+
+        // Should contain mappings for VL's range format labels to our range format
+        assert!(
+            expr.contains("0 – 25"),
+            "labelExpr should contain VL's range format '0 – 25', got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("'Low – Medium'"),
+            "labelExpr should map to 'Low – Medium', got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("≥ 75"),
+            "labelExpr should contain VL's last bin format '≥ 75', got: {}",
+            expr
+        );
+        // Note: last bin maps "≥ 75" to "Very High – 100" (no custom label for 100 in this test)
+        assert!(
+            expr.contains("'Very High"),
+            "labelExpr should contain 'Very High', got: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_symbol_legend_open_format_with_oob_squish() {
+        // Test that oob='squish' produces open format labels for symbol legends
+        use super::build_symbol_legend_label_mapping;
+
+        let breaks = vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(25.0),
+            ArrayElement::Number(50.0),
+            ArrayElement::Number(75.0),
+            ArrayElement::Number(100.0),
+        ];
+
+        // Suppress first and last terminals (oob='squish' behavior)
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("0".to_string(), None); // Suppressed
+        label_mapping.insert("25".to_string(), Some("Medium".to_string()));
+        label_mapping.insert("50".to_string(), Some("High".to_string()));
+        label_mapping.insert("75".to_string(), Some("Very High".to_string()));
+        label_mapping.insert("100".to_string(), None); // Suppressed
+
+        // Test with closed='left' (default)
+        let result_left = build_symbol_legend_label_mapping(&breaks, &label_mapping, "left");
+
+        // First bin: suppressed lower terminal → "< 25" (open format)
+        assert_eq!(
+            result_left.get("0 – 25"),
+            Some(&Some("< Medium".to_string())),
+            "First bin with suppressed lower should use '< upper' format"
+        );
+        // Last bin: suppressed upper terminal → "≥ 75" (open format, same as normal)
+        assert_eq!(
+            result_left.get("≥ 75"),
+            Some(&Some("≥ Very High".to_string())),
+            "Last bin with suppressed upper should use '≥ lower' format"
+        );
+
+        // Test with closed='right'
+        let result_right = build_symbol_legend_label_mapping(&breaks, &label_mapping, "right");
+
+        // First bin: suppressed lower terminal → "≤ 25" (right-closed means upper included)
+        assert_eq!(
+            result_right.get("0 – 25"),
+            Some(&Some("≤ Medium".to_string())),
+            "First bin with closed='right' should use '≤ upper' format"
+        );
+        // Last bin: suppressed upper terminal → "> 75" (right-closed means lower not included)
+        assert_eq!(
+            result_right.get("≥ 75"),
+            Some(&Some("> Very High".to_string())),
+            "Last bin with closed='right' should use '> lower' format"
+        );
     }
 }
