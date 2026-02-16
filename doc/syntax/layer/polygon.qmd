@@ -19,6 +19,7 @@ The following aesthetics are recognised by the polygon layer.
 * `colour` Shorthand for setting `stroke` and `fill` simultaneously.
 * `opacity` The opacity of colours.
 * `linewidth` The width of the contour lines.
+* `linetype` The dash pattern of the contour line.
 
 ## Settings
 The polygon layer has no additional settings
