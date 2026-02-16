@@ -60,7 +60,7 @@ impl GeomTrait for Density {
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
         &[
             ("x", DefaultAestheticValue::Column("x")),
-            ("density", DefaultAestheticValue::Column("y")),
+            ("y", DefaultAestheticValue::Column("density")),
         ]
     }
 
