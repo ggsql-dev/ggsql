@@ -187,7 +187,8 @@ pub fn literal_to_series(name: &str, lit: &ParameterValue, len: usize) -> polars
 pub fn apply_pre_stat_transform(
     query: &str,
     layer: &Layer,
-    schema: &Schema,
+    full_schema: &Schema,
+    aesthetic_schema: &Schema,
     scales: &[Scale],
     type_names: &SqlTypeNames,
 ) -> String {
@@ -212,8 +213,8 @@ pub fn apply_pre_stat_transform(
             continue;
         }
 
-        // Find column dtype from schema using aesthetic column name
-        let col_dtype = schema
+        // Find column dtype from aesthetic schema using aesthetic column name
+        let col_dtype = aesthetic_schema
             .iter()
             .find(|c| c.name == aes_col_name)
             .map(|c| c.dtype.clone())
@@ -238,41 +239,29 @@ pub fn apply_pre_stat_transform(
         return query.to_string();
     }
 
-    // Build wrapper: SELECT {transformed_cols}, other_cols FROM ({query})
-    // For each transformed column, use the SQL expression; for others, keep as-is
-    let transformed_col_names: HashSet<&str> =
-        transform_exprs.iter().map(|(c, _)| c.as_str()).collect();
+    // Build explicit column list from full_schema (original columns) and
+    // aesthetic_schema (aesthetic columns added by build_layer_base_query).
+    // The base query produces SELECT *, col AS __ggsql_aes_x__, ... so the
+    // actual SQL output has both, but they come from different schema sources.
+    // This avoids SELECT * EXCLUDE which has portability issues
+    // (Polars SQL silently drops re-added columns with the same name).
+    let mut seen: HashSet<&str> = HashSet::new();
+    let combined_cols = full_schema.iter().chain(aesthetic_schema.iter());
 
-    // Build column list: all columns, with transformed ones replaced by their expressions
-    let col_exprs: Vec<String> = transform_exprs
-        .iter()
-        .map(|(col, sql)| format!("{} AS {}", sql, col))
+    let select_exprs: Vec<String> = combined_cols
+        .filter(|col| seen.insert(&col.name))
+        .map(|col| {
+            if let Some((_, sql)) = transform_exprs.iter().find(|(c, _)| c == &col.name) {
+                format!("{} AS \"{}\"", sql, col.name)
+            } else {
+                format!("\"{}\"", col.name)
+            }
+        })
         .collect();
 
-    // Build the excluded columns list for the * expansion
-    // We need to select *, but exclude the columns we're replacing
-    if col_exprs.is_empty() {
-        return query.to_string();
-    }
-
-    // Use EXCLUDE to remove the original columns, then add the transformed versions
-    let exclude_clause = if transformed_col_names.len() == 1 {
-        format!("EXCLUDE ({})", transformed_col_names.iter().next().unwrap())
-    } else {
-        format!(
-            "EXCLUDE ({})",
-            transformed_col_names
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    };
-
     format!(
-        "SELECT * {}, {} FROM ({}) AS __ggsql_pre__",
-        exclude_clause,
-        col_exprs.join(", "),
+        "SELECT {} FROM ({}) AS __ggsql_pre__",
+        select_exprs.join(", "),
         query
     )
 }
@@ -394,7 +383,14 @@ where
 
     // Apply pre-stat transforms (e.g., binning, discrete censoring)
     // Uses aesthetic names since columns are now renamed and mappings updated
-    let query = apply_pre_stat_transform(base_query, layer, &aesthetic_schema, scales, type_names);
+    let query = apply_pre_stat_transform(
+        base_query,
+        layer,
+        schema,
+        &aesthetic_schema,
+        scales,
+        type_names,
+    );
 
     // Build group_by columns from partition_by and facet variables
     let mut group_by: Vec<String> = Vec::new();
@@ -533,12 +529,57 @@ where
                     .map(|s| naming::stat_column(s))
                     .collect();
                 let exclude_clause = format!("EXCLUDE ({})", stat_col_names.join(", "));
-                format!(
-                    "SELECT * {}, {} FROM ({}) AS __ggsql_stat__",
-                    exclude_clause,
-                    stat_rename_exprs.join(", "),
-                    transformed_query
-                )
+
+                // If the transformed query uses CTEs (WITH ... SELECT ...),
+                // we can't wrap it in a subquery because Polars SQL doesn't
+                // support CTEs inside subqueries. Instead, append the final
+                // SELECT as another CTE and add the rename SELECT on top.
+                if transformed_query.trim_start().to_uppercase().starts_with("WITH") {
+                    // Find the first top-level SELECT (at paren depth 0).
+                    // All SELECTs inside CTE definitions are at depth >= 1,
+                    // so the first depth-0 SELECT is the final query body.
+                    let mut depth: i32 = 0;
+                    let mut first_select_pos = None;
+                    let upper = transformed_query.to_uppercase();
+                    for (i, ch) in transformed_query.char_indices() {
+                        match ch {
+                            '(' => depth += 1,
+                            ')' => depth -= 1,
+                            _ => {}
+                        }
+                        if depth == 0 && upper[i..].starts_with("SELECT") {
+                            first_select_pos = Some(i);
+                            break;
+                        }
+                    }
+
+                    if let Some(pos) = first_select_pos {
+                        let cte_prefix = &transformed_query[..pos];
+                        let final_select = &transformed_query[pos..];
+                        format!(
+                            "{}, __ggsql_stat__ AS ({}) SELECT * {}, {} FROM __ggsql_stat__",
+                            cte_prefix.trim_end().trim_end_matches(','),
+                            final_select,
+                            exclude_clause,
+                            stat_rename_exprs.join(", ")
+                        )
+                    } else {
+                        // Fallback: wrap as subquery
+                        format!(
+                            "SELECT * {}, {} FROM ({}) AS __ggsql_stat__",
+                            exclude_clause,
+                            stat_rename_exprs.join(", "),
+                            transformed_query
+                        )
+                    }
+                } else {
+                    format!(
+                        "SELECT * {}, {} FROM ({}) AS __ggsql_stat__",
+                        exclude_clause,
+                        stat_rename_exprs.join(", "),
+                        transformed_query
+                    )
+                }
             }
         }
         StatResult::Identity => query,

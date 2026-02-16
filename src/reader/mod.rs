@@ -27,7 +27,7 @@
 //!
 //! // With DataFrame registration
 //! let mut reader = DuckDBReader::from_connection_string("duckdb://memory")?;
-//! reader.register("my_table", some_dataframe)?;
+//! reader.register("my_table", some_dataframe, false)?;
 //! let spec = reader.execute("SELECT * FROM my_table VISUALISE x, y DRAW point")?;
 //! ```
 
@@ -41,12 +41,18 @@ use crate::{DataFrame, GgsqlError, Result};
 #[cfg(feature = "duckdb")]
 pub mod duckdb;
 
+#[cfg(feature = "polars-sql")]
+pub mod polars_sql;
+
 pub mod connection;
 pub mod data;
 mod spec;
 
 #[cfg(feature = "duckdb")]
 pub use duckdb::DuckDBReader;
+
+#[cfg(feature = "polars-sql")]
+pub use polars_sql::PolarsReader;
 
 // ============================================================================
 // Spec - Result of reader.execute()
@@ -97,7 +103,7 @@ pub struct Metadata {
 ///
 /// ```rust,ignore
 /// // Register a DataFrame (takes ownership)
-/// reader.register("sales", sales_df)?;
+/// reader.register("sales", sales_df, false)?;
 ///
 /// // Now you can query it
 /// let result = reader.execute_sql("SELECT * FROM sales WHERE amount > 100")?;
@@ -132,6 +138,8 @@ pub trait Reader {
     ///
     /// * `name` - The table name to register under
     /// * `df` - The DataFrame to register (ownership is transferred)
+    /// * `replace` - If true, replace any existing table with the same name.
+    ///   If false, return an error if the table already exists.
     ///
     /// # Returns
     ///
@@ -140,7 +148,7 @@ pub trait Reader {
     /// # Default Implementation
     ///
     /// Returns an error by default. Override for readers that support registration.
-    fn register(&mut self, name: &str, _df: DataFrame) -> Result<()> {
+    fn register(&self, name: &str, _df: DataFrame, _replace: bool) -> Result<()> {
         Err(GgsqlError::ReaderError(format!(
             "This reader does not support DataFrame registration for table '{}'",
             name
@@ -160,7 +168,7 @@ pub trait Reader {
     /// # Default Implementation
     ///
     /// Returns an error by default. Override for readers that support registration.
-    fn unregister(&mut self, name: &str) -> Result<()> {
+    fn unregister(&self, name: &str) -> Result<()> {
         Err(GgsqlError::ReaderError(format!(
             "This reader does not support unregistering table '{}'",
             name
@@ -202,14 +210,16 @@ pub trait Reader {
     /// use ggsql::reader::{Reader, DuckDBReader};
     /// use ggsql::writer::{Writer, VegaLiteWriter};
     ///
-    /// let reader = DuckDBReader::from_connection_string("duckdb://memory")?;
+    /// let mut reader = DuckDBReader::from_connection_string("duckdb://memory")?;
     /// let spec = reader.execute("SELECT 1 as x, 2 as y VISUALISE x, y DRAW point")?;
     ///
     /// let writer = VegaLiteWriter::new();
     /// let json = writer.render(&spec)?;
     /// ```
-    #[cfg(feature = "duckdb")]
-    fn execute(&self, query: &str) -> Result<Spec> {
+    fn execute(&self, query: &str) -> Result<Spec>
+    where
+        Self: Sized,
+    {
         // Run validation first to capture warnings
         let validated = validate(query)?;
         let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
@@ -394,7 +404,7 @@ mod tests {
     fn test_register_and_query() {
         use polars::prelude::*;
 
-        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let df = df! {
             "x" => [1i32, 2, 3],
@@ -402,7 +412,7 @@ mod tests {
         }
         .unwrap();
 
-        reader.register("my_data", df).unwrap();
+        reader.register("my_data", df, false).unwrap();
 
         let query = "SELECT * FROM my_data VISUALISE x, y DRAW point";
         let spec = reader.execute(query).unwrap();
@@ -419,7 +429,7 @@ mod tests {
     fn test_register_and_join() {
         use polars::prelude::*;
 
-        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let sales = df! {
             "id" => [1i32, 2, 3],
@@ -434,8 +444,8 @@ mod tests {
         }
         .unwrap();
 
-        reader.register("sales", sales).unwrap();
-        reader.register("products", products).unwrap();
+        reader.register("sales", sales, false).unwrap();
+        reader.register("products", products, false).unwrap();
 
         let query = r#"
             SELECT s.id, s.amount, p.name

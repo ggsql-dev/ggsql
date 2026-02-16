@@ -486,7 +486,7 @@ pub struct PreparedData {
 /// # Arguments
 /// * `query` - The full ggsql query string
 /// * `reader` - A Reader implementation for executing SQL
-pub fn prepare_data_with_reader<R: Reader + ?Sized>(
+pub fn prepare_data_with_reader<R: Reader>(
     query: &str,
     reader: &R,
 ) -> Result<PreparedData> {
@@ -520,9 +520,8 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
     // Extract CTE definitions from the source tree (in declaration order)
     let ctes = cte::extract_ctes(&source_tree);
 
-    // Materialize CTEs as temporary tables
-    // This creates __ggsql_cte_<name>__ tables that persist for the session
-    let materialized_ctes = cte::materialize_ctes(&ctes, &execute_query)?;
+    // Materialize CTEs as registered tables via reader.register()
+    let materialized_ctes = cte::materialize_ctes(&ctes, reader)?;
 
     // Build data map for multi-source support
     let mut data_map: HashMap<String, DataFrame> = HashMap::new();
@@ -537,13 +536,9 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
     let mut has_global_table = false;
     if sql_part.is_some() {
         if let Some(transformed_sql) = cte::transform_global_sql(&source_tree, &materialized_ctes) {
-            // Create temp table for global result
-            let create_global = format!(
-                "CREATE OR REPLACE TEMP TABLE {} AS {}",
-                naming::global_table(),
-                transformed_sql
-            );
-            execute_query(&create_global)?;
+            // Execute global result SQL and register result as a temp table
+            let df = execute_query(&transformed_sql)?;
+            reader.register(&naming::global_table(), df, true)?;
 
             // NOTE: Don't read into data_map yet - defer until after casting is determined
             // The temp table exists and can be used for schema fetching

@@ -4,7 +4,8 @@
 //! materializing them as temporary tables, and transforming CTE references
 //! in SQL queries.
 
-use crate::{naming, parser::SourceTree, DataFrame, GgsqlError, Result};
+use crate::reader::Reader;
+use crate::{naming, parser::SourceTree, GgsqlError, Result};
 use std::collections::HashSet;
 use tree_sitter::Node;
 
@@ -125,10 +126,7 @@ pub fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> Strin
 /// temp table name.
 ///
 /// Returns the set of CTE names that were materialized.
-pub fn materialize_ctes<F>(ctes: &[CteDefinition], execute_sql: &F) -> Result<HashSet<String>>
-where
-    F: Fn(&str) -> Result<DataFrame>,
-{
+pub fn materialize_ctes(ctes: &[CteDefinition], reader: &dyn Reader) -> Result<HashSet<String>> {
     let mut materialized = HashSet::new();
 
     for cte in ctes {
@@ -136,13 +134,13 @@ where
         let transformed_body = transform_cte_references(&cte.body, &materialized);
 
         let temp_table_name = naming::cte_table(&cte.name);
-        let create_sql = format!(
-            "CREATE OR REPLACE TEMP TABLE {} AS {}",
-            temp_table_name, transformed_body
-        );
 
-        execute_sql(&create_sql).map_err(|e| {
+        // Execute the CTE body SQL to get a DataFrame, then register it
+        let df = reader.execute_sql(&transformed_body).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to materialize CTE '{}': {}", cte.name, e))
+        })?;
+        reader.register(&temp_table_name, df, true).map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to register CTE '{}': {}", cte.name, e))
         })?;
 
         materialized.insert(cte.name.clone());
