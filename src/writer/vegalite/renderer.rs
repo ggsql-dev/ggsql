@@ -622,7 +622,8 @@ impl GeomRenderer for BoxplotRenderer {
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
     ) -> Result<PreparedData> {
-        let (components, grouping_cols, has_outliers) = self.prepare_components(df, binned_columns)?;
+        let (components, grouping_cols, has_outliers) =
+            self.prepare_components(df, binned_columns)?;
 
         Ok(PreparedData::Composite {
             components,
@@ -655,7 +656,13 @@ impl GeomRenderer for BoxplotRenderer {
             GgsqlError::InternalError("Failed to downcast boxplot metadata".to_string())
         })?;
 
-        self.render_layers(prototype, layer, data_key, &info.grouping_cols, info.has_outliers)
+        self.render_layers(
+            prototype,
+            layer,
+            data_key,
+            &info.grouping_cols,
+            info.has_outliers,
+        )
     }
 }
 
