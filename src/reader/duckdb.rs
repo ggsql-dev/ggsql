@@ -596,9 +596,6 @@ impl Reader for DuckDBReader {
         Ok(())
     }
 
-    fn supports_register(&self) -> bool {
-        true
-    }
 }
 
 #[cfg(test)]
@@ -748,12 +745,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("exceeds maximum length"));
-    }
-
-    #[test]
-    fn test_supports_register() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        assert!(reader.supports_register());
     }
 
     #[test]

@@ -85,10 +85,6 @@ class TestDuckDBReader:
         assert isinstance(result, pl.DataFrame)
         assert result.shape == (2, 2)
 
-    def test_supports_register(self):
-        reader = ggsql.DuckDBReader("duckdb://memory")
-        assert reader.supports_register() is True
-
     def test_invalid_connection_string(self):
         with pytest.raises(ValueError):
             ggsql.DuckDBReader("invalid://connection")
@@ -425,9 +421,6 @@ class TestCustomReader:
             def execute_sql(self, sql: str) -> pl.DataFrame:
                 return self.conn.execute(sql).pl()
 
-            def supports_register(self) -> bool:
-                return True
-
             def register(self, name: str, df: pl.DataFrame) -> None:
                 self.conn.register(name, df)
 
@@ -499,8 +492,7 @@ class TestCustomReader:
             def __init__(self):
                 self.conn = duckdb.connect()
                 self.conn.execute(
-                    "CREATE TABLE data AS SELECT * FROM ("
-                    "VALUES (1, 2)) AS t(x, y)"
+                    "CREATE TABLE data AS SELECT * FROM (VALUES (1, 2)) AS t(x, y)"
                 )
                 self.execute_calls = []
 
@@ -529,9 +521,6 @@ class TestCustomReader:
 
             def execute_sql(self, sql: str) -> pl.DataFrame:
                 return self.con.con.execute(sql).pl()
-
-            def supports_register(self) -> bool:
-                return True
 
             def register(self, name: str, df: pl.DataFrame) -> None:
                 self.con.create_table(name, df.to_arrow(), overwrite=True)

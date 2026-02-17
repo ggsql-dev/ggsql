@@ -97,7 +97,7 @@ pub struct Metadata {
 ///
 /// # DataFrame Registration
 ///
-/// Some readers support registering DataFrames as queryable tables using
+/// Readers support registering DataFrames as queryable tables using
 /// the [`register`](Reader::register) method. This allows you to query
 /// in-memory DataFrames with SQL, join them with other tables, etc.
 ///
@@ -143,17 +143,8 @@ pub trait Reader {
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, error if registration fails or isn't supported.
-    ///
-    /// # Default Implementation
-    ///
-    /// Returns an error by default. Override for readers that support registration.
-    fn register(&self, name: &str, _df: DataFrame, _replace: bool) -> Result<()> {
-        Err(GgsqlError::ReaderError(format!(
-            "This reader does not support DataFrame registration for table '{}'",
-            name
-        )))
-    }
+    /// `Ok(())` on success, error if registration fails.
+    fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()>;
 
     /// Unregister a previously registered table
     ///
@@ -167,21 +158,12 @@ pub trait Reader {
     ///
     /// # Default Implementation
     ///
-    /// Returns an error by default. Override for readers that support registration.
+    /// Returns an error by default. Override for readers that support unregistration.
     fn unregister(&self, name: &str) -> Result<()> {
         Err(GgsqlError::ReaderError(format!(
             "This reader does not support unregistering table '{}'",
             name
         )))
-    }
-
-    /// Check if this reader supports DataFrame registration
-    ///
-    /// # Returns
-    ///
-    /// `true` if [`register`](Reader::register) is implemented, `false` otherwise.
-    fn supports_register(&self) -> bool {
-        false
     }
 
     /// Execute a ggsql query and return the visualization specification.

@@ -138,16 +138,6 @@ impl Reader for PyReaderBridge {
         })
     }
 
-    fn supports_register(&self) -> bool {
-        Python::attach(|py| {
-            self.obj
-                .bind(py)
-                .call_method0("supports_register")
-                .and_then(|r| r.extract::<bool>())
-                .unwrap_or(false)
-        })
-    }
-
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> ggsql::Result<()> {
         Python::attach(|py| {
             let py_df =
@@ -254,6 +244,7 @@ impl PyDuckDBReader {
     /// ------
     /// ValueError
     ///     If registration fails or the table name is invalid.
+    #[pyo3(signature = (name, df, replace=false))]
     fn register(
         &self,
         py: Python<'_>,
@@ -306,16 +297,6 @@ impl PyDuckDBReader {
             .execute_sql(sql)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
         polars_to_py(py, &df)
-    }
-
-    /// Check if this reader supports DataFrame registration.
-    ///
-    /// Returns
-    /// -------
-    /// bool
-    ///     True if register() is supported, False otherwise.
-    fn supports_register(&self) -> bool {
-        self.inner.supports_register()
     }
 
     /// Execute a ggsql query and return the visualization specification.

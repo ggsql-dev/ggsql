@@ -222,9 +222,6 @@ impl Reader for PolarsReader {
         Ok(())
     }
 
-    fn supports_register(&self) -> bool {
-        true
-    }
 }
 
 #[cfg(test)]
@@ -239,8 +236,7 @@ mod tests {
 
     #[test]
     fn test_create_reader_default() {
-        let reader = PolarsReader::new();
-        assert!(reader.supports_register());
+        let _reader = PolarsReader::new();
     }
 
     #[test]
@@ -331,12 +327,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("exceeds maximum length"));
-    }
-
-    #[test]
-    fn test_supports_register() {
-        let reader = PolarsReader::new();
-        assert!(reader.supports_register());
     }
 
     #[test]
