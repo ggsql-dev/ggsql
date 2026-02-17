@@ -595,7 +595,6 @@ impl Reader for DuckDBReader {
 
         Ok(())
     }
-
 }
 
 #[cfg(test)]

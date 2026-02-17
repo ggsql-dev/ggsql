@@ -221,7 +221,6 @@ impl Reader for PolarsReader {
 
         Ok(())
     }
-
 }
 
 #[cfg(test)]
