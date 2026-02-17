@@ -28,9 +28,15 @@ use super::{POINTS_TO_AREA, POINTS_TO_PIXELS};
 /// - This is necessary because `datum.label` contains Vega-Lite's formatted label (e.g., "Jan 1, 2024")
 ///   but our label_mapping keys are ISO format strings (e.g., "2024-01-01")
 /// - Example: `"timeFormat(datum.value, '%Y-%m-%d') == '2024-01-01' ? 'Q1 Start' : datum.label"`
+///
+/// For threshold scales (binned legends):
+/// - The `null_key` parameter specifies which key should use `datum.label == null` instead of
+///   a string comparison. This is needed because Vega-Lite's threshold scale uses null for
+///   the first bin's label value.
 pub(super) fn build_label_expr(
     mappings: &HashMap<String, Option<String>>,
     time_format: Option<&str>,
+    null_key: Option<&str>,
 ) -> String {
     if mappings.is_empty() {
         return "datum.label".to_string();
@@ -46,17 +52,22 @@ pub(super) fn build_label_expr(
         .iter()
         .map(|(from, to)| {
             let from_escaped = from.replace('\'', "\\'");
+
+            // For threshold scales, the first terminal uses null instead of string comparison
+            let condition = if null_key == Some(from.as_str()) {
+                "datum.label == null".to_string()
+            } else {
+                format!("{} == '{}'", comparison_expr, from_escaped)
+            };
+
             match to {
                 Some(label) => {
                     let to_escaped = label.replace('\'', "\\'");
-                    format!(
-                        "{} == '{}' ? '{}'",
-                        comparison_expr, from_escaped, to_escaped
-                    )
+                    format!("{} ? '{}'", condition, to_escaped)
                 }
                 None => {
                     // NULL suppresses the label (empty string)
-                    format!("{} == '{}' ? ''", comparison_expr, from_escaped)
+                    format!("{} ? ''", condition)
                 }
             }
         })
@@ -65,6 +76,108 @@ pub(super) fn build_label_expr(
     // Fallback to original label
     parts.push("datum.label".to_string());
     parts.join(" : ")
+}
+
+/// Build label mappings for threshold scale symbol legends
+///
+/// Maps Vega-Lite's auto-generated range labels to our desired labels.
+/// VL format: "<low> – <high>" for most bins (en-dash U+2013), "≥ <low>" for last bin.
+///
+/// # Arguments
+/// * `breaks` - All break values including terminals [0, 25, 50, 75, 100]
+/// * `label_mapping` - Our desired labels keyed by break value string
+/// * `closed` - Which side of bin is closed: "left" (default) or "right"
+///
+/// # Returns
+/// HashMap mapping Vega-Lite's predicted labels to our replacement labels
+pub(super) fn build_symbol_legend_label_mapping(
+    breaks: &[crate::plot::ArrayElement],
+    label_mapping: &HashMap<String, Option<String>>,
+    closed: &str,
+) -> HashMap<String, Option<String>> {
+    let mut result = HashMap::new();
+
+    // We have N breaks = N-1 bins
+    // legend.values has N-1 entries (last terminal excluded for symbol legends)
+    if breaks.len() < 2 {
+        return result;
+    }
+    let num_bins = breaks.len() - 1;
+
+    for i in 0..num_bins {
+        let lower = &breaks[i];
+        let upper = &breaks[i + 1];
+        let lower_str = lower.to_key_string();
+        let upper_str = upper.to_key_string();
+
+        // Get our desired label for this bin (keyed by lower bound)
+        let our_label = label_mapping.get(&lower_str).cloned().flatten();
+
+        // Predict Vega-Lite's generated label
+        // All but last: "<lower> – <upper>" (en-dash U+2013 with spaces)
+        // Last bin: "≥ <lower>" (greater-than-or-equal U+2265)
+        let vl_label = if i == num_bins - 1 {
+            format!("≥ {}", lower_str)
+        } else {
+            format!("{} – {}", lower_str, upper_str)
+        };
+
+        // Check if terminals are suppressed (mapped to None)
+        let lower_suppressed = label_mapping.get(&lower_str) == Some(&None);
+        let upper_suppressed = label_mapping.get(&upper_str) == Some(&None);
+
+        // Get labels for building range format (fall back to break values)
+        let lower_label = our_label.clone().unwrap_or_else(|| lower_str.clone());
+        let upper_label = label_mapping
+            .get(&upper_str)
+            .cloned()
+            .flatten()
+            .unwrap_or_else(|| upper_str.clone());
+
+        // Determine the replacement label
+        // Priority: terminal suppression → range format with custom labels
+        let replacement = if i == 0 && lower_suppressed {
+            // First bin with suppressed lower terminal → open format
+            let symbol = if closed == "right" { "≤" } else { "<" };
+            Some(format!("{} {}", symbol, upper_label))
+        } else if i == num_bins - 1 && upper_suppressed {
+            // Last bin with suppressed upper terminal → open format
+            let symbol = if closed == "right" { ">" } else { "≥" };
+            Some(format!("{} {}", symbol, lower_label))
+        } else {
+            // Use range format with custom labels: "<lower_label> – <upper_label>"
+            Some(format!("{} – {}", lower_label, upper_label))
+        };
+
+        result.insert(vl_label, replacement);
+    }
+
+    result
+}
+
+/// Count the number of binned non-positional scales in the spec.
+/// This is used to determine if legends should use symbol style (which requires
+/// removing the last terminal value) or gradient style (which keeps all values).
+pub(super) fn count_binned_legend_scales(spec: &Plot) -> usize {
+    spec.scales
+        .iter()
+        .filter(|scale| {
+            // Check if binned
+            let is_binned = scale
+                .scale_type
+                .as_ref()
+                .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
+                .unwrap_or(false);
+
+            // Check if non-positional (legend aesthetic)
+            let is_legend_aesthetic = !matches!(
+                scale.aesthetic.as_str(),
+                "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
+            );
+
+            is_binned && is_legend_aesthetic
+        })
+        .count()
 }
 
 /// Check if a string column contains numeric values
@@ -250,6 +363,14 @@ pub(super) fn build_encoding_channel(
             // Track if we're using a color range array (needs gradient legend)
             let mut needs_gradient_legend = false;
 
+            // Track if this is a binned non-positional aesthetic (needs threshold scale)
+            // Computed early so we can skip normal domain handling for threshold scales
+            let is_binned_legend = is_binned
+                && !matches!(
+                    aesthetic,
+                    "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
+                );
+
             // Use scale properties from the primary aesthetic's scale
             // (same scale lookup as used above for field_type)
             if let Some(scale) = spec.find_scale(primary) {
@@ -257,10 +378,13 @@ pub(super) fn build_encoding_channel(
                 use crate::plot::{ArrayElement, OutputRange};
 
                 // Apply domain from input_range (FROM clause)
-                if let Some(ref domain_values) = scale.input_range {
-                    let domain_json: Vec<Value> =
-                        domain_values.iter().map(|elem| elem.to_json()).collect();
-                    scale_obj.insert("domain".to_string(), json!(domain_json));
+                // Skip for threshold scales - they use internal breaks as domain instead
+                if !is_binned_legend {
+                    if let Some(ref domain_values) = scale.input_range {
+                        let domain_json: Vec<Value> =
+                            domain_values.iter().map(|elem| elem.to_json()).collect();
+                        scale_obj.insert("domain".to_string(), json!(domain_json));
+                    }
                 }
 
                 // Apply range from output_range (TO clause)
@@ -377,6 +501,25 @@ pub(super) fn build_encoding_channel(
                     }
                 }
 
+                // Handle binned non-positional aesthetics with threshold scale
+                // For legends (fill, stroke, color, etc.), binned scales should use threshold
+                // scale type to show discrete color blocks instead of a smooth gradient
+                if is_binned_legend {
+                    scale_obj.insert("type".to_string(), json!("threshold"));
+
+                    // Threshold domain = internal breaks (excluding first and last terminal bounds)
+                    // breaks = [0, 25, 50, 75, 100] → domain = [25, 50, 75]
+                    if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
+                        if breaks.len() > 2 {
+                            let internal_breaks: Vec<Value> = breaks[1..breaks.len() - 1]
+                                .iter()
+                                .map(|e| e.to_json())
+                                .collect();
+                            scale_obj.insert("domain".to_string(), json!(internal_breaks));
+                        }
+                    }
+                }
+
                 // Handle reverse property (SETTING clause)
                 use crate::plot::ParameterValue;
                 if let Some(ParameterValue::Boolean(true)) = scale.properties.get("reverse") {
@@ -421,44 +564,73 @@ pub(super) fn build_encoding_channel(
                 // For binned scales, we still need to set axis.values manually because
                 // Vega-Lite's automatic tick placement with bin:"binned" only works for equal-width bins
                 if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
-                    // Filter out values that have label_mapping = None (suppressed labels)
-                    // This respects decisions made during scale resolution
-                    let values: Vec<Value> = breaks
-                        .iter()
-                        .filter(|e| {
-                            if let Some(ref label_mapping) = scale.label_mapping {
-                                // Keep value only if it's not mapped to None
-                                let key = e.to_key_string();
-                                !matches!(label_mapping.get(&key), Some(None))
-                            } else {
-                                true // No label_mapping, keep all values
-                            }
-                        })
-                        .map(|e| e.to_json())
-                        .collect();
+                    // Get all break values (filtering is applied selectively below)
+                    let all_values: Vec<Value> = breaks.iter().map(|e| e.to_json()).collect();
 
                     // Positional aesthetics use axis.values, others use legend.values
                     if matches!(
                         aesthetic,
                         "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
                     ) {
+                        // For positional aesthetics (axes), filter out values that have
+                        // label_mapping = None (suppressed terminal breaks from oob='squish')
+                        let axis_values: Vec<Value> =
+                            if let Some(ref label_mapping) = scale.label_mapping {
+                                breaks
+                                    .iter()
+                                    .filter(|e| {
+                                        let key = e.to_key_string();
+                                        !matches!(label_mapping.get(&key), Some(None))
+                                    })
+                                    .map(|e| e.to_json())
+                                    .collect()
+                            } else {
+                                all_values.clone()
+                            };
+
                         // Add to axis object
                         if !encoding.get("axis").is_some_and(|v| v.is_null()) {
                             let axis = encoding.get_mut("axis").and_then(|v| v.as_object_mut());
                             if let Some(axis_map) = axis {
-                                axis_map.insert("values".to_string(), json!(values));
+                                axis_map.insert("values".to_string(), json!(axis_values));
                             } else {
-                                encoding["axis"] = json!({"values": values});
+                                encoding["axis"] = json!({"values": axis_values});
                             }
                         }
                     } else {
                         // Add to legend object for non-positional aesthetics
-                        if !encoding.get("legend").is_some_and(|v| v.is_null()) {
-                            let legend = encoding.get_mut("legend").and_then(|v| v.as_object_mut());
-                            if let Some(legend_map) = legend {
-                                legend_map.insert("values".to_string(), json!(values));
+                        // Note: We use all_values here (no filtering of suppressed labels)
+                        // because legends should show all bins, unlike axes where terminal
+                        // breaks may be suppressed by oob='squish'.
+                        // For threshold (binned) scales, symbol legends need the last terminal
+                        // removed to avoid an extra symbol. Gradient legends (fill/stroke alone)
+                        // keep all values.
+                        let legend_values = if is_binned_legend {
+                            // Determine if this is a symbol legend case:
+                            // - Not fill/stroke (always symbol legend)
+                            // - OR multiple binned legend scales (forces symbol legend)
+                            let binned_legend_count = count_binned_legend_scales(spec);
+                            let is_gradient_aesthetic = matches!(aesthetic, "fill" | "stroke");
+                            let uses_symbol_legend =
+                                !is_gradient_aesthetic || binned_legend_count > 1;
+
+                            if uses_symbol_legend && !all_values.is_empty() {
+                                // Remove the last terminal for symbol legends
+                                all_values[..all_values.len() - 1].to_vec()
                             } else {
-                                encoding["legend"] = json!({"values": values});
+                                all_values
+                            }
+                        } else {
+                            all_values
+                        };
+
+                        if !encoding.get("legend").is_some_and(|v| v.is_null()) {
+                            let legend =
+                                encoding.get_mut("legend").and_then(|v| v.as_object_mut());
+                            if let Some(legend_map) = legend {
+                                legend_map.insert("values".to_string(), json!(legend_values));
+                            } else {
+                                encoding["legend"] = json!({"values": legend_values});
                             }
                         }
                     }
@@ -481,7 +653,62 @@ pub(super) fn build_encoding_channel(
                                     TransformKind::Time => Some("%H:%M:%S"),
                                     _ => None,
                                 });
-                        let label_expr = build_label_expr(label_mapping, time_format);
+
+                        // For threshold scales (binned legends), determine if symbol legend
+                        // Symbol legends need different label handling: VL generates range-style
+                        // labels like "0 – 25", "25 – 50", "≥ 75" which we need to map
+                        let (filtered_mapping, null_key) = if is_binned_legend {
+                            let binned_legend_count = count_binned_legend_scales(spec);
+                            let is_gradient_aesthetic = matches!(aesthetic, "fill" | "stroke");
+                            let uses_symbol_legend =
+                                !is_gradient_aesthetic || binned_legend_count > 1;
+
+                            if uses_symbol_legend {
+                                // Symbol legend: map VL's range-style labels to our labels
+                                let closed = scale
+                                    .properties
+                                    .get("closed")
+                                    .and_then(|v| {
+                                        if let ParameterValue::String(s) = v {
+                                            Some(s.as_str())
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .unwrap_or("left");
+
+                                if let Some(ParameterValue::Array(breaks)) =
+                                    scale.properties.get("breaks")
+                                {
+                                    let symbol_mapping = build_symbol_legend_label_mapping(
+                                        breaks,
+                                        label_mapping,
+                                        closed,
+                                    );
+                                    (symbol_mapping, None) // No null_key for symbol legends
+                                } else {
+                                    (label_mapping.clone(), None)
+                                }
+                            } else {
+                                // Gradient legend: use null_key for first terminal
+                                let first_key = scale.properties.get("breaks").and_then(|b| {
+                                    if let ParameterValue::Array(breaks) = b {
+                                        breaks.first().map(|e| e.to_key_string())
+                                    } else {
+                                        None
+                                    }
+                                });
+                                (label_mapping.clone(), first_key)
+                            }
+                        } else {
+                            (label_mapping.clone(), None)
+                        };
+
+                        let label_expr = build_label_expr(
+                            &filtered_mapping,
+                            time_format,
+                            null_key.as_deref(),
+                        );
 
                         if matches!(
                             aesthetic,

@@ -696,4 +696,188 @@ mod tests {
         assert_eq!(vl_spec["layer"][0]["mark"]["type"], "line");
         assert_eq!(vl_spec["layer"][1]["mark"]["type"], "point");
     }
+
+    #[test]
+    fn test_build_symbol_legend_label_mapping_basic() {
+        // Test the build_symbol_legend_label_mapping function directly
+        use super::encoding::build_symbol_legend_label_mapping;
+
+        let breaks = vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(25.0),
+            ArrayElement::Number(50.0),
+            ArrayElement::Number(75.0),
+            ArrayElement::Number(100.0),
+        ];
+
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("0".to_string(), Some("Low".to_string()));
+        label_mapping.insert("25".to_string(), Some("Medium".to_string()));
+        label_mapping.insert("50".to_string(), Some("High".to_string()));
+        label_mapping.insert("75".to_string(), Some("Very High".to_string()));
+        label_mapping.insert("100".to_string(), Some("Max".to_string())); // Will be excluded
+
+        let result = build_symbol_legend_label_mapping(&breaks, &label_mapping, "left");
+
+        // VL generates: "0 – 25", "25 – 50", "50 – 75", "≥ 75"
+        // We map to range format using custom labels: "lower_label – upper_label"
+        assert_eq!(
+            result.get("0 – 25"),
+            Some(&Some("Low – Medium".to_string()))
+        );
+        assert_eq!(
+            result.get("25 – 50"),
+            Some(&Some("Medium – High".to_string()))
+        );
+        assert_eq!(
+            result.get("50 – 75"),
+            Some(&Some("High – Very High".to_string()))
+        );
+        assert_eq!(
+            result.get("≥ 75"),
+            Some(&Some("Very High – Max".to_string()))
+        );
+
+        // Should not include a mapping for the last terminal value directly
+        assert!(result.get("100").is_none());
+    }
+
+    #[test]
+    fn test_symbol_legend_label_expr_uses_range_format() {
+        // Test that symbol legend labelExpr maps VL's range labels to our labels
+        use crate::plot::scale::Scale;
+        use crate::plot::{ArrayElement, ParameterValue, ScaleType};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "color".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add binned color scale (symbol legend case)
+        let mut scale = Scale::new("color");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(75.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        // Add label renaming
+        let mut labels = HashMap::new();
+        labels.insert("0".to_string(), Some("Low".to_string()));
+        labels.insert("25".to_string(), Some("Medium".to_string()));
+        labels.insert("50".to_string(), Some("High".to_string()));
+        labels.insert("75".to_string(), Some("Very High".to_string()));
+        scale.label_mapping = Some(labels);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 45, 80],
+            "value" => &[10.0, 45.0, 80.0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that labelExpr contains VL's range-style format
+        let label_expr = &vl_spec["layer"][0]["encoding"]["color"]["legend"]["labelExpr"];
+        assert!(label_expr.is_string());
+        let expr = label_expr.as_str().unwrap();
+
+        // Should contain mappings for VL's range format labels to our range format
+        assert!(
+            expr.contains("0 – 25"),
+            "labelExpr should contain VL's range format '0 – 25', got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("'Low – Medium'"),
+            "labelExpr should map to 'Low – Medium', got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("≥ 75"),
+            "labelExpr should contain VL's last bin format '≥ 75', got: {}",
+            expr
+        );
+        // Note: last bin maps "≥ 75" to "Very High – 100" (no custom label for 100 in this test)
+        assert!(
+            expr.contains("'Very High"),
+            "labelExpr should contain 'Very High', got: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_symbol_legend_open_format_with_oob_squish() {
+        // Test that oob='squish' produces open format labels for symbol legends
+        use super::encoding::build_symbol_legend_label_mapping;
+
+        let breaks = vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(25.0),
+            ArrayElement::Number(50.0),
+            ArrayElement::Number(75.0),
+            ArrayElement::Number(100.0),
+        ];
+
+        // Suppress first and last terminals (oob='squish' behavior)
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("0".to_string(), None); // Suppressed
+        label_mapping.insert("25".to_string(), Some("Medium".to_string()));
+        label_mapping.insert("50".to_string(), Some("High".to_string()));
+        label_mapping.insert("75".to_string(), Some("Very High".to_string()));
+        label_mapping.insert("100".to_string(), None); // Suppressed
+
+        // Test with closed='left' (default)
+        let result_left = build_symbol_legend_label_mapping(&breaks, &label_mapping, "left");
+
+        // First bin: suppressed lower terminal → "< 25" (open format)
+        assert_eq!(
+            result_left.get("0 – 25"),
+            Some(&Some("< Medium".to_string())),
+            "First bin with suppressed lower should use '< upper' format"
+        );
+        // Last bin: suppressed upper terminal → "≥ 75" (open format, same as normal)
+        assert_eq!(
+            result_left.get("≥ 75"),
+            Some(&Some("≥ Very High".to_string())),
+            "Last bin with suppressed upper should use '≥ lower' format"
+        );
+
+        // Test with closed='right'
+        let result_right = build_symbol_legend_label_mapping(&breaks, &label_mapping, "right");
+
+        // First bin: suppressed lower terminal → "≤ 25" (right-closed means upper included)
+        assert_eq!(
+            result_right.get("0 – 25"),
+            Some(&Some("≤ Medium".to_string())),
+            "First bin with closed='right' should use '≤ upper' format"
+        );
+        // Last bin: suppressed upper terminal → "> 75" (right-closed means lower not included)
+        assert_eq!(
+            result_right.get("≥ 75"),
+            Some(&Some("> Very High".to_string())),
+            "Last bin with closed='right' should use '> lower' format"
+        );
+    }
 }
