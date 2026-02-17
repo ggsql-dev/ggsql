@@ -1910,10 +1910,10 @@ pub const SHAPES_CLOSED: &[&str] = &[
 pub const SHAPES_OPEN: &[&str] = &[
     "cross",    // X shape
     "plus",     // + shape
-    "stroke",   // horizontal line
-    "vline",    // vertical line
     "asterisk", // * shape (6-pointed)
     "bowtie",   // two triangles pointing inward
+    "hline",    // horizontal line
+    "vline",    // vertical line
 ];
 
 /// Default point shapes - combined palette ordered by distinguishability
@@ -1931,10 +1931,10 @@ pub const SHAPES: &[&str] = &[
     // Open shapes
     "cross",
     "plus",
-    "stroke",
-    "vline",
     "asterisk",
     "bowtie",
+    "hline",
+    "vline",
 ];
 
 // =============================================================================
@@ -2053,8 +2053,8 @@ pub fn get_color_palette(name: &str) -> Option<&'static [&'static str]> {
 /// Look up a shape palette by name.
 pub fn get_shape_palette(name: &str) -> Option<&'static [&'static str]> {
     match name.to_lowercase().as_str() {
-        "shapes" | "default" => Some(SHAPES),
-        "shapes_closed" | "closed" => Some(SHAPES_CLOSED),
+        "shapes" => Some(SHAPES),
+        "shapes_closed" | "closed" | "default" => Some(SHAPES_CLOSED),
         "shapes_open" | "open" => Some(SHAPES_OPEN),
         _ => None,
     }
@@ -2063,7 +2063,7 @@ pub fn get_shape_palette(name: &str) -> Option<&'static [&'static str]> {
 /// Look up a linetype palette by name.
 pub fn get_linetype_palette(name: &str) -> Option<&'static [&'static str]> {
     match name.to_lowercase().as_str() {
-        "linetypes" | "default" => Some(LINETYPES),
+        "categorical" | "default" => Some(LINETYPES),
         _ => None,
     }
 }
@@ -2225,15 +2225,16 @@ mod tests {
 
     #[test]
     fn test_get_shape_palette() {
-        // Default/combined palette
+        // Combined palette (all shapes)
         assert!(get_shape_palette("shapes").is_some());
-        assert!(get_shape_palette("default").is_some());
         assert_eq!(get_shape_palette("shapes").unwrap().len(), 15);
 
-        // Closed shapes palette
+        // Closed shapes palette (default)
         assert!(get_shape_palette("shapes_closed").is_some());
         assert!(get_shape_palette("closed").is_some());
+        assert!(get_shape_palette("default").is_some());
         assert_eq!(get_shape_palette("closed").unwrap().len(), 9);
+        assert_eq!(get_shape_palette("default").unwrap().len(), 9);
 
         // Open shapes palette
         assert!(get_shape_palette("shapes_open").is_some());
@@ -2251,13 +2252,13 @@ mod tests {
     #[test]
     fn test_get_linetype_palette() {
         // Default palette
-        assert!(get_linetype_palette("linetypes").is_some());
+        assert!(get_linetype_palette("categorical").is_some());
         assert!(get_linetype_palette("default").is_some());
-        assert_eq!(get_linetype_palette("linetypes").unwrap().len(), 6);
+        assert_eq!(get_linetype_palette("categorical").unwrap().len(), 6);
 
         // Case insensitivity
-        assert!(get_linetype_palette("LINETYPES").is_some());
-        assert!(get_linetype_palette("Linetypes").is_some());
+        assert!(get_linetype_palette("CATEGORICAL").is_some());
+        assert!(get_linetype_palette("Categorical").is_some());
 
         // Unknown palette
         assert!(get_linetype_palette("unknown_lt").is_none());
@@ -2348,7 +2349,7 @@ mod tests {
         let result = lookup_palette("shape", "default");
         assert!(result.is_ok());
         let arr = result.unwrap();
-        assert_eq!(arr.len(), 15); // default shapes palette
+        assert_eq!(arr.len(), 9); // default shapes palette
     }
 
     #[test]
