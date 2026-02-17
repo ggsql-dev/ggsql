@@ -184,24 +184,6 @@ pub struct DefaultRenderer;
 impl GeomRenderer for DefaultRenderer {}
 
 // =============================================================================
-// Point Renderer
-// =============================================================================
-
-/// Renderer for point geom (uses all defaults)
-pub struct PointRenderer;
-
-impl GeomRenderer for PointRenderer {}
-
-// =============================================================================
-// Line Renderer
-// =============================================================================
-
-/// Renderer for line geom (uses all defaults)
-pub struct LineRenderer;
-
-impl GeomRenderer for LineRenderer {}
-
-// =============================================================================
 // Bar Renderer
 // =============================================================================
 
@@ -673,15 +655,13 @@ impl GeomRenderer for BoxplotRenderer {
 /// Get the appropriate renderer for a geom type
 pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     match geom.geom_type() {
-        GeomType::Point => Box::new(PointRenderer),
-        GeomType::Line => Box::new(LineRenderer),
         GeomType::Path => Box::new(PathRenderer),
         GeomType::Bar => Box::new(BarRenderer),
         GeomType::Area => Box::new(AreaRenderer),
         GeomType::Ribbon => Box::new(RibbonRenderer),
         GeomType::Polygon => Box::new(PolygonRenderer),
         GeomType::Boxplot => Box::new(BoxplotRenderer),
-        // All other geoms use the default renderer
+        // All other geoms (Point, Line, Tile, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
 }
