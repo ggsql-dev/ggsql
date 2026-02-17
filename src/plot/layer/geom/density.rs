@@ -345,7 +345,7 @@ fn choose_kde_kernel(parameters: &HashMap<String, ParameterValue>) -> Result<Str
     // Use weighted sum for density computation
     // Weighted: density = (1/h) × Σ(wi × K((x-xi)/h)) / Σwi
     Ok(format!(
-        "SUM(data.weight * ({kernel})) / SUM(data.weight) / ANY_VALUE(bandwidth.bw)",
+        "SUM(data.weight * ({kernel})) / ANY_VALUE(bandwidth.bw)",
         kernel = kernel
     ))
 }
@@ -465,21 +465,37 @@ fn compute_density(
         grid_group_by = with_leading_comma(&grid_groups.join(", "))
     );
 
+    let groups = if group_by.is_empty() {
+        String::new()
+    } else {
+        format!("{},", group_by.join(", "))
+    };
+
     // Generate the density computation query
     format!(
         "{bandwidth_cte},
         {data_cte},
         {grid_cte}
         SELECT
+          {x_column},
+          {groups}
+          {intensity_column},
+          {intensity_column} / __norm AS {density_column}
+        FROM (
+        SELECT
           grid.x AS {x_column},
           {grid_groups}
-          {kernel} AS {density_column}
+            {kernel} AS {intensity_column},
+            SUM(data.weight) AS __norm
         {join_logic}
-        {aggregation}",
+          {aggregation}
+        )",
         bandwidth_cte = bandwidth_cte,
         data_cte = data_cte,
         grid_cte = grid_cte,
         x_column = naming::stat_column(value_aesthetic),
+        groups = groups,
+        intensity_column = naming::stat_column("intensity"),
         density_column = naming::stat_column("density"),
         aggregation = aggregation,
         grid_groups = with_trailing_comma(&grid_groups.join(", "))
@@ -520,13 +536,20 @@ mod tests {
           FROM GENERATE_SERIES(0, 511) AS seq(n)
         )
         SELECT
+          __ggsql_stat_x,
+          __ggsql_stat_intensity,
+          __ggsql_stat_intensity / __norm AS __ggsql_stat_density
+        FROM (
+        SELECT
           grid.x AS __ggsql_stat_x,
-          SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / SUM(data.weight) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
+            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_intensity,
+            SUM(data.weight) AS __norm
         FROM data
         INNER JOIN bandwidth ON true
         CROSS JOIN grid
         GROUP BY grid.x
-        ORDER BY grid.x";
+          ORDER BY grid.x
+        )";
 
         // Normalize whitespace for comparison
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -538,7 +561,7 @@ mod tests {
 
         assert_eq!(
             df.get_column_names(),
-            vec!["__ggsql_stat_x", "__ggsql_stat_density"]
+            vec!["__ggsql_stat_x", "__ggsql_stat_intensity", "__ggsql_stat_density"]
         );
         assert_eq!(df.height(), 512); // 512 grid points
     }
@@ -574,15 +597,23 @@ mod tests {
           CROSS JOIN (SELECT DISTINCT region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))) AS groups
         )
         SELECT
+          __ggsql_stat_x,
+          region, category,
+          __ggsql_stat_intensity,
+          __ggsql_stat_intensity / __norm AS __ggsql_stat_density
+        FROM (
+        SELECT
           grid.x AS __ggsql_stat_x,
           grid.region, grid.category,
-          SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / SUM(data.weight) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
+            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_intensity,
+            SUM(data.weight) AS __norm
         FROM data
         INNER JOIN bandwidth ON data.region = bandwidth.region AND data.category = bandwidth.category
         CROSS JOIN grid
         WHERE grid.region = data.region AND grid.category = data.category
         GROUP BY grid.x, grid.region, grid.category
-        ORDER BY grid.x, grid.region, grid.category";
+          ORDER BY grid.x, grid.region, grid.category
+        )";
 
         // Normalize whitespace for comparison
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -598,6 +629,7 @@ mod tests {
                 "__ggsql_stat_x",
                 "region",
                 "category",
+                "__ggsql_stat_intensity",
                 "__ggsql_stat_density"
             ]
         );
@@ -668,7 +700,7 @@ mod tests {
 
         assert_eq!(
             df.get_column_names(),
-            vec!["__ggsql_stat_x", "__ggsql_stat_density"]
+            vec!["__ggsql_stat_x", "__ggsql_stat_intensity", "__ggsql_stat_density"]
         );
         assert_eq!(df.height(), 512);
 

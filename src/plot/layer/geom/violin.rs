@@ -196,8 +196,8 @@ mod tests {
                 consumed_aesthetics,
                 ..
             } => {
-                // Verify stat columns
-                assert_eq!(stat_columns, vec!["y", "density"]);
+                // Verify stat columns (includes intensity from density stat)
+                assert_eq!(stat_columns, vec!["y", "intensity", "density"]);
 
                 // Verify consumed aesthetics
                 assert_eq!(consumed_aesthetics, vec!["y"]);
@@ -261,8 +261,8 @@ mod tests {
                 consumed_aesthetics,
                 ..
             } => {
-                // Verify stat columns
-                assert_eq!(stat_columns, vec!["y", "density"]);
+                // Verify stat columns (includes intensity from density stat)
+                assert_eq!(stat_columns, vec!["y", "intensity", "density"]);
 
                 // Verify consumed aesthetics
                 assert_eq!(consumed_aesthetics, vec!["y"]);
