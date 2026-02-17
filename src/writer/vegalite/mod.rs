@@ -23,7 +23,7 @@
 mod coord;
 mod data;
 mod encoding;
-mod renderer;
+mod layer;
 
 use crate::plot::layer::geom::GeomAesthetics;
 // ArrayElement is used in tests and for pattern matching; suppress unused import warning
@@ -41,7 +41,7 @@ use data::{collect_binned_columns, is_binned_aesthetic, unify_datasets};
 use encoding::{
     build_detail_encoding, build_encoding_channel, infer_field_type, map_aesthetic_name,
 };
-use renderer::{geom_to_mark, get_renderer, validate_layer_columns, PreparedData};
+use layer::{geom_to_mark, get_renderer, validate_layer_columns, PreparedData};
 
 /// Conversion factor from points to pixels (CSS standard: 96 DPI, 72 points/inch)
 /// 1 point = 96/72 pixels = 1.333
@@ -131,7 +131,7 @@ impl Writer for VegaLiteWriter {
         // Build individual datasets using renderers
         // Each renderer handles its own data preparation (standard or composite)
         let mut individual_datasets = Map::new();
-        let mut layer_renderers: Vec<Box<dyn renderer::GeomRenderer>> = Vec::new();
+        let mut layer_renderers: Vec<Box<dyn layer::GeomRenderer>> = Vec::new();
         let mut prepared_data: Vec<PreparedData> = Vec::new();
 
         for (layer_idx, layer) in spec.layers.iter().enumerate() {
@@ -391,7 +391,7 @@ mod tests {
     // Re-export test functions from submodules
     use super::data::find_bin_for_value;
     use super::encoding::infer_field_type;
-    use super::renderer::geom_to_mark;
+    use super::layer::geom_to_mark;
 
     /// Helper to wrap a DataFrame in a data map for testing (uses layer 0 key)
     fn wrap_data(df: DataFrame) -> HashMap<String, DataFrame> {
