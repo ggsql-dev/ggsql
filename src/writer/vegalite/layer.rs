@@ -337,24 +337,34 @@ impl GeomRenderer for ViolinRenderer {
         // handled upstream, but for now it seems not unreasonable.
         let filter_expr = format!("datum.{} > 0.001", offset_col);
 
-        layer_spec["transform"] = json!([
-            {
+        // Preserve existing transforms (e.g., source filter) and extend with violin-specific transforms
+        let existing_transforms = layer_spec
+            .get("transform")
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut transforms = existing_transforms;
+        transforms.extend(vec![
+            json!({
                 // Remove points with very low density to clean up thin tails
                 "filter": filter_expr
-            },
-            {
+            }),
+            json!({
                 "calculate": violin_offset,
                 "as": "violin_offsets"
-            },
-            {
+            }),
+            json!({
                 "flatten": ["violin_offsets"],
                 "as": ["__violin_offset"]
-            },
-            {
+            }),
+            json!({
                 "calculate": calc_order,
                 "as": "__order"
-            }
+            }),
         ]);
+
+        layer_spec["transform"] = json!(transforms);
         Ok(())
     }
 
