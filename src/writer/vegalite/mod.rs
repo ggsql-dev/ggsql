@@ -358,6 +358,65 @@ impl VegaLiteWriter {
             schema: "https://vega.github.io/schema/vega-lite/v6.json".to_string(),
         }
     }
+
+    /// Build default Vega-Lite config matching ggplot2's theme_gray()
+    ///
+    /// Font sizes converted from ggplot2 points to pixels (1 pt ≈ 1.33 px at 96 DPI):
+    /// - axis.text: 8.8 pts (rel(0.8) × 11) → 12 px
+    /// - axis.title: 11 pts → 15 px
+    /// - legend.text: 8.8 pts → 12 px
+    /// - legend.title: 11 pts → 15 px
+    /// - plot.title: 13.2 pts (rel(1.2) × 11) → 18 px
+    /// - tick size: ~2.75 pts → 4 px
+    fn default_theme_config(&self) -> Value {
+        json!({
+            "view": {
+                "stroke": null,
+                "fill": "#EBEBEB"
+            },
+            "axis": {
+                "domain": false,
+                "grid": true,
+                "gridColor": "#FFFFFF",
+                "gridWidth": 1,
+                "tickColor": "#333333",
+                "tickSize": 4,
+                "labelColor": "#4D4D4D",
+                "labelFontSize": 12,
+                "titleColor": "#000000",
+                "titleFontSize": 15,
+                "titleFontWeight": "normal",
+                "titlePadding": 10
+            },
+            "legend": {
+                "labelColor": "#4D4D4D",
+                "labelFontSize": 12,
+                "titleColor": "#000000",
+                "titleFontSize": 15,
+                "titleFontWeight": "normal",
+                "titlePadding": 8,
+                "rowPadding": 6
+            },
+            "title": {
+                "color": "#000000",
+                "fontSize": 18,
+                "fontWeight": "normal",
+                "subtitleColor": "#4D4D4D",
+                "subtitleFontSize": 15,
+                "subtitleFontWeight": "normal",
+                "anchor": "start",
+                "frame": "group",
+                "offset": 10
+            },
+            "header": {
+                "labelColor": "#000000",
+                "labelFontSize": 15,
+                "labelFontWeight": "normal",
+                "labelPadding": 5,
+                "title": null
+            }
+        })
+    }
 }
 
 impl Default for VegaLiteWriter {
@@ -442,7 +501,10 @@ impl Writer for VegaLiteWriter {
             apply_faceting(&mut vl_spec, facet, facet_df);
         }
 
-        // 11. Serialize
+        // 11. Add default theme config (ggplot2-like gray theme)
+        vl_spec["config"] = self.default_theme_config();
+
+        // 12. Serialize
         serde_json::to_string_pretty(&vl_spec).map_err(|e| {
             GgsqlError::WriterError(format!("Failed to serialize Vega-Lite JSON: {}", e))
         })
