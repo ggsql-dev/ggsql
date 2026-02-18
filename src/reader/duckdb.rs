@@ -819,7 +819,7 @@ mod tests {
     fn test_register_large_dataframe() {
         // duckdb-rs Arrow vtab has a vector capacity of 2048 rows. DataFrames
         // larger than this must be chunked to avoid a panic.
-        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let n = 3000;
         let ids: Vec<i32> = (0..n).collect();

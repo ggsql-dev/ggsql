@@ -257,7 +257,6 @@ pub fn has_executable_sql(source_tree: &SourceTree) -> bool {
     false
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
