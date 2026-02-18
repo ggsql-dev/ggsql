@@ -35,6 +35,7 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Polygon => "line",
         GeomType::Histogram => "bar",
         GeomType::Density => "area",
+        GeomType::Violin => "line",
         GeomType::Boxplot => "boxplot",
         GeomType::Text => "text",
         GeomType::Label => "text",
@@ -300,6 +301,150 @@ impl GeomRenderer for PolygonRenderer {
             "fill": "#888888",
             "stroke": "#888888"
         });
+        Ok(())
+    }
+}
+
+// =============================================================================
+// Violin Renderer
+// =============================================================================
+
+/// Renderer for violin geom - uses line
+pub struct ViolinRenderer;
+
+impl GeomRenderer for ViolinRenderer {
+    fn modify_spec(&self, layer_spec: &mut Value, _layer: &Layer) -> Result<()> {
+        layer_spec["mark"] = json!({
+            "type": "line",
+            "filled": true
+        });
+        let offset_col = naming::aesthetic_column("offset");
+
+        // Mirror the density on both sides.
+        // It'll be implemented as an offset.
+        let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
+
+        // We use an order calculation to create a proper closed shape.
+        // Right side (+ offset), sort by -y (top -> bottom)
+        // Left side (- offset), sort by +y (bottom -> top)
+        let calc_order = format!(
+            "datum.__violin_offset > 0 ? -datum.{y} : datum.{y}",
+            y = naming::aesthetic_column("y")
+        );
+
+        // Filter threshold to trim very low density regions (removes thin tails)
+        // In theory, this depends on the grid resolution and might be better
+        // handled upstream, but for now it seems not unreasonable.
+        let filter_expr = format!("datum.{} > 0.001", offset_col);
+
+        // Preserve existing transforms (e.g., source filter) and extend with violin-specific transforms
+        let existing_transforms = layer_spec
+            .get("transform")
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut transforms = existing_transforms;
+        transforms.extend(vec![
+            json!({
+                // Remove points with very low density to clean up thin tails
+                "filter": filter_expr
+            }),
+            json!({
+                "calculate": violin_offset,
+                "as": "violin_offsets"
+            }),
+            json!({
+                "flatten": ["violin_offsets"],
+                "as": ["__violin_offset"]
+            }),
+            json!({
+                "calculate": calc_order,
+                "as": "__order"
+            }),
+        ]);
+
+        layer_spec["transform"] = json!(transforms);
+        Ok(())
+    }
+
+    fn modify_encoding(&self, encoding: &mut Map<String, Value>, _layer: &Layer) -> Result<()> {
+        // Ensure x is in detail encoding to create separate violins per x category
+        // This is needed because line marks with filled:true require detail to create separate paths
+        let x_field = encoding
+            .get("x")
+            .and_then(|x| x.get("field"))
+            .and_then(|f| f.as_str())
+            .map(|s| s.to_string());
+
+        if let Some(x_field) = x_field {
+            match encoding.get_mut("detail") {
+                Some(detail) if detail.is_object() => {
+                    // Single field object - check if it's already x, otherwise convert to array
+                    if detail.get("field").and_then(|f| f.as_str()) != Some(&x_field) {
+                        let existing = detail.clone();
+                        *detail = json!([existing, {"field": x_field, "type": "nominal"}]);
+                    }
+                }
+                Some(detail) if detail.is_array() => {
+                    // Array - check if x already present, add if not
+                    let arr = detail.as_array_mut().unwrap();
+                    let has_x = arr
+                        .iter()
+                        .any(|d| d.get("field").and_then(|f| f.as_str()) == Some(&x_field));
+                    if !has_x {
+                        arr.push(json!({"field": x_field, "type": "nominal"}));
+                    }
+                }
+                None => {
+                    // No detail encoding - add it with x field
+                    encoding.insert(
+                        "detail".to_string(),
+                        json!({"field": x_field, "type": "nominal"}),
+                    );
+                }
+                _ => {}
+            }
+        }
+
+        // Violins use filled line marks, which don't show a fill in the legend.
+        // We intercept the encoding to pupulate a different symbol to display
+        for aesthetic in ["fill", "stroke"] {
+            if let Some(channel) = encoding.get_mut(aesthetic) {
+                // Skip if legend is explicitly null or if it's a literal value
+                if channel.get("legend").is_some_and(|v| v.is_null()) {
+                    continue;
+                }
+                if channel.get("value").is_some() {
+                    continue;
+                }
+
+                // Add/update legend properties
+                let legend = channel.get_mut("legend").and_then(|v| v.as_object_mut());
+                if let Some(legend_map) = legend {
+                    legend_map.insert("symbolType".to_string(), json!("circle"));
+                } else {
+                    channel["legend"] = json!({
+                        "symbolType": "circle"
+                    });
+                }
+            }
+        }
+
+        encoding.insert(
+            "xOffset".to_string(),
+            json!({
+                "field": "__violin_offset",
+                "type": "quantitative"
+            }),
+        );
+        encoding.insert(
+            "order".to_string(),
+            json!({
+                "field": "__order",
+                "type": "quantitative"
+            }),
+        );
         Ok(())
     }
 }
@@ -662,7 +807,108 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Ribbon => Box::new(RibbonRenderer),
         GeomType::Polygon => Box::new(PolygonRenderer),
         GeomType::Boxplot => Box::new(BoxplotRenderer),
+        GeomType::Density => Box::new(AreaRenderer),
+        GeomType::Violin => Box::new(ViolinRenderer),
         // All other geoms (Point, Line, Tile, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_violin_detail_encoding() {
+        let renderer = ViolinRenderer;
+        let layer = Layer::new(crate::plot::Geom::violin());
+
+        // Case 1: No detail encoding - should add x
+        let mut encoding = serde_json::Map::new();
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
+        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        assert_eq!(
+            encoding.get("detail"),
+            Some(&json!({"field": "species", "type": "nominal"}))
+        );
+
+        // Case 2: Detail is single object (not x) - should convert to array
+        let mut encoding = serde_json::Map::new();
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
+        encoding.insert(
+            "detail".to_string(),
+            json!({"field": "island", "type": "nominal"}),
+        );
+        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        assert_eq!(
+            encoding.get("detail"),
+            Some(&json!([
+                {"field": "island", "type": "nominal"},
+                {"field": "species", "type": "nominal"}
+            ]))
+        );
+
+        // Case 3: Detail is single object (already x) - should not change
+        let mut encoding = serde_json::Map::new();
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
+        encoding.insert(
+            "detail".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
+        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        assert_eq!(
+            encoding.get("detail"),
+            Some(&json!({"field": "species", "type": "nominal"}))
+        );
+
+        // Case 4: Detail is array without x - should add x
+        let mut encoding = serde_json::Map::new();
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
+        encoding.insert(
+            "detail".to_string(),
+            json!([{"field": "island", "type": "nominal"}]),
+        );
+        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        assert_eq!(
+            encoding.get("detail"),
+            Some(&json!([
+                {"field": "island", "type": "nominal"},
+                {"field": "species", "type": "nominal"}
+            ]))
+        );
+
+        // Case 5: Detail is array with x already - should not change
+        let mut encoding = serde_json::Map::new();
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
+        encoding.insert(
+            "detail".to_string(),
+            json!([
+                {"field": "island", "type": "nominal"},
+                {"field": "species", "type": "nominal"}
+            ]),
+        );
+        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        assert_eq!(
+            encoding.get("detail"),
+            Some(&json!([
+                {"field": "island", "type": "nominal"},
+                {"field": "species", "type": "nominal"}
+            ]))
+        );
     }
 }
