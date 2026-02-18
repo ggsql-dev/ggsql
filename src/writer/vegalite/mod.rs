@@ -292,16 +292,10 @@ fn build_layer_encoding(
 /// - Label renaming (RENAMING clause)
 /// - Additional properties (ncol, spacing, etc.)
 fn apply_faceting(vl_spec: &mut Value, facet: &crate::plot::Facet, facet_df: &DataFrame) {
-    use crate::plot::Facet;
+    use crate::plot::FacetLayout;
 
-    match facet {
-        Facet::Wrap {
-            variables,
-            scales,
-            properties,
-            label_mapping,
-            label_template,
-        } => {
+    match &facet.layout {
+        FacetLayout::Wrap { variables } => {
             if !variables.is_empty() {
                 let field_type = infer_field_type(facet_df, &variables[0]);
                 let mut facet_def = json!({
@@ -310,7 +304,7 @@ fn apply_faceting(vl_spec: &mut Value, facet: &crate::plot::Facet, facet_df: &Da
                 });
 
                 // Apply label renaming via header.labelExpr
-                apply_facet_label_renaming(&mut facet_def, label_mapping, label_template);
+                apply_facet_label_renaming(&mut facet_def, &facet.label_mapping);
 
                 vl_spec["facet"] = facet_def;
 
@@ -324,27 +318,20 @@ fn apply_faceting(vl_spec: &mut Value, facet: &crate::plot::Facet, facet_df: &Da
                 vl_spec.as_object_mut().unwrap().remove("layer");
 
                 // Apply scale resolution
-                apply_facet_scale_resolution(vl_spec, scales);
+                apply_facet_scale_resolution(vl_spec, &facet.properties);
 
                 // Apply additional properties (columns for wrap)
-                apply_facet_properties(vl_spec, properties, true);
+                apply_facet_properties(vl_spec, &facet.properties, true);
             }
         }
-        Facet::Grid {
-            rows,
-            cols,
-            scales,
-            properties,
-            label_mapping,
-            label_template,
-        } => {
+        FacetLayout::Grid { rows, cols } => {
             let mut facet_spec = serde_json::Map::new();
             if !rows.is_empty() {
                 let field_type = infer_field_type(facet_df, &rows[0]);
                 let mut row_def = json!({"field": rows[0], "type": field_type});
 
                 // Apply label renaming to row
-                apply_facet_label_renaming(&mut row_def, label_mapping, label_template);
+                apply_facet_label_renaming(&mut row_def, &facet.label_mapping);
 
                 facet_spec.insert("row".to_string(), row_def);
             }
@@ -353,7 +340,7 @@ fn apply_faceting(vl_spec: &mut Value, facet: &crate::plot::Facet, facet_df: &Da
                 let mut col_def = json!({"field": cols[0], "type": field_type});
 
                 // Apply label renaming to column
-                apply_facet_label_renaming(&mut col_def, label_mapping, label_template);
+                apply_facet_label_renaming(&mut col_def, &facet.label_mapping);
 
                 facet_spec.insert("column".to_string(), col_def);
             }
@@ -369,42 +356,54 @@ fn apply_faceting(vl_spec: &mut Value, facet: &crate::plot::Facet, facet_df: &Da
             vl_spec.as_object_mut().unwrap().remove("layer");
 
             // Apply scale resolution
-            apply_facet_scale_resolution(vl_spec, scales);
+            apply_facet_scale_resolution(vl_spec, &facet.properties);
 
             // Apply additional properties (not columns for grid)
-            apply_facet_properties(vl_spec, properties, false);
+            apply_facet_properties(vl_spec, &facet.properties, false);
         }
     }
 }
 
-/// Apply scale resolution to Vega-Lite spec based on FacetScales
+/// Apply scale resolution to Vega-Lite spec based on facet scales property
 ///
-/// Maps ggsql FacetScales to Vega-Lite resolve.scale configuration:
-/// - Fixed: shared scales (Vega-Lite default, no resolve needed)
-/// - Free: independent scales for both x and y
-/// - FreeX: independent x scale, shared y scale
-/// - FreeY: shared x scale, independent y scale
-fn apply_facet_scale_resolution(vl_spec: &mut Value, scales: &crate::plot::FacetScales) {
-    use crate::plot::FacetScales;
+/// Maps ggsql scales property to Vega-Lite resolve.scale configuration:
+/// - "fixed": shared scales (Vega-Lite default, no resolve needed)
+/// - "free": independent scales for both x and y
+/// - "free_x": independent x scale, shared y scale
+/// - "free_y": shared x scale, independent y scale
+fn apply_facet_scale_resolution(
+    vl_spec: &mut Value,
+    properties: &HashMap<String, ParameterValue>,
+) {
+    let scales = properties
+        .get("scales")
+        .and_then(|v| match v {
+            ParameterValue::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .unwrap_or("fixed");
 
     match scales {
-        FacetScales::Fixed => {
+        "fixed" => {
             // Vega-Lite default is shared scales, no resolve needed
         }
-        FacetScales::Free => {
+        "free" => {
             vl_spec["resolve"] = json!({
                 "scale": {"x": "independent", "y": "independent"}
             });
         }
-        FacetScales::FreeX => {
+        "free_x" => {
             vl_spec["resolve"] = json!({
                 "scale": {"x": "independent"}
             });
         }
-        FacetScales::FreeY => {
+        "free_y" => {
             vl_spec["resolve"] = json!({
                 "scale": {"y": "independent"}
             });
+        }
+        _ => {
+            // Unknown value - resolution should have validated this
         }
     }
 }
@@ -413,25 +412,25 @@ fn apply_facet_scale_resolution(vl_spec: &mut Value, scales: &crate::plot::Facet
 ///
 /// Uses Vega expression to transform facet labels:
 /// - Explicit mappings: 'A' => 'Alpha' becomes datum.value == 'A' ? 'Alpha' : ...
-/// - Wildcard template: * => 'Region: {}' becomes template substitution
 /// - NULL values suppress labels (maps to empty string)
+///
+/// Note: Wildcard templates are resolved during facet property resolution,
+/// so by this point label_mapping contains all expanded mappings.
 fn apply_facet_label_renaming(
     facet_def: &mut Value,
     label_mapping: &Option<HashMap<String, Option<String>>>,
-    label_template: &str,
 ) {
-    // Only apply if there's a label mapping or non-default template
-    let has_mapping = label_mapping.as_ref().map_or(false, |m| !m.is_empty());
-    let has_template = label_template != "{}";
+    // Only apply if there's a label mapping
+    let has_mapping = label_mapping.as_ref().is_some_and(|m| !m.is_empty());
 
-    if !has_mapping && !has_template {
+    if !has_mapping {
         return;
     }
 
     // Build labelExpr for Vega-Lite
     let mut expr_parts: Vec<String> = Vec::new();
 
-    // Add explicit mappings first
+    // Add explicit mappings
     if let Some(mappings) = label_mapping {
         for (from, to) in mappings {
             let condition = format!("datum.value == '{}'", escape_vega_string(from));
@@ -443,14 +442,8 @@ fn apply_facet_label_renaming(
         }
     }
 
-    // Add default case with template
-    let default_expr = if has_template {
-        // Replace {} with datum.value
-        let escaped_template = escape_vega_string(label_template);
-        format!("'{}'", escaped_template.replace("{}", "' + datum.value + '"))
-    } else {
-        "datum.value".to_string()
-    };
+    // Default case: show original value
+    let default_expr = "datum.value".to_string();
 
     // Build the full expression as nested ternary
     let label_expr = if expr_parts.is_empty() {
@@ -478,8 +471,10 @@ fn escape_vega_string(s: &str) -> String {
 /// Apply additional facet properties to Vega-Lite spec
 ///
 /// Handles:
-/// - columns/ncol: Number of columns for wrap facets
+/// - ncol: Number of columns for wrap facets (maps to Vega-Lite's "columns")
 /// - spacing: Space between facets
+///
+/// Note: scales is handled separately by apply_facet_scale_resolution
 fn apply_facet_properties(
     vl_spec: &mut Value,
     properties: &HashMap<String, ParameterValue>,
@@ -487,8 +482,8 @@ fn apply_facet_properties(
 ) {
     for (name, value) in properties {
         match name.as_str() {
-            "ncol" | "columns" if is_wrap => {
-                // columns property for wrap facets
+            "ncol" if is_wrap => {
+                // ncol maps to Vega-Lite's "columns" property
                 if let ParameterValue::Number(n) = value {
                     vl_spec["columns"] = json!(*n as i64);
                 }
@@ -499,9 +494,11 @@ fn apply_facet_properties(
                     vl_spec["spacing"] = json!(*n);
                 }
             }
+            "scales" => {
+                // Handled by apply_facet_scale_resolution
+            }
             _ => {
-                // Other properties passed through to facet config
-                // (could be extended for more properties)
+                // Unknown properties ignored (resolution should have validated)
             }
         }
     }

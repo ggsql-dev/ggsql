@@ -52,7 +52,8 @@ pub mod validate;
 
 // Re-export key types for convenience
 pub use plot::{
-    AestheticValue, DataSource, Facet, Geom, Layer, Mappings, Plot, Scale, SqlExpression,
+    AestheticValue, DataSource, Facet, FacetLayout, Geom, Layer, Mappings, Plot, Scale,
+    SqlExpression,
 };
 
 // Future modules - not yet implemented

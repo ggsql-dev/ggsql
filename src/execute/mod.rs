@@ -23,6 +23,7 @@ pub use schema::TypeInfo;
 
 use crate::naming;
 use crate::parser;
+use crate::plot::facet::{resolve_properties as resolve_facet, FacetDataContext};
 use crate::plot::layer::geom::GeomAesthetics;
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
 use crate::{DataFrame, GgsqlError, Plot, Result};
@@ -760,6 +761,19 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // Resolve scale types from data for scales without explicit types
     for spec in &mut specs {
         scale::resolve_scales(spec, &mut data_map)?;
+    }
+
+    // Resolve facet properties (after data is available)
+    for spec in &mut specs {
+        if let Some(ref mut facet) = spec.facet {
+            // Get the first layer's data for computing facet defaults
+            let facet_df = data_map.get(&naming::layer_key(0)).ok_or_else(|| {
+                GgsqlError::InternalError("Missing layer 0 data for facet resolution".to_string())
+            })?;
+            let context = FacetDataContext::from_dataframe(facet_df, &facet.get_variables());
+            resolve_facet(facet, &context)
+                .map_err(|e| GgsqlError::ValidationError(format!("Facet: {}", e)))?;
+        }
     }
 
     // Apply post-stat binning for Binned scales on remapped aesthetics

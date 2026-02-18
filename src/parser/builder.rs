@@ -831,60 +831,31 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
         }
     }
 
-    // Extract 'scales' from properties if present, default to Fixed
-    let scales = extract_facet_scales(&mut properties)?;
-
-    // Determine variant: if col_vars is empty, it's a wrap layout
-    if col_vars.is_empty() {
-        Ok(Facet::Wrap {
+    // Determine layout variant: if col_vars is empty, it's a wrap layout
+    let layout = if col_vars.is_empty() {
+        FacetLayout::Wrap {
             variables: row_vars,
-            scales,
-            properties,
-            label_mapping,
-            label_template,
-        })
+        }
     } else {
-        Ok(Facet::Grid {
+        FacetLayout::Grid {
             rows: row_vars,
             cols: col_vars,
-            scales,
-            properties,
-            label_mapping,
-            label_template,
-        })
-    }
+        }
+    };
+
+    Ok(Facet {
+        layout,
+        properties,
+        label_mapping,
+        label_template,
+        resolved: false,
+    })
 }
 
 /// Parse facet variables from a facet_vars node
 fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
     let query = "(identifier) @var";
     Ok(source.find_texts(node, query))
-}
-
-/// Extract 'scales' property from properties HashMap and convert to FacetScales
-///
-/// Removes the 'scales' key from properties if present and returns the corresponding
-/// FacetScales enum value. Defaults to FacetScales::Fixed if not specified.
-fn extract_facet_scales(properties: &mut HashMap<String, ParameterValue>) -> Result<FacetScales> {
-    if let Some(value) = properties.remove("scales") {
-        match value {
-            ParameterValue::String(s) => match s.as_str() {
-                "fixed" => Ok(FacetScales::Fixed),
-                "free" => Ok(FacetScales::Free),
-                "free_x" => Ok(FacetScales::FreeX),
-                "free_y" => Ok(FacetScales::FreeY),
-                _ => Err(GgsqlError::ParseError(format!(
-                    "Unknown facet scales: '{}'. Expected 'fixed', 'free', 'free_x', or 'free_y'",
-                    s
-                ))),
-            },
-            _ => Err(GgsqlError::ParseError(
-                "Facet 'scales' must be a string (e.g., 'free', 'fixed')".to_string(),
-            )),
-        }
-    } else {
-        Ok(FacetScales::Fixed)
-    }
 }
 
 /// Parse RENAMING clause for facets: RENAMING 'A' => 'Alpha', * => 'Region: {}'
