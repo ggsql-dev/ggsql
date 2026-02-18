@@ -220,15 +220,11 @@ fn density_sql_bandwidth(
     value: &str,
     parameters: &HashMap<String, ParameterValue>,
 ) -> String {
-    // We have to do a little bit of torturous formatting to get the
-    // absence or presence of groups right.
-    let mut partition = String::new();
     let mut group_by = String::new();
     let mut comma = String::new();
     let groups = groups.join(", ");
 
     if !groups.is_empty() {
-        partition = format!("PARTITION BY {} ", groups);
         group_by = format!("GROUP BY {}", groups);
         comma = ",".to_string()
     }
@@ -255,45 +251,33 @@ fn density_sql_bandwidth(
         };
         return cte;
     }
-
-    // The query computes Silverman's rule of thumb (R's `stats::bw.nrd0()`).
-    // We absorb the adjustment in the 0.9 multiplier of the rule
-    let adjust = adjust * 0.9;
-    // Most complexity here comes from trying to compute quartiles in a
-    // SQL dialect-agnostic fashion.
     format!(
         "WITH
-          quartiles AS (
+          bandwidth AS (
             SELECT
-              {value},
-              NTILE(4) OVER ({partition}ORDER BY {value} ASC) AS _Q{comma}
+              {rule} AS bw{comma}
               {groups}
             FROM ({from})
             WHERE {value} IS NOT NULL
-          ),
-          metrics AS (
-            SELECT
-              (MAX(CASE WHEN _Q = 3 THEN {value} END) + MIN(CASE WHEN _Q = 4 THEN {value} END)) / 2.0 -
-              (MAX(CASE WHEN _Q = 1 THEN {value} END) + MIN(CASE WHEN _Q = 2 THEN {value} END)) / 2.0 AS iqr,
-              COUNT(*) AS n,
-              STDDEV({value}) AS sd{comma}
-              {groups}
-            FROM quartiles
             {group_by}
-          ),
-          bandwidth AS (
-            SELECT
-              {adjust} * LEAST(sd, iqr / 1.34) * POWER(n, -0.2) AS bw{comma}
-              {groups}
-            FROM metrics
           )",
-      value = value,
-      partition = partition,
-      group_by = group_by,
-      groups = groups,
-      comma = comma,
-      from = from,
-      adjust = adjust
+        rule = silverman_rule(adjust, value),
+        value = value,
+        group_by = group_by,
+        groups = groups,
+        comma = comma,
+        from = from
+    )
+}
+
+fn silverman_rule(adjust: f64, value_column: &str) -> String {
+    // The query computes Silverman's rule of thumb (R's `stats::bw.nrd0()`).
+    // We absorb the adjustment in the 0.9 multiplier of the rule
+    let adjust = 0.9 * adjust;
+    format!(
+        "{adjust} * LEAST(STDDEV({value}), (QUANTILE_CONT({value}, 0.75) - QUANTILE_CONT({value}, 0.25)) / 1.34) * POWER(COUNT(*), -0.2)",
+        adjust = adjust,
+        value = value_column
     )
 }
 
@@ -664,11 +648,26 @@ mod tests {
 
     #[test]
     fn test_density_sql_computed_bandwidth() {
+        // Test 1: No groups
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x)";
         let groups: Vec<String> = vec![];
         let parameters = HashMap::new(); // No explicit bandwidth - will compute
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+
+        // Verify exact SQL structure uses QUANTILE_CONT
+        let expected = "WITH
+          bandwidth AS (
+            SELECT
+              0.9 * LEAST(STDDEV(x), (QUANTILE_CONT(x, 0.75) - QUANTILE_CONT(x, 0.25)) / 1.34) * POWER(COUNT(*), -0.2) AS bw
+            FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x))
+            WHERE x IS NOT NULL
+
+          )";
+
+        // Normalize whitespace for comparison
+        let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert_eq!(normalize(&bw_cte), normalize(expected));
 
         // Verify bandwidth computation executes
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -678,6 +677,34 @@ mod tests {
 
         assert_eq!(df.get_column_names(), vec!["bw"]);
         assert_eq!(df.height(), 1);
+
+        // Test 2: With groups
+        let query =
+            "SELECT x, region FROM (VALUES (1.0, 'A'), (2.0, 'A'), (3.0, 'B')) AS t(x, region)";
+        let groups = vec!["region".to_string()];
+
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+
+        // Verify exact SQL structure uses QUANTILE_CONT with GROUP BY
+        let expected = "WITH
+          bandwidth AS (
+            SELECT
+              0.9 * LEAST(STDDEV(x), (QUANTILE_CONT(x, 0.75) - QUANTILE_CONT(x, 0.25)) / 1.34) * POWER(COUNT(*), -0.2) AS bw,
+              region
+            FROM (SELECT x, region FROM (VALUES (1.0, 'A'), (2.0, 'A'), (3.0, 'B')) AS t(x, region))
+            WHERE x IS NOT NULL
+            GROUP BY region
+          )";
+
+        assert_eq!(normalize(&bw_cte), normalize(expected));
+
+        // Verify grouped bandwidth computation executes
+        let df = reader
+            .execute_sql(&format!("{}\nSELECT bw, region FROM bandwidth", bw_cte))
+            .expect("Grouped bandwidth SQL should execute");
+
+        assert_eq!(df.get_column_names(), vec!["bw", "region"]);
+        assert_eq!(df.height(), 2); // Two groups: A and B
     }
 
     /// Helper function to test that a kernel integrates to 1
