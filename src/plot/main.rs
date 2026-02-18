@@ -133,7 +133,7 @@ impl Plot {
     /// For each aesthetic used in any layer, determines the appropriate label:
     /// - If user specified a label via LABEL clause, use that
     /// - Otherwise, use the primary aesthetic's column name if mapped
-    /// - Variant aesthetics (x2, xmin, xmax, y2, ymin, ymax) only set the label if
+    /// - Variant aesthetics (xmin, xmax, xend, ymin, ymax, yend) only set the label if
     ///   no primary aesthetic exists in the layer
     ///
     /// This ensures that:
@@ -437,12 +437,10 @@ mod tests {
         assert_eq!(GeomAesthetics::primary_aesthetic("x"), "x");
         assert_eq!(GeomAesthetics::primary_aesthetic("xmin"), "x");
         assert_eq!(GeomAesthetics::primary_aesthetic("xmax"), "x");
-        assert_eq!(GeomAesthetics::primary_aesthetic("x2"), "x");
         assert_eq!(GeomAesthetics::primary_aesthetic("xend"), "x");
         assert_eq!(GeomAesthetics::primary_aesthetic("y"), "y");
         assert_eq!(GeomAesthetics::primary_aesthetic("ymin"), "y");
         assert_eq!(GeomAesthetics::primary_aesthetic("ymax"), "y");
-        assert_eq!(GeomAesthetics::primary_aesthetic("y2"), "y");
         assert_eq!(GeomAesthetics::primary_aesthetic("yend"), "y");
 
         // Non-family aesthetics return themselves

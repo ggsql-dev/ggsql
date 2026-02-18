@@ -3,6 +3,7 @@
 //! This module handles coordinate system transformations (cartesian, flip, polar)
 //! that modify the Vega-Lite spec structure based on the COORD clause.
 
+use crate::plot::aesthetic::is_aesthetic_name;
 use crate::plot::{Coord, CoordType, ParameterValue};
 use crate::{DataFrame, GgsqlError, Plot, Result};
 use serde_json::{json, Value};
@@ -289,33 +290,4 @@ fn apply_aesthetic_input_range(
     }
 
     Ok(())
-}
-
-fn is_aesthetic_name(name: &str) -> bool {
-    matches!(
-        name,
-        "x" | "y"
-            | "xmin"
-            | "xmax"
-            | "ymin"
-            | "ymax"
-            | "xend"
-            | "yend"
-            | "color"
-            | "colour"
-            | "fill"
-            | "stroke"
-            | "opacity"
-            | "size"
-            | "shape"
-            | "linetype"
-            | "linewidth"
-            | "width"
-            | "height"
-            | "label"
-            | "family"
-            | "fontface"
-            | "hjust"
-            | "vjust"
-    )
 }

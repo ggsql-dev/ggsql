@@ -334,7 +334,7 @@ impl BoxplotRenderer {
         let type_col = type_col.as_str();
         let value_col = naming::aesthetic_column("y");
         let value_col = value_col.as_str();
-        let value2_col = naming::aesthetic_column("y2");
+        let value2_col = naming::aesthetic_column("yend");
         let value2_col = value2_col.as_str();
 
         // Find grouping columns (all columns except type, value, value2)
@@ -401,7 +401,7 @@ impl BoxplotRenderer {
         let mut layers: Vec<Value> = Vec::new();
 
         let value_col = naming::aesthetic_column("y");
-        let value2_col = naming::aesthetic_column("y2");
+        let value2_col = naming::aesthetic_column("yend");
 
         let x_col = layer
             .mappings

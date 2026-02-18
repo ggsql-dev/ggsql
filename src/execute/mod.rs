@@ -23,6 +23,7 @@ pub use schema::TypeInfo;
 
 use crate::naming;
 use crate::parser;
+use crate::plot::aesthetic::ALL_POSITIONAL;
 use crate::plot::layer::geom::GeomAesthetics;
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
 use crate::{DataFrame, GgsqlError, Plot, Result};
@@ -285,12 +286,6 @@ fn add_discrete_columns_to_partition_by(
     layer_schemas: &[Schema],
     scales: &[Scale],
 ) {
-    // Positional aesthetics should NOT be auto-added to grouping.
-    // Stats that need to group by positional aesthetics (like bar/histogram)
-    // already handle this themselves via stat_consumed_aesthetics().
-    const POSITIONAL_AESTHETICS: &[&str] =
-        &["x", "y", "xmin", "xmax", "ymin", "ymax", "xend", "yend"];
-
     // Build a map of aesthetic -> scale for quick lookup
     let scale_map: HashMap<&str, &Scale> =
         scales.iter().map(|s| (s.aesthetic.as_str(), s)).collect();
@@ -307,8 +302,10 @@ fn add_discrete_columns_to_partition_by(
         let consumed_aesthetics = layer.geom.stat_consumed_aesthetics();
 
         for (aesthetic, value) in &layer.mappings.aesthetics {
-            // Skip positional aesthetics - these should not trigger auto-grouping
-            if POSITIONAL_AESTHETICS.contains(&aesthetic.as_str()) {
+            // Skip positional aesthetics - these should not trigger auto-grouping.
+            // Stats that need to group by positional aesthetics (like bar/histogram)
+            // already handle this themselves via stat_consumed_aesthetics().
+            if ALL_POSITIONAL.iter().any(|s| s == aesthetic) {
                 continue;
             }
 
@@ -1071,20 +1068,20 @@ mod tests {
         let result = prepare_data_with_reader(query, &reader).unwrap();
         let layer = &result.specs[0].layers[0];
 
-        // Layer should have y2 in mappings (added by default for bar)
+        // Layer should have yend in mappings (added by default for bar)
         assert!(
-            layer.mappings.aesthetics.contains_key("y2"),
-            "Bar should have y2 mapping for baseline: {:?}",
+            layer.mappings.aesthetics.contains_key("yend"),
+            "Bar should have yend mapping for baseline: {:?}",
             layer.mappings.aesthetics.keys().collect::<Vec<_>>()
         );
 
-        // The DataFrame should have the y2 column with 0 values
+        // The DataFrame should have the yend column with 0 values
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
-        let y2_col = naming::aesthetic_column("y2");
+        let yend_col = naming::aesthetic_column("yend");
         assert!(
-            layer_df.column(&y2_col).is_ok(),
+            layer_df.column(&yend_col).is_ok(),
             "DataFrame should have '{}' column: {:?}",
-            y2_col,
+            yend_col,
             layer_df.get_column_names_str()
         );
     }

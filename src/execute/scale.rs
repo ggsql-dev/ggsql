@@ -1254,15 +1254,15 @@ mod tests {
         assert!(x_family.contains(&"x"));
         assert!(x_family.contains(&"xmin"));
         assert!(x_family.contains(&"xmax"));
-        assert!(x_family.contains(&"x2"));
         assert!(x_family.contains(&"xend"));
+        assert_eq!(x_family.len(), 4);
 
         let y_family = get_aesthetic_family("y");
         assert!(y_family.contains(&"y"));
         assert!(y_family.contains(&"ymin"));
         assert!(y_family.contains(&"ymax"));
-        assert!(y_family.contains(&"y2"));
         assert!(y_family.contains(&"yend"));
+        assert_eq!(y_family.len(), 4);
 
         // Test non-family aesthetics return just themselves
         let color_family = get_aesthetic_family("color");

@@ -57,6 +57,12 @@ pub use plot::{
     AestheticValue, DataSource, Facet, Geom, Layer, Mappings, Plot, Scale, SqlExpression,
 };
 
+// Re-export aesthetic classification utilities
+pub use plot::aesthetic::{
+    get_aesthetic_family, is_aesthetic_name, is_positional_aesthetic, is_primary_positional,
+    primary_aesthetic, AESTHETIC_FAMILIES, ALL_POSITIONAL, PRIMARY_POSITIONAL,
+};
+
 // Future modules - not yet implemented
 // #[cfg(feature = "engine")]
 // pub mod engine;

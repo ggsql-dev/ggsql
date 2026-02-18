@@ -2,23 +2,8 @@
 //!
 //! These types are used by all geom implementations and are shared across the module.
 
+use crate::plot::aesthetic::primary_aesthetic;
 use crate::Mappings;
-
-/// Maps variant aesthetics to their primary aesthetic family.
-///
-/// For example, `xmin`, `xmax`, `x2`, and `xend` all belong to the "x" family.
-/// When computing labels, all family members can contribute to the primary aesthetic's label,
-/// with the first aesthetic encountered in a family setting the label.
-pub const AESTHETIC_FAMILIES: &[(&str, &str)] = &[
-    ("x2", "x"),
-    ("xmin", "x"),
-    ("xmax", "x"),
-    ("xend", "x"),
-    ("y2", "y"),
-    ("ymin", "y"),
-    ("ymax", "y"),
-    ("yend", "y"),
-];
 
 /// Aesthetic information for a geom type
 ///
@@ -39,43 +24,11 @@ impl GeomAesthetics {
     ///
     /// Returns the primary family aesthetic if the input is a variant (e.g., "xmin" -> "x"),
     /// or returns the aesthetic itself if it's already primary (e.g., "x" -> "x", "fill" -> "fill").
+    ///
+    /// This is a convenience method that delegates to [`crate::plot::aesthetic::primary_aesthetic`].
     pub fn primary_aesthetic(aesthetic: &str) -> &str {
-        AESTHETIC_FAMILIES
-            .iter()
-            .find(|(variant, _)| *variant == aesthetic)
-            .map(|(_, primary)| *primary)
-            .unwrap_or(aesthetic)
+        primary_aesthetic(aesthetic)
     }
-}
-
-/// Get all aesthetics in the same family as the given aesthetic.
-///
-/// For primary aesthetics like "x", returns all family members: `["x", "xmin", "xmax", "x2", "xend"]`.
-/// For variant aesthetics like "xmin", returns just `["xmin"]` since scales should be
-/// defined for primary aesthetics.
-/// For non-family aesthetics like "color", returns just `["color"]`.
-///
-/// This is used by scale resolution to find all columns that contribute to a scale's
-/// input range (e.g., both `ymin` and `ymax` columns contribute to the "y" scale).
-pub fn get_aesthetic_family(aesthetic: &str) -> Vec<&str> {
-    // First, determine the primary aesthetic
-    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
-
-    // If aesthetic is not a primary (it's a variant), just return the aesthetic itself
-    // since scales should be defined for primary aesthetics
-    if primary != aesthetic {
-        return vec![aesthetic];
-    }
-
-    // Collect primary + all variants that map to this primary
-    let mut family = vec![primary];
-    for (variant, prim) in AESTHETIC_FAMILIES {
-        if *prim == primary {
-            family.push(*variant);
-        }
-    }
-
-    family
 }
 
 /// Default value for a layer parameter

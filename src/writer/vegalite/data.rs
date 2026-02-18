@@ -9,7 +9,7 @@ use crate::plot::scale::ScaleTypeKind;
 #[allow(unused_imports)]
 use crate::plot::ArrayElement;
 use crate::plot::ParameterValue;
-use crate::{naming, AestheticValue, DataFrame, GgsqlError, Plot, Result};
+use crate::{is_primary_positional, naming, AestheticValue, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
@@ -307,7 +307,7 @@ pub(super) fn collect_binned_columns(spec: &Plot) -> HashMap<String, Vec<f64>> {
 
     for scale in &spec.scales {
         // Only x and y aesthetics support bin ranges (x2/y2) in Vega-Lite
-        if scale.aesthetic != "x" && scale.aesthetic != "y" {
+        if !is_primary_positional(&scale.aesthetic) {
             continue;
         }
 

@@ -3,6 +3,7 @@
 //! Takes a tree-sitter parse tree and builds a typed Plot,
 //! handling all the node types defined in the grammar.
 
+use crate::plot::aesthetic::is_aesthetic_name;
 use crate::plot::layer::geom::Geom;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, Transform};
 use crate::plot::*;
@@ -970,36 +971,6 @@ fn validate_coord_properties(
     }
 
     Ok(())
-}
-
-/// Check if a property name is an aesthetic name
-fn is_aesthetic_name(name: &str) -> bool {
-    matches!(
-        name,
-        "x" | "y"
-            | "xmin"
-            | "xmax"
-            | "ymin"
-            | "ymax"
-            | "xend"
-            | "yend"
-            | "color"
-            | "colour"
-            | "fill"
-            | "stroke"
-            | "opacity"
-            | "size"
-            | "shape"
-            | "linetype"
-            | "linewidth"
-            | "width"
-            | "height"
-            | "label"
-            | "family"
-            | "fontface"
-            | "hjust"
-            | "vjust"
-    )
 }
 
 /// Parse coord type from a coord_type node
