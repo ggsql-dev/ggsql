@@ -124,7 +124,7 @@ fn stat_histogram(
 
     // Query min/max to compute bin width
     let stats_query = format!(
-        "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query})",
+        "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query}) AS __ggsql_stats__",
         x = x_col,
         query = query
     );

@@ -41,13 +41,11 @@ pub mod naming;
 pub mod parser;
 pub mod plot;
 
-#[cfg(any(feature = "duckdb", feature = "postgres", feature = "sqlite"))]
 pub mod reader;
 
 #[cfg(any(feature = "vegalite", feature = "ggplot2", feature = "plotters"))]
 pub mod writer;
 
-#[cfg(feature = "duckdb")]
 pub mod execute;
 
 pub mod validate;
