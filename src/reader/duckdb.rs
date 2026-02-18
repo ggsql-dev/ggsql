@@ -833,7 +833,7 @@ mod tests {
         ])
         .unwrap();
 
-        reader.register("large_table", df).unwrap();
+        reader.register("large_table", df, false).unwrap();
 
         // Verify row count
         let result = reader
