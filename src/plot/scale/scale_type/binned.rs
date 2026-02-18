@@ -429,8 +429,14 @@ impl ScaleTypeTrait for Binned {
                     breaks.first().unwrap().clone(),
                     breaks.last().unwrap().clone(),
                 ];
-                let expanded = expand_numeric_range(&terminal_range, mult, add);
-                new_input_range = Some(expanded);
+                // Only expand for positional aesthetics (x, y, etc.)
+                // Non-positional aesthetics (color, fill, size) don't get expansion
+                let final_range = if super::is_positional_aesthetic(aesthetic) {
+                    expand_numeric_range(&terminal_range, mult, add)
+                } else {
+                    terminal_range
+                };
+                new_input_range = Some(final_range);
             }
 
             // Update the breaks in the scale

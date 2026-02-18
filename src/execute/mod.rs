@@ -486,10 +486,7 @@ pub struct PreparedData {
 /// # Arguments
 /// * `query` - The full ggsql query string
 /// * `reader` - A Reader implementation for executing SQL
-pub fn prepare_data_with_reader<R: Reader + ?Sized>(
-    query: &str,
-    reader: &R,
-) -> Result<PreparedData> {
+pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<PreparedData> {
     let execute_query = |sql: &str| reader.execute_sql(sql);
     let type_names = reader.sql_type_names();
 
@@ -520,9 +517,8 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
     // Extract CTE definitions from the source tree (in declaration order)
     let ctes = cte::extract_ctes(&source_tree);
 
-    // Materialize CTEs as temporary tables
-    // This creates __ggsql_cte_<name>__ tables that persist for the session
-    let materialized_ctes = cte::materialize_ctes(&ctes, &execute_query)?;
+    // Materialize CTEs as registered tables via reader.register()
+    let materialized_ctes = cte::materialize_ctes(&ctes, reader)?;
 
     // Build data map for multi-source support
     let mut data_map: HashMap<String, DataFrame> = HashMap::new();
@@ -537,13 +533,9 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
     let mut has_global_table = false;
     if sql_part.is_some() {
         if let Some(transformed_sql) = cte::transform_global_sql(&source_tree, &materialized_ctes) {
-            // Create temp table for global result
-            let create_global = format!(
-                "CREATE OR REPLACE TEMP TABLE {} AS {}",
-                naming::global_table(),
-                transformed_sql
-            );
-            execute_query(&create_global)?;
+            // Execute global result SQL and register result as a temp table
+            let df = execute_query(&transformed_sql)?;
+            reader.register(&naming::global_table(), df, true)?;
 
             // NOTE: Don't read into data_map yet - defer until after casting is determined
             // The temp table exists and can be used for schema fetching
@@ -1187,5 +1179,72 @@ mod tests {
         // Both should have 3 rows
         assert_eq!(result.data.get(layer0_key).unwrap().height(), 3);
         assert_eq!(result.data.get(layer1_key).unwrap().height(), 3);
+    }
+
+    /// Test that literal mappings survive stat transforms (e.g., histogram grouping).
+    ///
+    /// This tests the fix for issue #129 where literal aesthetic columns like
+    /// `'foo' AS stroke` were lost during stat transforms because they weren't
+    /// included in the GROUP BY clause.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_histogram_with_literal_mapping() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE hist_literal_test AS SELECT RANDOM() * 100 as value FROM range(100)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Histogram with a literal stroke mapping - should preserve the literal column
+        let query = r#"
+            SELECT * FROM hist_literal_test
+            VISUALISE value AS x
+            DRAW histogram MAPPING 'foo' AS stroke
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Should have layer 0 data with binned results
+        assert!(result.data.contains_key(&naming::layer_key(0)));
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+
+        // Should have prefixed aesthetic-named columns
+        let col_names: Vec<String> = layer_df
+            .get_column_names_str()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        let x_col = naming::aesthetic_column("x");
+        let y_col = naming::aesthetic_column("y");
+        let stroke_col = naming::aesthetic_column("stroke");
+
+        assert!(
+            col_names.contains(&x_col),
+            "Should have '{}' column: {:?}",
+            x_col,
+            col_names
+        );
+        assert!(
+            col_names.contains(&y_col),
+            "Should have '{}' column: {:?}",
+            y_col,
+            col_names
+        );
+        // The literal stroke column should survive the stat transform
+        assert!(
+            col_names.contains(&stroke_col),
+            "Should have '{}' column (literal mapping should survive stat transform): {:?}",
+            stroke_col,
+            col_names
+        );
+
+        // Should have fewer rows than original (binned)
+        assert!(layer_df.height() < 100);
     }
 }
