@@ -316,7 +316,7 @@ impl GeomRenderer for ViolinRenderer {
     fn modify_spec(&self, layer_spec: &mut Value, _layer: &Layer) -> Result<()> {
         layer_spec["mark"] = json!({
             "type": "line",
-            "filled": "true"
+            "filled": true
         });
         let offset_col = naming::aesthetic_column("offset");
 
@@ -359,6 +359,44 @@ impl GeomRenderer for ViolinRenderer {
     }
 
     fn modify_encoding(&self, encoding: &mut Map<String, Value>, _layer: &Layer) -> Result<()> {
+        // Ensure x is in detail encoding to create separate violins per x category
+        // This is needed because line marks with filled:true require detail to create separate paths
+        let x_field = encoding
+            .get("x")
+            .and_then(|x| x.get("field"))
+            .and_then(|f| f.as_str())
+            .map(|s| s.to_string());
+
+        if let Some(x_field) = x_field {
+            match encoding.get_mut("detail") {
+                Some(detail) if detail.is_object() => {
+                    // Single field object - check if it's already x, otherwise convert to array
+                    if detail.get("field").and_then(|f| f.as_str()) != Some(&x_field) {
+                        let existing = detail.clone();
+                        *detail = json!([existing, {"field": x_field, "type": "nominal"}]);
+                    }
+                }
+                Some(detail) if detail.is_array() => {
+                    // Array - check if x already present, add if not
+                    let arr = detail.as_array_mut().unwrap();
+                    let has_x = arr
+                        .iter()
+                        .any(|d| d.get("field").and_then(|f| f.as_str()) == Some(&x_field));
+                    if !has_x {
+                        arr.push(json!({"field": x_field, "type": "nominal"}));
+                    }
+                }
+                None => {
+                    // No detail encoding - add it with x field
+                    encoding.insert(
+                        "detail".to_string(),
+                        json!({"field": x_field, "type": "nominal"}),
+                    );
+                }
+                _ => {}
+            }
+        }
+
         encoding.insert(
             "xOffset".to_string(),
             json!({
@@ -735,8 +773,87 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Ribbon => Box::new(RibbonRenderer),
         GeomType::Polygon => Box::new(PolygonRenderer),
         GeomType::Boxplot => Box::new(BoxplotRenderer),
+        GeomType::Density => Box::new(AreaRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
         // All other geoms (Point, Line, Tile, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_violin_detail_encoding() {
+        let renderer = ViolinRenderer;
+        let layer = Layer::new(crate::plot::Geom::violin());
+
+        // Case 1: No detail encoding - should add x
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), json!({"field": "species", "type": "nominal"}));
+        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        assert_eq!(
+            encoding.get("detail"),
+            Some(&json!({"field": "species", "type": "nominal"}))
+        );
+
+        // Case 2: Detail is single object (not x) - should convert to array
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), json!({"field": "species", "type": "nominal"}));
+        encoding.insert("detail".to_string(), json!({"field": "island", "type": "nominal"}));
+        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        assert_eq!(
+            encoding.get("detail"),
+            Some(&json!([
+                {"field": "island", "type": "nominal"},
+                {"field": "species", "type": "nominal"}
+            ]))
+        );
+
+        // Case 3: Detail is single object (already x) - should not change
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), json!({"field": "species", "type": "nominal"}));
+        encoding.insert("detail".to_string(), json!({"field": "species", "type": "nominal"}));
+        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        assert_eq!(
+            encoding.get("detail"),
+            Some(&json!({"field": "species", "type": "nominal"}))
+        );
+
+        // Case 4: Detail is array without x - should add x
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), json!({"field": "species", "type": "nominal"}));
+        encoding.insert(
+            "detail".to_string(),
+            json!([{"field": "island", "type": "nominal"}])
+        );
+        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        assert_eq!(
+            encoding.get("detail"),
+            Some(&json!([
+                {"field": "island", "type": "nominal"},
+                {"field": "species", "type": "nominal"}
+            ]))
+        );
+
+        // Case 5: Detail is array with x already - should not change
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), json!({"field": "species", "type": "nominal"}));
+        encoding.insert(
+            "detail".to_string(),
+            json!([
+                {"field": "island", "type": "nominal"},
+                {"field": "species", "type": "nominal"}
+            ])
+        );
+        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        assert_eq!(
+            encoding.get("detail"),
+            Some(&json!([
+                {"field": "island", "type": "nominal"},
+                {"field": "species", "type": "nominal"}
+            ]))
+        );
     }
 }
