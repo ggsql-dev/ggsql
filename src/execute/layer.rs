@@ -532,50 +532,22 @@ where
 
                 // If the transformed query uses CTEs (WITH ... SELECT ...),
                 // we can't wrap it in a subquery because Polars SQL doesn't
-                // support CTEs inside subqueries. Instead, append the final
-                // SELECT as another CTE and add the rename SELECT on top.
-                if transformed_query
-                    .trim_start()
-                    .to_uppercase()
-                    .starts_with("WITH")
+                // support CTEs inside subqueries. Instead, split into CTE
+                // prefix + trailing SELECT, then append the trailing SELECT
+                // as another CTE and add the rename SELECT on top.
+                if let Some((cte_prefix, trailing_select)) =
+                    crate::parser::SourceTree::new(&transformed_query)
+                        .ok()
+                        .as_ref()
+                        .and_then(super::cte::split_with_query)
                 {
-                    // Find the first top-level SELECT (at paren depth 0).
-                    // All SELECTs inside CTE definitions are at depth >= 1,
-                    // so the first depth-0 SELECT is the final query body.
-                    let mut depth: i32 = 0;
-                    let mut first_select_pos = None;
-                    let upper = transformed_query.to_uppercase();
-                    for (i, ch) in transformed_query.char_indices() {
-                        match ch {
-                            '(' => depth += 1,
-                            ')' => depth -= 1,
-                            _ => {}
-                        }
-                        if depth == 0 && upper[i..].starts_with("SELECT") {
-                            first_select_pos = Some(i);
-                            break;
-                        }
-                    }
-
-                    if let Some(pos) = first_select_pos {
-                        let cte_prefix = &transformed_query[..pos];
-                        let final_select = &transformed_query[pos..];
-                        format!(
-                            "{}, __ggsql_stat__ AS ({}) SELECT * {}, {} FROM __ggsql_stat__",
-                            cte_prefix.trim_end().trim_end_matches(','),
-                            final_select,
-                            exclude_clause,
-                            stat_rename_exprs.join(", ")
-                        )
-                    } else {
-                        // Fallback: wrap as subquery
-                        format!(
-                            "SELECT * {}, {} FROM ({}) AS __ggsql_stat__",
-                            exclude_clause,
-                            stat_rename_exprs.join(", "),
-                            transformed_query
-                        )
-                    }
+                    format!(
+                        "{}, __ggsql_stat__ AS ({}) SELECT * {}, {} FROM __ggsql_stat__",
+                        cte_prefix,
+                        trailing_select,
+                        exclude_clause,
+                        stat_rename_exprs.join(", ")
+                    )
                 } else {
                     format!(
                         "SELECT * {}, {} FROM ({}) AS __ggsql_stat__",

@@ -149,30 +149,40 @@ pub fn materialize_ctes(ctes: &[CteDefinition], reader: &dyn Reader) -> Result<H
     Ok(materialized)
 }
 
-/// Extract the trailing SELECT statement from a WITH clause using existing tree
+/// Split a WITH...SELECT query into its CTE prefix and trailing SELECT.
 ///
-/// Given SQL like `WITH a AS (...), b AS (...) SELECT * FROM a`, extracts
-/// just the `SELECT * FROM a` part. Returns None if there's no trailing SELECT.
-pub fn extract_trailing_select(source_tree: &SourceTree) -> Option<String> {
+/// Given SQL like `WITH a AS (...), b AS (...) SELECT * FROM a`, returns:
+/// - CTE prefix: `"WITH a AS (...), b AS (...)"`
+/// - Trailing SELECT: `"SELECT * FROM a"`
+///
+/// Returns `None` if the query is not a WITH statement, has no trailing SELECT,
+/// or parsing fails.
+pub fn split_with_query(source_tree: &SourceTree) -> Option<(String, String)> {
     let root = source_tree.root();
+    let with_node = source_tree.find_node(&root, "(with_statement) @with")?;
 
-    // Try to find WITH statement first
-    if let Some(with_node) = source_tree.find_node(&root, "(with_statement) @with") {
-        // Look for the trailing SELECT that comes AFTER cte_definition nodes
-        let mut cursor = with_node.walk();
-        let mut seen_cte = false;
-        for child in with_node.children(&mut cursor) {
-            if child.kind() == "cte_definition" {
+    let mut cursor = with_node.walk();
+    let mut last_cte_end: Option<usize> = None;
+    let mut select_node = None;
+    let mut seen_cte = false;
+
+    for child in with_node.children(&mut cursor) {
+        match child.kind() {
+            "cte_definition" => {
                 seen_cte = true;
-            } else if child.kind() == "select_statement" && seen_cte {
-                // This is the trailing SELECT after CTEs
-                return Some(source_tree.get_text(&child));
+                last_cte_end = Some(child.end_byte());
             }
+            "select_statement" if seen_cte => {
+                select_node = Some(child);
+                break;
+            }
+            _ => {}
         }
     }
 
-    // Otherwise, look for direct SELECT statement (no WITH clause)
-    source_tree.find_text(&root, "(sql_statement (select_statement) @select)")
+    let cte_prefix = source_tree.source[with_node.start_byte()..last_cte_end?].to_string();
+    let trailing_select = source_tree.get_text(&select_node?);
+    Some((cte_prefix, trailing_select))
 }
 
 /// Transform global SQL for execution with temp tables
@@ -184,9 +194,16 @@ pub fn transform_global_sql(
     source_tree: &SourceTree,
     materialized_ctes: &HashSet<String>,
 ) -> Option<String> {
-    // Try to extract SELECT (handles both WITH...SELECT and direct SELECT)
-    if let Some(select_sql) = extract_trailing_select(source_tree) {
-        // Transform CTE references in the SELECT
+    // Try to extract trailing SELECT (WITH...SELECT or direct SELECT)
+    let select_sql = split_with_query(source_tree)
+        .map(|(_, select)| select)
+        .or_else(|| {
+            // Fallback: direct SELECT statement (no WITH clause)
+            let root = source_tree.root();
+            source_tree.find_text(&root, "(sql_statement (select_statement) @select)")
+        });
+
+    if let Some(select_sql) = select_sql {
         Some(transform_cte_references(&select_sql, materialized_ctes))
     } else if has_executable_sql(source_tree) {
         // Non-SELECT executable SQL (CREATE, INSERT, UPDATE, DELETE)
@@ -224,11 +241,8 @@ pub fn has_executable_sql(source_tree: &SourceTree) -> bool {
     }
 
     // Check for WITH statements that have trailing SELECT
-    let with_statements = source_tree.find_nodes(&root, "(with_statement) @with");
-    for with_node in with_statements {
-        if with_has_trailing_select(&with_node) {
-            return true;
-        }
+    if split_with_query(source_tree).is_some() {
+        return true;
     }
 
     // Check for VISUALISE FROM (which injects SELECT * FROM <source>)
@@ -243,21 +257,6 @@ pub fn has_executable_sql(source_tree: &SourceTree) -> bool {
     false
 }
 
-/// Check if a with_statement node has a trailing SELECT (after CTEs)
-fn with_has_trailing_select(with_node: &Node) -> bool {
-    let mut cursor = with_node.walk();
-    let mut seen_cte = false;
-
-    for child in with_node.children(&mut cursor) {
-        if child.kind() == "cte_definition" {
-            seen_cte = true;
-        } else if child.kind() == "select_statement" && seen_cte {
-            return true;
-        }
-    }
-
-    false
-}
 
 #[cfg(test)]
 mod tests {
@@ -381,5 +380,85 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_split_with_query_basic() {
+        let sql = "WITH cte AS (SELECT * FROM x) SELECT * FROM cte";
+        let source_tree = SourceTree::new(sql).unwrap();
+        let (prefix, select) = split_with_query(&source_tree).unwrap();
+
+        assert_eq!(prefix, "WITH cte AS (SELECT * FROM x)");
+        assert_eq!(select, "SELECT * FROM cte");
+    }
+
+    #[test]
+    fn test_split_with_query_multiple_ctes() {
+        let sql = "WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a JOIN b";
+        let source_tree = SourceTree::new(sql).unwrap();
+        let (prefix, select) = split_with_query(&source_tree).unwrap();
+
+        assert_eq!(prefix, "WITH a AS (SELECT 1), b AS (SELECT 2)");
+        assert_eq!(select, "SELECT * FROM a JOIN b");
+    }
+
+    #[test]
+    fn test_split_with_query_nested_subquery() {
+        let sql = "WITH cte AS (SELECT * FROM (SELECT 1)) SELECT * FROM cte";
+        let source_tree = SourceTree::new(sql).unwrap();
+        let (prefix, select) = split_with_query(&source_tree).unwrap();
+
+        assert_eq!(prefix, "WITH cte AS (SELECT * FROM (SELECT 1))");
+        assert_eq!(select, "SELECT * FROM cte");
+    }
+
+    #[test]
+    fn test_split_with_query_string_with_select_keyword() {
+        let sql = "WITH cte AS (SELECT 'SELECT' AS col) SELECT * FROM cte";
+        let source_tree = SourceTree::new(sql).unwrap();
+        let (prefix, select) = split_with_query(&source_tree).unwrap();
+
+        assert_eq!(prefix, "WITH cte AS (SELECT 'SELECT' AS col)");
+        assert_eq!(select, "SELECT * FROM cte");
+    }
+
+    #[test]
+    fn test_split_with_query_string_with_parens() {
+        let sql = "WITH cte AS (SELECT '()' AS col) SELECT * FROM cte";
+        let source_tree = SourceTree::new(sql).unwrap();
+        let (prefix, select) = split_with_query(&source_tree).unwrap();
+
+        assert_eq!(prefix, "WITH cte AS (SELECT '()' AS col)");
+        assert_eq!(select, "SELECT * FROM cte");
+    }
+
+    #[test]
+    fn test_split_with_query_not_a_with() {
+        let sql = "SELECT * FROM x";
+        let source_tree = SourceTree::new(sql).unwrap();
+        assert!(split_with_query(&source_tree).is_none());
+    }
+
+    #[test]
+    fn test_split_with_query_no_trailing_select() {
+        let sql = "WITH cte AS (SELECT 1) VISUALISE DRAW point";
+        let source_tree = SourceTree::new(sql).unwrap();
+        assert!(split_with_query(&source_tree).is_none());
+    }
+
+    #[test]
+    fn test_split_with_query_stat_transform_output() {
+        // Realistic stat transform output (histogram pattern)
+        let sql = "WITH __stat_src__ AS (SELECT x FROM data), \
+                   __binned__ AS (SELECT x, COUNT(*) AS count FROM __stat_src__ GROUP BY x) \
+                   SELECT *, count * 1.0 / SUM(count) OVER () AS density FROM __binned__";
+        let source_tree = SourceTree::new(sql).unwrap();
+        let (prefix, select) = split_with_query(&source_tree).unwrap();
+
+        assert!(prefix.starts_with("WITH __stat_src__"));
+        assert!(prefix.contains("__binned__"));
+        assert!(prefix.ends_with(")"));
+        assert!(select.starts_with("SELECT *"));
+        assert!(select.contains("density"));
     }
 }
