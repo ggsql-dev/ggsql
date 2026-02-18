@@ -60,7 +60,7 @@ pub use plot::{
 // Re-export aesthetic classification utilities
 pub use plot::aesthetic::{
     get_aesthetic_family, is_aesthetic_name, is_positional_aesthetic, is_primary_positional,
-    primary_aesthetic, AESTHETIC_FAMILIES, ALL_POSITIONAL, PRIMARY_POSITIONAL,
+    primary_aesthetic, AESTHETIC_FAMILIES, ALL_POSITIONAL, NON_POSITIONAL, PRIMARY_POSITIONAL,
 };
 
 // Future modules - not yet implemented

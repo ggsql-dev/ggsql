@@ -25,13 +25,15 @@ mod data;
 mod encoding;
 mod layer;
 
-use crate::plot::layer::geom::GeomAesthetics;
 // ArrayElement is used in tests and for pattern matching; suppress unused import warning
 #[allow(unused_imports)]
 use crate::plot::ArrayElement;
 use crate::plot::ParameterValue;
 use crate::writer::Writer;
-use crate::{is_primary_positional, naming, AestheticValue, DataFrame, GgsqlError, Plot, Result};
+use crate::{
+    is_primary_positional, naming, primary_aesthetic, AestheticValue, DataFrame, GgsqlError, Plot,
+    Result,
+};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -217,7 +219,7 @@ fn build_layer_encoding(
         .mappings
         .aesthetics
         .keys()
-        .filter(|a| GeomAesthetics::primary_aesthetic(a) == a.as_str())
+        .filter(|a| primary_aesthetic(a) == a.as_str())
         .cloned()
         .collect();
 

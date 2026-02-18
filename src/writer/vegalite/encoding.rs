@@ -4,10 +4,9 @@
 //! including type inference, scale properties, and title handling.
 
 use crate::plot::aesthetic::is_positional_aesthetic;
-use crate::plot::layer::geom::GeomAesthetics;
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
 use crate::plot::ParameterValue;
-use crate::{is_primary_positional, AestheticValue, DataFrame, Plot, Result};
+use crate::{is_primary_positional, primary_aesthetic, AestheticValue, DataFrame, Plot, Result};
 use polars::prelude::*;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -330,7 +329,7 @@ fn determine_field_type_for_aesthetic(
     spec: &Plot,
     identity_scale: &mut bool,
 ) -> String {
-    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+    let primary = primary_aesthetic(aesthetic);
     let inferred = infer_field_type(df, col);
 
     if let Some(scale) = spec.find_scale(primary) {
@@ -362,7 +361,7 @@ fn apply_title_to_encoding(
     titled_families: &mut HashSet<String>,
     primary_aesthetics: &HashSet<String>,
 ) {
-    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+    let primary = primary_aesthetic(aesthetic);
     let is_primary = aesthetic == primary;
     let primary_exists = primary_aesthetics.contains(primary);
 
@@ -763,7 +762,7 @@ fn build_column_encoding(
     is_dummy: bool,
     ctx: &mut EncodingContext,
 ) -> Result<Value> {
-    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+    let primary = primary_aesthetic(aesthetic);
     let mut identity_scale = false;
 
     // Determine field type from scale or infer from data

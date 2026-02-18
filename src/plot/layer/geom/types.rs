@@ -2,7 +2,6 @@
 //!
 //! These types are used by all geom implementations and are shared across the module.
 
-use crate::plot::aesthetic::primary_aesthetic;
 use crate::Mappings;
 
 /// Aesthetic information for a geom type
@@ -17,18 +16,6 @@ pub struct GeomAesthetics {
     /// Hidden aesthetics (valid REMAPPING targets, not valid MAPPING targets)
     /// These are produced by stat transforms but shouldn't be manually mapped
     pub hidden: &'static [&'static str],
-}
-
-impl GeomAesthetics {
-    /// Get the primary aesthetic for a given aesthetic name.
-    ///
-    /// Returns the primary family aesthetic if the input is a variant (e.g., "xmin" -> "x"),
-    /// or returns the aesthetic itself if it's already primary (e.g., "x" -> "x", "fill" -> "fill").
-    ///
-    /// This is a convenience method that delegates to [`crate::plot::aesthetic::primary_aesthetic`].
-    pub fn primary_aesthetic(aesthetic: &str) -> &str {
-        primary_aesthetic(aesthetic)
-    }
 }
 
 /// Default value for a layer parameter

@@ -23,8 +23,7 @@ pub use schema::TypeInfo;
 
 use crate::naming;
 use crate::parser;
-use crate::plot::aesthetic::ALL_POSITIONAL;
-use crate::plot::layer::geom::GeomAesthetics;
+use crate::plot::aesthetic::{primary_aesthetic, ALL_POSITIONAL};
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
 use crate::{DataFrame, GgsqlError, Plot, Result};
 use std::collections::{HashMap, HashSet};
@@ -326,7 +325,7 @@ fn add_discrete_columns_to_partition_by(
                 //
                 // Discrete and Binned scales produce categorical groupings.
                 // Continuous scales don't group. Identity defers to column type.
-                let primary_aesthetic = GeomAesthetics::primary_aesthetic(aesthetic);
+                let primary_aesthetic = primary_aesthetic(aesthetic);
                 let is_discrete = if let Some(scale) = scale_map.get(primary_aesthetic) {
                     if let Some(ref scale_type) = scale.scale_type {
                         match scale_type.scale_type_kind() {

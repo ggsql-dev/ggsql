@@ -16,13 +16,11 @@
 //! For example, `xmin`, `xmax`, and `xend` all belong to the "x" family.
 //! This is used for scale resolution and label computation.
 
-use std::sync::LazyLock;
-
 /// Primary positional aesthetics (x and y only)
 pub const PRIMARY_POSITIONAL: &[&str] = &["x", "y"];
 
-/// Suffixes that create positional variants (e.g., x + "min" = "xmin")
-pub const POSITIONAL_SUFFIXES: &[&str] = &["", "min", "max", "end"];
+/// All positional aesthetics (primary + variants)
+pub const ALL_POSITIONAL: &[&str] = &["x", "xmin", "xmax", "xend", "y", "ymin", "ymax", "yend"];
 
 /// Maps variant aesthetics to their primary aesthetic family.
 ///
@@ -38,17 +36,31 @@ pub const AESTHETIC_FAMILIES: &[(&str, &str)] = &[
     ("yend", "y"),
 ];
 
-/// All positional aesthetics (primary + variants), computed from PRIMARY_POSITIONAL x POSITIONAL_SUFFIXES
-pub static ALL_POSITIONAL: LazyLock<Vec<String>> = LazyLock::new(|| {
-    PRIMARY_POSITIONAL
-        .iter()
-        .flat_map(|&base| {
-            POSITIONAL_SUFFIXES
-                .iter()
-                .map(move |&suffix| format!("{}{}", base, suffix))
-        })
-        .collect()
-});
+/// Non-positional aesthetics (visual properties shown in legends or applied to marks)
+///
+/// These include:
+/// - Color aesthetics: color, colour, fill, stroke, opacity
+/// - Size/shape aesthetics: size, shape, linetype, linewidth
+/// - Dimension aesthetics: width, height
+/// - Text aesthetics: label, family, fontface, hjust, vjust
+pub const NON_POSITIONAL: &[&str] = &[
+    "color",
+    "colour",
+    "fill",
+    "stroke",
+    "opacity",
+    "size",
+    "shape",
+    "linetype",
+    "linewidth",
+    "width",
+    "height",
+    "label",
+    "family",
+    "fontface",
+    "hjust",
+    "vjust",
+];
 
 /// Check if aesthetic is primary positional (x or y only)
 #[inline]
@@ -61,8 +73,8 @@ pub fn is_primary_positional(aesthetic: &str) -> bool {
 /// Positional aesthetics include x, y, and their variants (xmin, xmax, ymin, ymax, xend, yend).
 /// These aesthetics map to axis positions rather than legend entries.
 #[inline]
-pub fn is_positional_aesthetic(aesthetic: &str) -> bool {
-    ALL_POSITIONAL.iter().any(|s| s == aesthetic)
+pub fn is_positional_aesthetic(name: &str) -> bool {
+    ALL_POSITIONAL.contains(&name)
 }
 
 /// Check if name is a recognized aesthetic
@@ -70,32 +82,7 @@ pub fn is_positional_aesthetic(aesthetic: &str) -> bool {
 /// This includes all positional aesthetics plus visual aesthetics like color, size, shape, etc.
 #[inline]
 pub fn is_aesthetic_name(name: &str) -> bool {
-    matches!(
-        name,
-        "x" | "y"
-            | "xmin"
-            | "xmax"
-            | "ymin"
-            | "ymax"
-            | "xend"
-            | "yend"
-            | "color"
-            | "colour"
-            | "fill"
-            | "stroke"
-            | "opacity"
-            | "size"
-            | "shape"
-            | "linetype"
-            | "linewidth"
-            | "width"
-            | "height"
-            | "label"
-            | "family"
-            | "fontface"
-            | "hjust"
-            | "vjust"
-    )
+    is_positional_aesthetic(name) || NON_POSITIONAL.contains(&name)
 }
 
 /// Get the primary aesthetic for a given aesthetic name.
@@ -175,16 +162,15 @@ mod tests {
 
     #[test]
     fn test_all_positional_contents() {
-        let all: Vec<&str> = ALL_POSITIONAL.iter().map(|s| s.as_str()).collect();
-        assert!(all.contains(&"x"));
-        assert!(all.contains(&"y"));
-        assert!(all.contains(&"xmin"));
-        assert!(all.contains(&"xmax"));
-        assert!(all.contains(&"ymin"));
-        assert!(all.contains(&"ymax"));
-        assert!(all.contains(&"xend"));
-        assert!(all.contains(&"yend"));
-        assert_eq!(all.len(), 8); // 2 primary * 4 suffixes
+        assert!(ALL_POSITIONAL.contains(&"x"));
+        assert!(ALL_POSITIONAL.contains(&"y"));
+        assert!(ALL_POSITIONAL.contains(&"xmin"));
+        assert!(ALL_POSITIONAL.contains(&"xmax"));
+        assert!(ALL_POSITIONAL.contains(&"ymin"));
+        assert!(ALL_POSITIONAL.contains(&"ymax"));
+        assert!(ALL_POSITIONAL.contains(&"xend"));
+        assert!(ALL_POSITIONAL.contains(&"yend"));
+        assert_eq!(ALL_POSITIONAL.len(), 8);
     }
 
     #[test]
