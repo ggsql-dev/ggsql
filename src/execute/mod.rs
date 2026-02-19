@@ -167,8 +167,7 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             // as they apply to all layers regardless of geom support
             for (aesthetic, value) in &spec.global_mappings.aesthetics {
                 let is_color_alias = matches!(aesthetic.as_str(), "color" | "colour");
-                let is_facet_aesthetic =
-                    crate::plot::scale::is_facet_aesthetic(aesthetic.as_str());
+                let is_facet_aesthetic = crate::plot::scale::is_facet_aesthetic(aesthetic.as_str());
                 if supported.contains(&aesthetic.as_str()) || is_color_alias || is_facet_aesthetic {
                     layer
                         .mappings
@@ -432,12 +431,9 @@ fn cross_join_with_facet_values(
             .flat_map(|i| std::iter::repeat(i as u32).take(n_values))
             .collect();
         let idx = IdxCa::new(PlSmallStr::EMPTY, &indices);
-        let repeated = col
-            .as_materialized_series()
-            .take(&idx)
-            .map_err(|e| {
-                crate::GgsqlError::InternalError(format!("Failed to repeat column: {}", e))
-            })?;
+        let repeated = col.as_materialized_series().take(&idx).map_err(|e| {
+            crate::GgsqlError::InternalError(format!("Failed to repeat column: {}", e))
+        })?;
         new_columns.push(repeated.into());
     }
 
@@ -455,8 +451,9 @@ fn cross_join_with_facet_values(
         .with_name(aes_col.into());
     new_columns.push(facet_col.into());
 
-    DataFrame::new(new_columns)
-        .map_err(|e| crate::GgsqlError::InternalError(format!("Failed to create expanded DataFrame: {}", e)))
+    DataFrame::new(new_columns).map_err(|e| {
+        crate::GgsqlError::InternalError(format!("Failed to create expanded DataFrame: {}", e))
+    })
 }
 
 /// Handle layers missing the facet column based on facet.missing setting.
@@ -1711,10 +1708,10 @@ mod tests {
         #[test]
         fn test_resolve_facet_infers_grid_from_layer_mappings() {
             let mut layer = Layer::new(Geom::point());
-            layer.mappings.aesthetics.insert(
-                "row".to_string(),
-                AestheticValue::standard_column("region"),
-            );
+            layer
+                .mappings
+                .aesthetics
+                .insert("row".to_string(), AestheticValue::standard_column("region"));
             layer.mappings.aesthetics.insert(
                 "column".to_string(),
                 AestheticValue::standard_column("year"),
@@ -1737,10 +1734,10 @@ mod tests {
                 "facet".to_string(),
                 AestheticValue::standard_column("region"),
             );
-            layer.mappings.aesthetics.insert(
-                "row".to_string(),
-                AestheticValue::standard_column("year"),
-            );
+            layer
+                .mappings
+                .aesthetics
+                .insert("row".to_string(), AestheticValue::standard_column("year"));
             let layers = vec![layer];
 
             let result = resolve_facet(&layers, None);

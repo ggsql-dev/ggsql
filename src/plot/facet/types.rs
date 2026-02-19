@@ -38,7 +38,10 @@ pub enum FacetLayout {
     /// FACET variables (wrap layout)
     Wrap { variables: Vec<String> },
     /// FACET row BY column (grid layout)
-    Grid { row: Vec<String>, column: Vec<String> },
+    Grid {
+        row: Vec<String>,
+        column: Vec<String>,
+    },
 }
 
 impl Facet {
@@ -114,10 +117,8 @@ impl FacetLayout {
                 variables.iter().map(|v| (v.as_str(), "facet")).collect()
             }
             FacetLayout::Grid { row, column } => {
-                let mut result: Vec<(&str, &'static str)> = row
-                    .iter()
-                    .map(|v| (v.as_str(), "row"))
-                    .collect();
+                let mut result: Vec<(&str, &'static str)> =
+                    row.iter().map(|v| (v.as_str(), "row")).collect();
                 result.extend(column.iter().map(|v| (v.as_str(), "column")));
                 result
             }

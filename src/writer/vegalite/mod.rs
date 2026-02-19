@@ -481,10 +481,7 @@ fn apply_facet_ordering(facet_def: &mut Value, scale: Option<&Scale>) {
 /// - "free": independent scales for both x and y
 /// - "free_x": independent x scale, shared y scale
 /// - "free_y": shared x scale, independent y scale
-fn apply_facet_scale_resolution(
-    vl_spec: &mut Value,
-    properties: &HashMap<String, ParameterValue>,
-) {
+fn apply_facet_scale_resolution(vl_spec: &mut Value, properties: &HashMap<String, ParameterValue>) {
     let scales = properties
         .get("scales")
         .and_then(|v| match v {
@@ -596,7 +593,9 @@ fn build_binned_facet_label_expr(
 }
 
 /// Build labelExpr for discrete facet values.
-fn build_discrete_facet_label_expr(label_mapping: Option<&HashMap<String, Option<String>>>) -> String {
+fn build_discrete_facet_label_expr(
+    label_mapping: Option<&HashMap<String, Option<String>>>,
+) -> String {
     let Some(mappings) = label_mapping else {
         return "datum.value".to_string();
     };

@@ -907,8 +907,10 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
 
         // Infer scale_type if not already set
         if spec.scales[idx].scale_type.is_none() {
-            spec.scales[idx].scale_type =
-                Some(ScaleType::infer_for_aesthetic(column_refs[0].dtype(), &aesthetic));
+            spec.scales[idx].scale_type = Some(ScaleType::infer_for_aesthetic(
+                column_refs[0].dtype(),
+                &aesthetic,
+            ));
         }
 
         // Clone scale_type (cheap Arc clone) to avoid borrow conflict with mutations
