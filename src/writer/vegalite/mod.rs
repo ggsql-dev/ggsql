@@ -28,7 +28,6 @@ mod layer;
 // ArrayElement is used in tests and for pattern matching; suppress unused import warning
 #[allow(unused_imports)]
 use crate::plot::ArrayElement;
-use crate::plot::scale::linetype_to_stroke_dash;
 use crate::plot::ParameterValue;
 use crate::writer::Writer;
 use crate::{
@@ -250,54 +249,38 @@ fn build_layer_encoding(
         }
     }
 
-    // Add aesthetic parameters from SETTING as literal encodings
-    // (e.g., SETTING color => 'red' becomes {"color": {"value": "red"}})
-    // Only parameters that are supported aesthetics for this geom type are included
-    let supported_aesthetics = layer.geom.aesthetics().supported();
-    for (param_name, param_value) in &layer.parameters {
-        if supported_aesthetics.contains(&param_name.as_str()) {
-            let channel_name = map_aesthetic_name(param_name);
-            // Only add if not already set by MAPPING (MAPPING takes precedence)
-            if !encoding.contains_key(&channel_name) {
-                // Convert size, linewidth, and linetype to Vega-Lite formats
-                let converted_value = match (param_name.as_str(), param_value) {
-                    // Size: interpret as radius in points, convert to area in pixels^2
-                    ("size", ParameterValue::Number(n)) => json!(n * n * POINTS_TO_AREA),
-                    // Linewidth: interpret as width in points, convert to pixels
-                    ("linewidth", ParameterValue::Number(n)) => json!(n * POINTS_TO_PIXELS),
-                    // Linetype: convert string patterns to strokeDash arrays
-                    ("linetype", ParameterValue::String(s)) => {
-                        linetype_to_stroke_dash(s).map(|arr| json!(arr)).unwrap_or_else(|| json!(s))
-                    }
-                    // Other aesthetics: pass through unchanged
-                    _ => param_value.to_json(),
-                };
-                encoding.insert(channel_name, json!({"value": converted_value}));
-            }
-        }
-    }
-
-    // Add default aesthetic values from geom (lowest priority)
-    // Only apply if not already set by MAPPING or SETTING
+    // Add aesthetic values from SETTING (higher priority) and defaults (lower priority)
+    // Precedence order: MAPPING > SETTING > defaults
+    // SETTING and defaults are mutually exclusive, so process both in a unified loop
     let geom_aesthetics = layer.geom.aesthetics();
-    for (aesthetic_name, default_value) in geom_aesthetics.defaults {
+    let supported_aesthetics = geom_aesthetics.supported();
+
+    for aesthetic_name in supported_aesthetics {
         let channel_name = map_aesthetic_name(aesthetic_name);
 
-        // Skip if already set by MAPPING or SETTING
+        // Skip if already set by MAPPING (highest precedence)
         if encoding.contains_key(&channel_name) {
             continue;
         }
 
-        // Convert to AestheticValue
-        let aesthetic_value = default_value.to_aesthetic_value();
+        // Try SETTING parameter first, then default value
+        let aesthetic_value = if let Some(param_value) = layer.parameters.get(aesthetic_name) {
+            // SETTING parameter (literal value)
+            AestheticValue::Literal(param_value.clone())
+        } else if let Some(default_value) = geom_aesthetics.get(aesthetic_name) {
+            // Default from geom definition
+            let value = default_value.to_aesthetic_value();
+            // Skip if Null or Column reference (only apply literal defaults)
+            match value {
+                AestheticValue::Literal(ParameterValue::Null) | AestheticValue::Column { .. } => continue,
+                _ => value,
+            }
+        } else {
+            // No SETTING and no default for this aesthetic
+            continue;
+        };
 
-        // Skip if not a literal or if it's Null (Required/Null/Delayed all become Null)
-        match aesthetic_value {
-            AestheticValue::Literal(ParameterValue::Null) | AestheticValue::Column { .. } => continue,
-            AestheticValue::Literal(_) => {} // Has a real value, proceed
-        }
-
-        // Use existing encoding builder with unit conversions
+        // Build encoding channel with conversions (size, linewidth, linetype)
         let channel_encoding = build_encoding_channel(aesthetic_name, &aesthetic_value, &mut enc_ctx)?;
         encoding.insert(channel_name, channel_encoding);
     }
