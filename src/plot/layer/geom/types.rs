@@ -2,20 +2,73 @@
 //!
 //! These types are used by all geom implementations and are shared across the module.
 
-use crate::Mappings;
+use crate::{Mappings, plot::types::DefaultAestheticValue};
 
-/// Aesthetic information for a geom type
+/// Default aesthetic values for a geom type
 ///
-/// This struct describes which aesthetics a geom supports, requires, and hides.
+/// This struct describes which aesthetics a geom supports, requires, and their default values.
 #[derive(Debug, Clone, Copy)]
-pub struct GeomAesthetics {
-    /// All aesthetics this geom type supports for user MAPPING
-    pub supported: &'static [&'static str],
-    /// Aesthetics required for this geom type to be valid
-    pub required: &'static [&'static str],
-    /// Hidden aesthetics (valid REMAPPING targets, not valid MAPPING targets)
-    /// These are produced by stat transforms but shouldn't be manually mapped
-    pub hidden: &'static [&'static str],
+pub struct DefaultAesthetics {
+    /// Aesthetic defaults: maps aesthetic name to default value
+    /// - Required: Must be provided via MAPPING
+    /// - Delayed: Produced by stat transform (REMAPPING only)
+    /// - Null: Supported but no default
+    /// - Other variants: Actual default values
+    pub defaults: &'static [(&'static str, DefaultAestheticValue)],
+}
+
+impl DefaultAesthetics {
+    /// Get all aesthetic names (including Delayed)
+    pub fn names(&self) -> Vec<&'static str> {
+        self.defaults.iter().map(|(name, _)| *name).collect()
+    }
+
+    /// Get supported aesthetic names (excludes Delayed, for MAPPING validation)
+    pub fn supported(&self) -> Vec<&'static str> {
+        self.defaults
+            .iter()
+            .filter_map(|(name, value)| {
+                if !matches!(value, DefaultAestheticValue::Delayed) {
+                    Some(*name)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Get required aesthetic names (those marked as Required)
+    pub fn required(&self) -> Vec<&'static str> {
+        self.defaults
+            .iter()
+            .filter_map(|(name, value)| {
+                if matches!(value, DefaultAestheticValue::Required) {
+                    Some(*name)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Check if an aesthetic is supported (not Delayed)
+    pub fn is_supported(&self, name: &str) -> bool {
+        self.defaults
+            .iter()
+            .any(|(n, value)| *n == name && !matches!(value, DefaultAestheticValue::Delayed))
+    }
+
+    /// Check if an aesthetic exists (including Delayed)
+    pub fn contains(&self, name: &str) -> bool {
+        self.defaults.iter().any(|(n, _)| *n == name)
+    }
+
+    /// Check if an aesthetic is required
+    pub fn is_required(&self, name: &str) -> bool {
+        self.defaults
+            .iter()
+            .any(|(n, value)| *n == name && matches!(value, DefaultAestheticValue::Required))
+    }
 }
 
 /// Default value for a layer parameter

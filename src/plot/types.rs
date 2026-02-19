@@ -255,6 +255,12 @@ pub enum DefaultAestheticValue {
     Number(f64),
     /// Literal boolean value
     Boolean(bool),
+    /// Supported but no default value (optional aesthetic)
+    Null,
+    /// Required aesthetic (must be provided via MAPPING)
+    Required,
+    /// Delayed aesthetic (produced by stat transform, valid for REMAPPING only, not MAPPING)
+    Delayed,
 }
 
 impl DefaultAestheticValue {
@@ -265,6 +271,7 @@ impl DefaultAestheticValue {
             Self::String(s) => AestheticValue::Literal(ParameterValue::String(s.to_string())),
             Self::Number(n) => AestheticValue::Literal(ParameterValue::Number(*n)),
             Self::Boolean(b) => AestheticValue::Literal(ParameterValue::Boolean(*b)),
+            Self::Null | Self::Required | Self::Delayed => AestheticValue::Literal(ParameterValue::Null),
         }
     }
 }

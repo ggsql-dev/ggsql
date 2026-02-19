@@ -252,7 +252,7 @@ fn build_layer_encoding(
     // Add aesthetic parameters from SETTING as literal encodings
     // (e.g., SETTING color => 'red' becomes {"color": {"value": "red"}})
     // Only parameters that are supported aesthetics for this geom type are included
-    let supported_aesthetics = layer.geom.aesthetics().supported;
+    let supported_aesthetics = layer.geom.aesthetics().supported();
     for (param_name, param_value) in &layer.parameters {
         if supported_aesthetics.contains(&param_name.as_str()) {
             let channel_name = map_aesthetic_name(param_name);
