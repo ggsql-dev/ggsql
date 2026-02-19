@@ -28,7 +28,6 @@ mod layer;
 // ArrayElement is used in tests and for pattern matching; suppress unused import warning
 #[allow(unused_imports)]
 use crate::plot::ArrayElement;
-use crate::plot::ParameterValue;
 use crate::writer::Writer;
 use crate::{
     is_primary_positional, naming, primary_aesthetic, AestheticValue, DataFrame, GgsqlError, Plot,
@@ -251,9 +250,8 @@ fn build_layer_encoding(
 
     // Add aesthetic values from SETTING (higher priority) and defaults (lower priority)
     // Precedence order: MAPPING > SETTING > defaults
-    // SETTING and defaults are mutually exclusive, so process both in a unified loop
-    let geom_aesthetics = layer.geom.aesthetics();
-    let supported_aesthetics = geom_aesthetics.supported();
+    // Use Layer::get_aesthetic_value() to centralize precedence logic
+    let supported_aesthetics = layer.geom.aesthetics().supported();
 
     for aesthetic_name in supported_aesthetics {
         let channel_name = map_aesthetic_name(aesthetic_name);
@@ -263,26 +261,14 @@ fn build_layer_encoding(
             continue;
         }
 
-        // Try SETTING parameter first, then default value
-        let aesthetic_value = if let Some(param_value) = layer.parameters.get(aesthetic_name) {
-            // SETTING parameter (literal value)
-            AestheticValue::Literal(param_value.clone())
-        } else if let Some(default_value) = geom_aesthetics.get(aesthetic_name) {
-            // Default from geom definition
-            let value = default_value.to_aesthetic_value();
-            // Skip if Null or Column reference (only apply literal defaults)
-            match value {
-                AestheticValue::Literal(ParameterValue::Null) | AestheticValue::Column { .. } => continue,
-                _ => value,
-            }
-        } else {
-            // No SETTING and no default for this aesthetic
-            continue;
-        };
-
-        // Build encoding channel with conversions (size, linewidth, linetype)
-        let channel_encoding = build_encoding_channel(aesthetic_name, &aesthetic_value, &mut enc_ctx)?;
-        encoding.insert(channel_name, channel_encoding);
+        // Get resolved value (SETTING > defaults, only literal values)
+        if let Some(param_value) = layer.get_aesthetic_value(aesthetic_name) {
+            let aesthetic_value = AestheticValue::Literal(param_value);
+            // Build encoding channel with conversions (size, linewidth, linetype)
+            let channel_encoding =
+                build_encoding_channel(aesthetic_name, &aesthetic_value, &mut enc_ctx)?;
+            encoding.insert(channel_name, channel_encoding);
+        }
     }
 
     // Add detail encoding for partition_by columns (grouping)
