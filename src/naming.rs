@@ -285,21 +285,21 @@ pub fn is_synthetic_column(name: &str) -> bool {
 /// Generate bin end column name for a binned column.
 ///
 /// Used by the Vega-Lite writer to store the upper bound of a bin
-/// when using `bin: "binned"` encoding with x2/y2 channels.
+/// when using `bin: "binned"` encoding with xend/yend channels.
 ///
 /// If the column is an aesthetic column (e.g., `__ggsql_aes_x__`), returns
-/// the corresponding `2` aesthetic (e.g., `__ggsql_aes_x2__`).
+/// the corresponding `end` aesthetic (e.g., `__ggsql_aes_xend__`).
 ///
 /// # Example
 /// ```
 /// use ggsql::naming;
 /// assert_eq!(naming::bin_end_column("temperature"), "__ggsql_bin_end_temperature__");
-/// assert_eq!(naming::bin_end_column("__ggsql_aes_x__"), "__ggsql_aes_x2__");
+/// assert_eq!(naming::bin_end_column("__ggsql_aes_x__"), "__ggsql_aes_xend__");
 /// ```
 pub fn bin_end_column(column: &str) -> String {
-    // If it's an aesthetic column, use the x2/y2 naming convention
+    // If it's an aesthetic column, use the xend/yend naming convention
     if let Some(aesthetic) = extract_aesthetic_name(column) {
-        return aesthetic_column(&format!("{}2", aesthetic));
+        return aesthetic_column(&format!("{}end", aesthetic));
     }
     format!("{}bin_end_{}{}", GGSQL_PREFIX, column, GGSQL_SUFFIX)
 }
@@ -452,9 +452,9 @@ mod tests {
         assert_eq!(bin_end_column("x"), "__ggsql_bin_end_x__");
         assert_eq!(bin_end_column("value"), "__ggsql_bin_end_value__");
 
-        // Aesthetic columns use the x2/y2 convention
-        assert_eq!(bin_end_column("__ggsql_aes_x__"), "__ggsql_aes_x2__");
-        assert_eq!(bin_end_column("__ggsql_aes_y__"), "__ggsql_aes_y2__");
+        // Aesthetic columns use the xend/yend convention
+        assert_eq!(bin_end_column("__ggsql_aes_x__"), "__ggsql_aes_xend__");
+        assert_eq!(bin_end_column("__ggsql_aes_y__"), "__ggsql_aes_yend__");
     }
 
     #[test]

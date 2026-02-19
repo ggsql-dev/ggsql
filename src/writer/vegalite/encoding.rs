@@ -3,10 +3,10 @@
 //! This module handles building Vega-Lite encoding channels from ggsql aesthetic mappings,
 //! including type inference, scale properties, and title handling.
 
-use crate::plot::layer::geom::GeomAesthetics;
+use crate::plot::aesthetic::is_positional_aesthetic;
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
 use crate::plot::ParameterValue;
-use crate::{AestheticValue, DataFrame, Plot, Result};
+use crate::{is_primary_positional, primary_aesthetic, AestheticValue, DataFrame, Plot, Result};
 use polars::prelude::*;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -170,10 +170,7 @@ pub(super) fn count_binned_legend_scales(spec: &Plot) -> usize {
                 .unwrap_or(false);
 
             // Check if non-positional (legend aesthetic)
-            let is_legend_aesthetic = !matches!(
-                scale.aesthetic.as_str(),
-                "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
-            );
+            let is_legend_aesthetic = !is_positional_aesthetic(&scale.aesthetic);
 
             is_binned && is_legend_aesthetic
         })
@@ -251,14 +248,6 @@ pub(super) fn determine_field_type_from_scale(
 // =============================================================================
 // Phase 1: Utility Helpers
 // =============================================================================
-
-/// Check if an aesthetic is positional (maps to an axis rather than a legend)
-fn is_positional_aesthetic(aesthetic: &str) -> bool {
-    matches!(
-        aesthetic,
-        "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
-    )
-}
 
 /// Legend display style for binned scales
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -340,7 +329,7 @@ fn determine_field_type_for_aesthetic(
     spec: &Plot,
     identity_scale: &mut bool,
 ) -> String {
-    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+    let primary = primary_aesthetic(aesthetic);
     let inferred = infer_field_type(df, col);
 
     if let Some(scale) = spec.find_scale(primary) {
@@ -372,7 +361,7 @@ fn apply_title_to_encoding(
     titled_families: &mut HashSet<String>,
     primary_aesthetics: &HashSet<String>,
 ) {
-    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+    let primary = primary_aesthetic(aesthetic);
     let is_primary = aesthetic == primary;
     let primary_exists = primary_aesthetics.contains(primary);
 
@@ -773,7 +762,7 @@ fn build_column_encoding(
     is_dummy: bool,
     ctx: &mut EncodingContext,
 ) -> Result<Value> {
-    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+    let primary = primary_aesthetic(aesthetic);
     let mut identity_scale = false;
 
     // Determine field type from scale or infer from data
@@ -842,7 +831,7 @@ fn build_column_encoding(
     };
 
     // Position scales don't include zero by default
-    if aesthetic == "x" || aesthetic == "y" {
+    if is_primary_positional(aesthetic) {
         scale_obj.insert("zero".to_string(), json!(false));
     }
 
@@ -890,6 +879,9 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
 /// Map ggsql aesthetic name to Vega-Lite encoding channel name
 pub(super) fn map_aesthetic_name(aesthetic: &str) -> String {
     match aesthetic {
+        // Position end aesthetics (ggplot2 style -> Vega-Lite style)
+        "xend" => "x2",
+        "yend" => "y2",
         // Line aesthetics
         "linetype" => "strokeDash",
         "linewidth" => "strokeWidth",

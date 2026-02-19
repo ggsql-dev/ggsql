@@ -3,13 +3,15 @@
 //! This module handles converting Polars DataFrames to Vega-Lite JSON data values,
 //! including temporal type handling and binned data transformations.
 
-use crate::plot::layer::geom::GeomAesthetics;
 use crate::plot::scale::ScaleTypeKind;
 // ArrayElement is used for temporal parsing
 #[allow(unused_imports)]
 use crate::plot::ArrayElement;
 use crate::plot::ParameterValue;
-use crate::{naming, AestheticValue, DataFrame, GgsqlError, Plot, Result};
+use crate::{
+    is_primary_positional, naming, primary_aesthetic, AestheticValue, DataFrame, GgsqlError, Plot,
+    Result,
+};
 use polars::prelude::*;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
@@ -307,7 +309,7 @@ pub(super) fn collect_binned_columns(spec: &Plot) -> HashMap<String, Vec<f64>> {
 
     for scale in &spec.scales {
         // Only x and y aesthetics support bin ranges (x2/y2) in Vega-Lite
-        if scale.aesthetic != "x" && scale.aesthetic != "y" {
+        if !is_primary_positional(&scale.aesthetic) {
             continue;
         }
 
@@ -349,7 +351,7 @@ pub(super) fn collect_binned_columns(spec: &Plot) -> HashMap<String, Vec<f64>> {
 
 /// Check if an aesthetic has a binned scale in the spec.
 pub(super) fn is_binned_aesthetic(aesthetic: &str, spec: &Plot) -> bool {
-    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+    let primary = primary_aesthetic(aesthetic);
     spec.find_scale(primary)
         .and_then(|s| s.scale_type.as_ref())
         .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)

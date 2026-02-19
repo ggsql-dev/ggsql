@@ -649,7 +649,9 @@ module.exports = grammar({
       // Text aesthetics
       'label', 'family', 'fontface', 'hjust', 'vjust',
       // Facet aesthetics
-      'facet', 'row', 'column'
+      'facet', 'row', 'column',
+      // Computed variables
+      'offset'
     ),
 
     column_reference: $ => $.identifier,
@@ -869,7 +871,7 @@ module.exports = grammar({
       )
     )),
 
-    string: $ => seq("'", repeat(choice(/[^'\\]/, seq('\\', /.*/))), "'"),
+    string: $ => seq("'", repeat(choice(/[^'\\]/, /\\./)), "'"),
 
     boolean: $ => choice('true', 'false'),
 

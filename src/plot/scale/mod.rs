@@ -12,14 +12,14 @@ pub mod transform;
 mod types;
 
 pub use crate::format::apply_label_template;
+pub use crate::plot::aesthetic::is_facet_aesthetic;
 pub use crate::plot::types::{CastTargetType, SqlTypeNames};
 pub use colour::{color_to_hex, gradient, interpolate_colors, is_color_aesthetic, ColorSpace};
 pub use linetype::linetype_to_stroke_dash;
 pub use scale_type::{
-    coerce_dtypes, default_oob, dtype_to_cast_target, infer_transform_from_input_range,
-    is_facet_aesthetic, needs_cast, Binned, Continuous, Discrete, Identity, InputRange,
-    ScaleDataContext, ScaleType, ScaleTypeKind, ScaleTypeTrait, TypeFamily, OOB_CENSOR, OOB_KEEP,
-    OOB_SQUISH,
+    coerce_dtypes, default_oob, dtype_to_cast_target, infer_transform_from_input_range, needs_cast,
+    Binned, Continuous, Discrete, Identity, InputRange, ScaleDataContext, ScaleType, ScaleTypeKind,
+    ScaleTypeTrait, TypeFamily, OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
 };
 
 pub use shape::shape_to_svg_path;
@@ -45,7 +45,7 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
     matches!(
         aesthetic,
         // Position aesthetics
-        "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend" | "x2" | "y2"
+        "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
         // Color aesthetics (color/colour/col already split to fill/stroke)
         | "fill" | "stroke"
         // Size aesthetics

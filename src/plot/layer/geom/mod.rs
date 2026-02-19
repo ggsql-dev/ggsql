@@ -51,10 +51,10 @@ mod violin;
 mod vline;
 
 // Re-export types
-pub use types::{
-    get_aesthetic_family, DefaultParam, DefaultParamValue, GeomAesthetics, StatResult,
-    AESTHETIC_FAMILIES,
-};
+pub use types::{DefaultParam, DefaultParamValue, GeomAesthetics, StatResult};
+
+// Re-export aesthetic family utilities from the central module
+pub use crate::plot::aesthetic::{get_aesthetic_family, AESTHETIC_FAMILIES};
 
 // Re-export geom structs for direct access if needed
 pub use abline::AbLine;
@@ -159,10 +159,17 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         &[]
     }
 
-    /// Returns valid stat column names that can be used in REMAPPING.
+    /// Returns valid stat column names that can be used in REMAPPING (early validation).
     ///
-    /// These are the columns produced by the geom's stat transform.
-    /// REMAPPING can only map these columns to aesthetics.
+    /// These are the columns produced by the geom's stat transform and are used for
+    /// early validation of REMAPPING clauses to provide helpful error messages.
+    ///
+    /// **IMPORTANT**: This static list must be kept in sync with the `stat_columns` field
+    /// returned by `apply_stat_transform()` in `StatResult::Transformed`. These serve
+    /// different but complementary purposes:
+    ///
+    /// - `valid_stat_columns()` (this method): Static compile-time list for early validation
+    /// - `StatResult::stat_columns`: Dynamic runtime list of actual columns produced
     fn valid_stat_columns(&self) -> &'static [&'static str] {
         &[]
     }

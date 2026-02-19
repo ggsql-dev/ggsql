@@ -36,7 +36,7 @@ impl GeomTrait for Boxplot {
             ],
             required: &["x", "y"],
             // Internal aesthetics produced by stat transform
-            hidden: &["type", "y", "y2"],
+            hidden: &["type", "y", "yend"],
         }
     }
 
@@ -68,7 +68,7 @@ impl GeomTrait for Boxplot {
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
         &[
             ("y", DefaultAestheticValue::Column("value")),
-            ("y2", DefaultAestheticValue::Column("value2")),
+            ("yend", DefaultAestheticValue::Column("value2")),
             ("type", DefaultAestheticValue::Column("type")),
         ]
     }
@@ -222,7 +222,7 @@ fn boxplot_sql_append_outliers(
     let groups_str = groups.join(", ");
 
     // Helper to build visual-element rows from summary table
-    // Each row type maps to one visual element with y and y2 where needed
+    // Each row type maps to one visual element with y and yend where needed
     let build_summary_select = |table: &str| {
         format!(
             "SELECT {groups}, 'lower_whisker' AS {type_name}, q1 AS {value_name}, lower AS {value2_name} FROM {table}
@@ -600,7 +600,7 @@ mod tests {
 
         assert_eq!(remappings.len(), 3);
         assert!(remappings.contains(&("y", DefaultAestheticValue::Column("value"))));
-        assert!(remappings.contains(&("y2", DefaultAestheticValue::Column("value2"))));
+        assert!(remappings.contains(&("yend", DefaultAestheticValue::Column("value2"))));
         assert!(remappings.contains(&("type", DefaultAestheticValue::Column("type"))));
     }
 
