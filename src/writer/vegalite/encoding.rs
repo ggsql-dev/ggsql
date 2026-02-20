@@ -421,8 +421,7 @@ fn build_scale_properties(
     // Check if we should skip domain due to facet free scales
     // When using free scales, Vega-Lite computes independent domains per facet panel.
     // Setting an explicit domain would override this behavior.
-    let skip_domain =
-        (ctx.aesthetic == "x" && ctx.free_x) || (ctx.aesthetic == "y" && ctx.free_y);
+    let skip_domain = (ctx.aesthetic == "x" && ctx.free_x) || (ctx.aesthetic == "y" && ctx.free_y);
 
     // Apply domain from input_range (FROM clause)
     // Skip for threshold scales - they use internal breaks as domain instead

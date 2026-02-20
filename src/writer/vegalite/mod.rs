@@ -38,7 +38,9 @@ use std::collections::HashMap;
 // Re-export submodule functions for use in write()
 use coord::apply_coord_transforms;
 use data::{collect_binned_columns, is_binned_aesthetic, unify_datasets};
-use encoding::{build_detail_encoding, build_encoding_channel, infer_field_type, map_aesthetic_name};
+use encoding::{
+    build_detail_encoding, build_encoding_channel, infer_field_type, map_aesthetic_name,
+};
 use layer::{geom_to_mark, get_renderer, validate_layer_columns, GeomRenderer, PreparedData};
 
 /// Conversion factor from points to pixels (CSS standard: 96 DPI, 72 points/inch)
@@ -1811,7 +1813,10 @@ mod tests {
 
         // Add facet with free scales
         let mut facet_properties = HashMap::new();
-        facet_properties.insert("scales".to_string(), ParameterValue::String("free".to_string()));
+        facet_properties.insert(
+            "scales".to_string(),
+            ParameterValue::String("free".to_string()),
+        );
         spec.facet = Some(Facet {
             layout: FacetLayout::Wrap {
                 variables: vec!["category".to_string()],
@@ -1887,7 +1892,10 @@ mod tests {
 
         // Add facet with free_y scales
         let mut facet_properties = HashMap::new();
-        facet_properties.insert("scales".to_string(), ParameterValue::String("free_y".to_string()));
+        facet_properties.insert(
+            "scales".to_string(),
+            ParameterValue::String("free_y".to_string()),
+        );
         spec.facet = Some(Facet {
             layout: FacetLayout::Wrap {
                 variables: vec!["category".to_string()],
@@ -1980,7 +1988,10 @@ mod tests {
 
         // Add facet with fixed scales (default)
         let mut facet_properties = HashMap::new();
-        facet_properties.insert("scales".to_string(), ParameterValue::String("fixed".to_string()));
+        facet_properties.insert(
+            "scales".to_string(),
+            ParameterValue::String("fixed".to_string()),
+        );
         spec.facet = Some(Facet {
             layout: FacetLayout::Wrap {
                 variables: vec!["category".to_string()],
