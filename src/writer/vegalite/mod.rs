@@ -25,8 +25,6 @@ mod data;
 mod encoding;
 mod layer;
 
-// ArrayElement is used in tests and for pattern matching; suppress unused import warning
-#[allow(unused_imports)]
 use crate::plot::ArrayElement;
 use crate::plot::{ParameterValue, Scale, ScaleTypeKind};
 use crate::writer::Writer;
@@ -40,10 +38,7 @@ use std::collections::HashMap;
 // Re-export submodule functions for use in write()
 use coord::apply_coord_transforms;
 use data::{collect_binned_columns, is_binned_aesthetic, unify_datasets};
-use encoding::{
-    build_detail_encoding, build_encoding_channel, build_label_expr,
-    build_symbol_legend_label_mapping, infer_field_type, map_aesthetic_name,
-};
+use encoding::{build_detail_encoding, build_encoding_channel, infer_field_type, map_aesthetic_name};
 use layer::{geom_to_mark, get_renderer, validate_layer_columns, GeomRenderer, PreparedData};
 
 /// Conversion factor from points to pixels (CSS standard: 96 DPI, 72 points/inch)
@@ -403,10 +398,10 @@ fn apply_faceting(
     }
 }
 
-/// Build a facet field definition with proper bin and type.
+/// Build a facet field definition with proper type.
 ///
-/// For binned facets: uses "bin": "binned" and "type": "quantitative"
-/// For discrete facets: uses "type": "nominal"
+/// Facets always use "type": "nominal" since facet values are categorical
+/// (even for binned data, the bin labels are discrete categories).
 fn build_facet_field_def(df: &DataFrame, col: &str, scale: Option<&Scale>) -> Value {
     let mut field_def = json!({
         "field": col,
@@ -415,18 +410,13 @@ fn build_facet_field_def(df: &DataFrame, col: &str, scale: Option<&Scale>) -> Va
     if let Some(scale) = scale {
         if let Some(ref scale_type) = scale.scale_type {
             match scale_type.scale_type_kind() {
-                ScaleTypeKind::Binned => {
-                    // Pre-binned data: use "bin": "binned" and type "quantitative"
-                    // Vega-Lite requires this for already-binned facet data
-                    field_def["bin"] = json!("binned");
-                    field_def["type"] = json!("quantitative");
-                    return field_def;
-                }
-                ScaleTypeKind::Discrete | ScaleTypeKind::Ordinal => {
-                    field_def["type"] = json!("nominal");
-                    return field_def;
-                }
-                _ => {
+                // All scale types use nominal for facets - the data column contains
+                // categorical values (bin midpoints for binned, categories for discrete)
+                ScaleTypeKind::Binned
+                | ScaleTypeKind::Discrete
+                | ScaleTypeKind::Ordinal
+                | ScaleTypeKind::Continuous
+                | ScaleTypeKind::Identity => {
                     field_def["type"] = json!("nominal");
                     return field_def;
                 }
@@ -574,24 +564,30 @@ fn apply_facet_label_renaming(
 
 /// Build labelExpr for binned facet values.
 ///
-/// Reuses build_symbol_legend_label_mapping and build_label_expr from encoding.rs.
+/// For binned facets, `datum.value` contains the bin midpoint (e.g., 25 for bin [20-30)).
+/// This function maps midpoint values to range-style labels like "Lower – Upper",
+/// using custom labels from label_mapping when available.
+///
+/// Unlike `build_symbol_legend_label_mapping` which maps Vega-Lite's auto-generated
+/// range labels, this function maps numeric midpoints to our range labels.
 fn build_binned_facet_label_expr(
     label_mapping: Option<&HashMap<String, Option<String>>>,
     scale: Option<&Scale>,
 ) -> String {
     let Some(scale) = scale else {
-        return "datum.label".to_string();
-    };
-
-    let Some(label_mapping) = label_mapping else {
-        return "datum.label".to_string();
+        return "datum.value".to_string();
     };
 
     let breaks = match scale.properties.get("breaks") {
         Some(ParameterValue::Array(arr)) => arr,
-        _ => return "datum.label".to_string(),
+        _ => return "datum.value".to_string(),
     };
 
+    if breaks.len() < 2 {
+        return "datum.value".to_string();
+    }
+
+    // Get closed property for determining open-format labels
     let closed = scale
         .properties
         .get("closed")
@@ -601,11 +597,140 @@ fn build_binned_facet_label_expr(
         })
         .unwrap_or("left");
 
-    // Reuse the same mapping logic as legends
-    let symbol_mapping = build_symbol_legend_label_mapping(breaks, label_mapping, closed);
+    let num_bins = breaks.len() - 1;
 
-    // Reuse the same labelExpr builder as legends
-    build_label_expr(&symbol_mapping, None, None)
+    // Build mapping from midpoint to range label
+    let mut midpoint_to_range: Vec<(String, Option<String>)> = Vec::new();
+
+    for i in 0..num_bins {
+        let lower = &breaks[i];
+        let upper = &breaks[i + 1];
+
+        // Calculate midpoint for comparison
+        let midpoint_str = calculate_midpoint_string(lower, upper, scale.transform.as_ref());
+        let Some(midpoint_str) = midpoint_str else {
+            continue;
+        };
+
+        // Get break values as strings (for default labels)
+        let lower_str = lower.to_key_string();
+        let upper_str = upper.to_key_string();
+
+        // Build the range label
+        let range_label = if let Some(label_mapping) = label_mapping {
+            // Check if terminals are suppressed
+            let lower_suppressed = label_mapping.get(&lower_str) == Some(&None);
+            let upper_suppressed = label_mapping.get(&upper_str) == Some(&None);
+
+            // Get custom labels (fall back to break values)
+            let lower_label = label_mapping
+                .get(&lower_str)
+                .cloned()
+                .flatten()
+                .unwrap_or_else(|| lower_str.clone());
+            let upper_label = label_mapping
+                .get(&upper_str)
+                .cloned()
+                .flatten()
+                .unwrap_or_else(|| upper_str.clone());
+
+            // Determine label format based on terminal suppression
+            if i == 0 && lower_suppressed {
+                // First bin with suppressed lower terminal → open format
+                let symbol = if closed == "right" { "≤" } else { "<" };
+                Some(format!("{} {}", symbol, upper_label))
+            } else if i == num_bins - 1 && upper_suppressed {
+                // Last bin with suppressed upper terminal → open format
+                let symbol = if closed == "right" { ">" } else { "≥" };
+                Some(format!("{} {}", symbol, lower_label))
+            } else {
+                // Standard range format: "lower – upper"
+                Some(format!("{} – {}", lower_label, upper_label))
+            }
+        } else {
+            // No label mapping - use default range format with break values
+            Some(format!("{} – {}", lower_str, upper_str))
+        };
+
+        midpoint_to_range.push((midpoint_str, range_label));
+    }
+
+    if midpoint_to_range.is_empty() {
+        return "datum.value".to_string();
+    }
+
+    // Build labelExpr comparing datum.value against midpoints
+    build_binned_facet_value_expr(&midpoint_to_range)
+}
+
+/// Build labelExpr comparing datum.value against midpoint values
+fn build_binned_facet_value_expr(mappings: &[(String, Option<String>)]) -> String {
+    let mut expr_parts: Vec<String> = Vec::new();
+
+    for (midpoint, label) in mappings {
+        // Compare as number for numeric midpoints, string for temporal
+        let condition = format!("datum.value == {}", midpoint);
+        let result = match label {
+            Some(l) => format!("'{}'", escape_vega_string(l)),
+            None => "''".to_string(),
+        };
+        expr_parts.push(format!("{} ? {}", condition, result));
+    }
+
+    if expr_parts.is_empty() {
+        return "datum.value".to_string();
+    }
+
+    // Chain: cond1 ? val1 : cond2 ? val2 : datum.value
+    let mut expr = "datum.value".to_string();
+    for part in expr_parts.into_iter().rev() {
+        expr = format!("{} : {}", part, expr);
+    }
+    expr
+}
+
+/// Calculate the midpoint string for a bin
+fn calculate_midpoint_string(
+    lower: &ArrayElement,
+    upper: &ArrayElement,
+    transform: Option<&crate::plot::scale::Transform>,
+) -> Option<String> {
+    match (lower, upper) {
+        (ArrayElement::Number(l), ArrayElement::Number(u)) => {
+            let midpoint = (*l + *u) / 2.0;
+
+            // Check if temporal transform - format as ISO string (quoted for comparison)
+            if let Some(t) = transform {
+                if let Some(iso) = t.format_as_iso(midpoint) {
+                    return Some(format!("'{}'", iso));
+                }
+            }
+
+            // Numeric: format without trailing decimals if whole number
+            Some(if midpoint.fract() == 0.0 {
+                format!("{}", midpoint as i64)
+            } else {
+                format!("{}", midpoint)
+            })
+        }
+        // Temporal ArrayElements - calculate midpoint and format as ISO (quoted)
+        (ArrayElement::Date(l), ArrayElement::Date(u)) => {
+            let midpoint = ((*l as f64) + (*u as f64)) / 2.0;
+            Some(format!("'{}'", ArrayElement::date_to_iso(midpoint as i32)))
+        }
+        (ArrayElement::DateTime(l), ArrayElement::DateTime(u)) => {
+            let midpoint = ((*l as f64) + (*u as f64)) / 2.0;
+            Some(format!(
+                "'{}'",
+                ArrayElement::datetime_to_iso(midpoint as i64)
+            ))
+        }
+        (ArrayElement::Time(l), ArrayElement::Time(u)) => {
+            let midpoint = ((*l as f64) + (*u as f64)) / 2.0;
+            Some(format!("'{}'", ArrayElement::time_to_iso(midpoint as i64)))
+        }
+        _ => None,
+    }
 }
 
 /// Build labelExpr for discrete facet values.
@@ -1490,6 +1615,145 @@ mod tests {
         assert!(
             expr.contains("datum.value == 'Adelie'"),
             "Label expr should use string comparison for Adelie, got: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_binned_facet_label_expr_uses_range_labels() {
+        // Test that binned facet labelExpr uses range-style labels "Lower – Upper"
+        use crate::plot::scale::Scale;
+        use crate::plot::{ParameterValue, ScaleType};
+
+        // Create a binned scale with breaks [0, 20, 40, 60]
+        let mut scale = Scale::new("facet");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(20.0),
+                ArrayElement::Number(40.0),
+                ArrayElement::Number(60.0),
+            ]),
+        );
+
+        // Create label mapping keyed by lower bound
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("0".to_string(), Some("Low".to_string()));
+        label_mapping.insert("20".to_string(), Some("Medium".to_string()));
+        label_mapping.insert("40".to_string(), Some("High".to_string()));
+        label_mapping.insert("60".to_string(), Some("Very High".to_string()));
+
+        let expr = build_binned_facet_label_expr(Some(&label_mapping), Some(&scale));
+
+        // Should contain midpoint comparisons:
+        // Bin [0, 20) -> midpoint 10
+        // Bin [20, 40) -> midpoint 30
+        // Bin [40, 60] -> midpoint 50
+        assert!(
+            expr.contains("datum.value == 10"),
+            "labelExpr should compare against midpoint 10, got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("datum.value == 30"),
+            "labelExpr should compare against midpoint 30, got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("datum.value == 50"),
+            "labelExpr should compare against midpoint 50, got: {}",
+            expr
+        );
+
+        // Should map to range-style labels using custom label names
+        assert!(
+            expr.contains("'Low – Medium'"),
+            "labelExpr should contain range label 'Low – Medium', got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("'Medium – High'"),
+            "labelExpr should contain range label 'Medium – High', got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("'High – Very High'"),
+            "labelExpr should contain range label 'High – Very High', got: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_binned_facet_label_expr_with_suppressed_lower_terminal() {
+        // Test that suppressed lower terminal creates open-format label "< Upper"
+        use crate::plot::scale::Scale;
+        use crate::plot::{ParameterValue, ScaleType};
+
+        let mut scale = Scale::new("facet");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+
+        // Create label mapping with suppressed first terminal (oob='squish' behavior)
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("0".to_string(), None); // Suppress lower terminal
+        label_mapping.insert("50".to_string(), Some("High".to_string()));
+        label_mapping.insert("100".to_string(), Some("Max".to_string()));
+
+        let expr = build_binned_facet_label_expr(Some(&label_mapping), Some(&scale));
+
+        // First bin with suppressed lower terminal → open format "< 50" or "< High"
+        // (uses upper bound label since lower is suppressed)
+        assert!(
+            expr.contains("'< High'"),
+            "First bin with suppressed lower should use '< Upper' format, got: {}",
+            expr
+        );
+        // Second bin should use range format
+        assert!(
+            expr.contains("'High – Max'"),
+            "Second bin should use range format 'High – Max', got: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_binned_facet_label_expr_default_range_format() {
+        // Test that binned facet without label_mapping uses default range format
+        use crate::plot::scale::Scale;
+        use crate::plot::{ParameterValue, ScaleType};
+
+        let mut scale = Scale::new("facet");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+            ]),
+        );
+
+        // No label_mapping - should use break values in range format
+        let expr = build_binned_facet_label_expr(None, Some(&scale));
+
+        // Should use default range format with break values
+        assert!(
+            expr.contains("'0 – 25'"),
+            "Should use default range format '0 – 25', got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("'25 – 50'"),
+            "Should use default range format '25 – 50', got: {}",
             expr
         );
     }
