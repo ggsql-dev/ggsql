@@ -223,6 +223,428 @@ impl GeomRenderer for PathRenderer {
 }
 
 // =============================================================================
+// Text Renderer
+// =============================================================================
+
+/// Metadata for text rendering
+struct TextMetadata {
+    strategy: FontStrategy,
+}
+
+/// Strategy for handling font properties in text layers
+enum FontStrategy {
+    /// All font properties are constant - use single layer with mark properties
+    SingleLayer {
+        mark_properties: HashMap<String, Value>,
+    },
+    /// Font properties vary - split into multiple layers, one per unique combination
+    MultiLayer {
+        groups: Vec<FontGroup>,
+        common_properties: HashMap<String, Value>,
+    },
+}
+
+/// A group of rows with identical font property values
+struct FontGroup {
+    /// Unique signature for this combination (for data key suffix)
+    #[allow(dead_code)]
+    signature: String,
+    /// Mark properties for this group
+    properties: HashMap<String, Value>,
+    /// Row indices belonging to this group
+    row_indices: Vec<usize>,
+}
+
+/// Renderer for text geom - handles font properties via data splitting
+pub struct TextRenderer;
+
+impl TextRenderer {
+    /// Analyze DataFrame columns to find font aesthetics
+    fn analyze_font_columns(df: &DataFrame) -> Result<FontStrategy> {
+
+        let mut varying_columns: Vec<(String, String)> = Vec::new(); // (aesthetic, column_name)
+        let mut constant_values: HashMap<String, Value> = HashMap::new();
+
+        // Check for font aesthetic columns in DataFrame
+        for &aesthetic in &["family", "fontface", "hjust", "vjust"] {
+            let col_name = naming::aesthetic_column(aesthetic);
+
+            if let Ok(col) = df.column(&col_name) {
+                let unique_count = col
+                    .n_unique()
+                    .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
+
+                if unique_count == 1 {
+                    // All same → treat as constant
+                    let value_str = col
+                        .str()
+                        .map_err(|e| GgsqlError::WriterError(e.to_string()))?
+                        .get(0)
+                        .unwrap_or("");
+                    let converted = Self::convert_to_mark_property(aesthetic, value_str);
+                    constant_values.insert(aesthetic.to_string(), converted);
+                } else if unique_count > 1 {
+                    // Multiple values → needs splitting
+                    varying_columns.push((aesthetic.to_string(), col_name));
+                }
+            }
+        }
+
+        if varying_columns.is_empty() {
+            // All constant or not present → single layer
+            Ok(FontStrategy::SingleLayer {
+                mark_properties: constant_values,
+            })
+        } else {
+            // Some varying → multi-layer
+            let groups = Self::build_font_groups_from_df(df, &varying_columns, &constant_values)?;
+            Ok(FontStrategy::MultiLayer {
+                groups,
+                common_properties: constant_values,
+            })
+        }
+    }
+
+    /// Build groups from DataFrame columns (used in prepare_data)
+    fn build_font_groups_from_df(
+        data: &DataFrame,
+        varying: &[(String, String)], // (aesthetic, column_name)
+        constant: &HashMap<String, Value>,
+    ) -> Result<Vec<FontGroup>> {
+        use polars::prelude::{ChunkedArray, StringType};
+
+        let nrows = data.height();
+        let mut groups: Vec<FontGroup> = Vec::new();
+        let mut signature_to_idx: HashMap<String, usize> = HashMap::new();
+
+        // Pre-fetch all varying font columns
+        let font_columns: Vec<(String, ChunkedArray<StringType>)> = varying
+            .iter()
+            .map(|(aes, col)| {
+                let series = data
+                    .column(col)
+                    .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
+                let ca = series
+                    .str()
+                    .map_err(|e| GgsqlError::WriterError(e.to_string()))?
+                    .clone();
+                Ok((aes.clone(), ca))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        // Iterate rows and assign to groups
+        for row_idx in 0..nrows {
+            // Build signature for this row
+            let mut sig_parts: Vec<String> = Vec::new();
+            let mut properties = constant.clone();
+
+            for (aesthetic, ca) in &font_columns {
+                let value = ca.get(row_idx).unwrap_or("");
+                sig_parts.push(format!("{}:{}", aesthetic, value));
+
+                // Convert to mark property
+                let prop_value = Self::convert_to_mark_property(aesthetic, value);
+                properties.insert(aesthetic.to_string(), prop_value);
+            }
+
+            let signature = sig_parts.join("|");
+
+            // Add to existing group or create new group
+            if let Some(&group_idx) = signature_to_idx.get(&signature) {
+                groups[group_idx].row_indices.push(row_idx);
+            } else {
+                let group_idx = groups.len();
+                signature_to_idx.insert(signature.clone(), group_idx);
+                groups.push(FontGroup {
+                    signature,
+                    properties,
+                    row_indices: vec![row_idx],
+                });
+            }
+        }
+
+        Ok(groups)
+    }
+
+    /// Convert ggsql font aesthetic value to Vega-Lite mark property
+    fn convert_to_mark_property(aesthetic: &str, value: &str) -> Value {
+        match aesthetic {
+            "family" => json!(value),
+            "fontface" => {
+                // Map ggplot2 fontface to fontWeight/fontStyle
+                match value {
+                    "bold" => json!({"fontWeight": "bold"}),
+                    "italic" => json!({"fontStyle": "italic"}),
+                    "bold.italic" | "bolditalic" => json!({
+                        "fontWeight": "bold",
+                        "fontStyle": "italic"
+                    }),
+                    _ => json!({"fontWeight": "normal"}),
+                }
+            }
+            "hjust" => {
+                // Map 0/0.5/1 or string to left/center/right
+                let align = match value.parse::<f64>() {
+                    Ok(v) if v <= 0.25 => "left",
+                    Ok(v) if v >= 0.75 => "right",
+                    _ => match value {
+                        "left" => "left",
+                        "right" => "right",
+                        _ => "center",
+                    },
+                };
+                json!(align)
+            }
+            "vjust" => {
+                // Map 0/0.5/1 or string to bottom/middle/top
+                let baseline = match value.parse::<f64>() {
+                    Ok(v) if v <= 0.25 => "bottom",
+                    Ok(v) if v >= 0.75 => "top",
+                    _ => match value {
+                        "top" => "top",
+                        "bottom" => "bottom",
+                        _ => "middle",
+                    },
+                };
+                json!(baseline)
+            }
+            _ => json!(value),
+        }
+    }
+
+    /// Filter DataFrame to specific row indices
+    fn filter_by_indices(data: &DataFrame, indices: &[usize]) -> Result<DataFrame> {
+        use polars::prelude::{BooleanChunked, NamedFrom};
+
+        let nrows = data.height();
+        let mut mask_data = vec![false; nrows];
+        for &idx in indices {
+            if idx < nrows {
+                mask_data[idx] = true;
+            }
+        }
+
+        let mask = BooleanChunked::new("".into(), mask_data);
+
+        data.filter(&mask)
+            .map_err(|e| GgsqlError::WriterError(e.to_string()))
+    }
+
+    /// Map aesthetic name to Vega-Lite mark property name
+    fn map_aesthetic_to_mark_property(aesthetic: &str) -> &str {
+        match aesthetic {
+            "family" => "font",
+            "hjust" => "align",
+            "vjust" => "baseline",
+            _ => aesthetic,
+        }
+    }
+
+    /// Apply mark property, handling special cases like fontface
+    fn apply_mark_property(mark_obj: &mut Map<String, Value>, key: &str, value: &Value) {
+        if key == "fontface" || value.is_object() {
+            // fontface may contain multiple properties (fontWeight + fontStyle)
+            if let Some(obj) = value.as_object() {
+                for (k, v) in obj {
+                    mark_obj.insert(k.clone(), v.clone());
+                }
+                return;
+            }
+        }
+        mark_obj.insert(key.to_string(), value.clone());
+    }
+
+    /// Finalize single layer case
+    fn finalize_single_layer(
+        &self,
+        mut prototype: Value,
+        data_key: &str,
+        mark_properties: &HashMap<String, Value>,
+    ) -> Result<Vec<Value>> {
+        // Apply mark properties
+        if let Some(mark) = prototype.get_mut("mark") {
+            if let Some(mark_obj) = mark.as_object_mut() {
+                for (aesthetic, value) in mark_properties {
+                    let vl_key = Self::map_aesthetic_to_mark_property(aesthetic);
+                    Self::apply_mark_property(mark_obj, vl_key, value);
+                }
+            }
+        }
+
+        // Add source filter (matching BoxplotRenderer pattern)
+        let source_filter = json!({
+            "filter": {
+                "field": naming::SOURCE_COLUMN,
+                "equal": data_key
+            }
+        });
+
+        // Prepend source filter to any existing transforms
+        let existing_transforms = prototype
+            .get("transform")
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut new_transforms = vec![source_filter];
+        new_transforms.extend(existing_transforms);
+        prototype["transform"] = json!(new_transforms);
+
+        Ok(vec![prototype])
+    }
+
+    /// Finalize multi-layer case
+    fn finalize_multi_layer(
+        &self,
+        prototype: Value,
+        data_key: &str,
+        groups: &[FontGroup],
+        common_properties: &HashMap<String, Value>,
+    ) -> Result<Vec<Value>> {
+        let mut layers = Vec::new();
+
+        for (group_idx, group) in groups.iter().enumerate() {
+            let mut layer_spec = prototype.clone();
+            let suffix = format!("_font_{}", group_idx);
+            let source_key = format!("{}{}", data_key, suffix);
+
+            // Apply mark properties (common + group-specific)
+            if let Some(mark) = layer_spec.get_mut("mark") {
+                if let Some(mark_obj) = mark.as_object_mut() {
+                    // Apply common properties first
+                    for (aesthetic, value) in common_properties {
+                        let vl_key = Self::map_aesthetic_to_mark_property(aesthetic);
+                        Self::apply_mark_property(mark_obj, vl_key, value);
+                    }
+
+                    // Apply group-specific properties (override common if needed)
+                    for (aesthetic, value) in &group.properties {
+                        let vl_key = Self::map_aesthetic_to_mark_property(aesthetic);
+                        Self::apply_mark_property(mark_obj, vl_key, value);
+                    }
+                }
+            }
+
+            // Add source filter for this group
+            let source_filter = json!({
+                "filter": {
+                    "field": naming::SOURCE_COLUMN,
+                    "equal": source_key
+                }
+            });
+
+            let existing_transforms = layer_spec
+                .get("transform")
+                .and_then(|t| t.as_array())
+                .cloned()
+                .unwrap_or_default();
+
+            let mut new_transforms = vec![source_filter];
+            new_transforms.extend(existing_transforms);
+            layer_spec["transform"] = json!(new_transforms);
+
+            layers.push(layer_spec);
+        }
+
+        Ok(layers)
+    }
+}
+
+impl GeomRenderer for TextRenderer {
+    fn prepare_data(
+        &self,
+        df: &DataFrame,
+        data_key: &str,
+        binned_columns: &HashMap<String, Vec<f64>>,
+    ) -> Result<PreparedData> {
+        // Analyze font columns to determine strategy
+        let strategy = Self::analyze_font_columns(df)?;
+
+        match strategy {
+            FontStrategy::SingleLayer { .. } => {
+                // Single layer - use empty string as component key
+                // The writer will prepend data_key, so empty string results in just data_key
+                let values = if binned_columns.is_empty() {
+                    dataframe_to_values(df)?
+                } else {
+                    dataframe_to_values_with_bins(df, binned_columns)?
+                };
+
+                Ok(PreparedData::Composite {
+                    components: HashMap::from([(String::new(), values)]),
+                    metadata: Box::new(TextMetadata { strategy }),
+                })
+            }
+            FontStrategy::MultiLayer { ref groups, .. } => {
+                // Multi-layer - split data by groups
+                let mut components: HashMap<String, Vec<Value>> = HashMap::new();
+
+                for (group_idx, group) in groups.iter().enumerate() {
+                    let suffix = format!("_font_{}", group_idx);
+                    // Use just the suffix as component key - writer will prepend data_key
+
+                    let filtered = Self::filter_by_indices(df, &group.row_indices)?;
+                    let values = if binned_columns.is_empty() {
+                        dataframe_to_values(&filtered)?
+                    } else {
+                        dataframe_to_values_with_bins(&filtered, binned_columns)?
+                    };
+
+                    components.insert(suffix, values);
+                }
+
+                Ok(PreparedData::Composite {
+                    components,
+                    metadata: Box::new(TextMetadata { strategy }),
+                })
+            }
+        }
+    }
+
+    fn modify_encoding(&self, encoding: &mut Map<String, Value>, _layer: &Layer) -> Result<()> {
+        // Remove font aesthetics from encoding - they only work as mark properties
+        for &aesthetic in &["family", "fontface", "hjust", "vjust"] {
+            encoding.remove(aesthetic);
+        }
+        Ok(())
+    }
+
+    fn needs_source_filter(&self) -> bool {
+        // TextRenderer handles source filtering in finalize()
+        false
+    }
+
+    fn finalize(
+        &self,
+        prototype: Value,
+        _layer: &Layer,
+        data_key: &str,
+        prepared: &PreparedData,
+    ) -> Result<Vec<Value>> {
+        let PreparedData::Composite { metadata, .. } = prepared else {
+            return Err(GgsqlError::InternalError(
+                "TextRenderer::finalize called with non-composite data".to_string(),
+            ));
+        };
+
+        // Downcast metadata to TextMetadata
+        let info = metadata.downcast_ref::<TextMetadata>().ok_or_else(|| {
+            GgsqlError::InternalError("Failed to downcast text metadata".to_string())
+        })?;
+
+        match &info.strategy {
+            FontStrategy::SingleLayer { mark_properties } => {
+                self.finalize_single_layer(prototype, data_key, mark_properties)
+            }
+            FontStrategy::MultiLayer {
+                groups,
+                common_properties,
+            } => self.finalize_multi_layer(prototype, data_key, groups, common_properties),
+        }
+    }
+}
+
+// =============================================================================
 // Ribbon Renderer
 // =============================================================================
 
@@ -809,6 +1231,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Boxplot => Box::new(BoxplotRenderer),
         GeomType::Density => Box::new(AreaRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
+        GeomType::Text => Box::new(TextRenderer),
         // All other geoms (Point, Line, Tile, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
@@ -910,5 +1333,65 @@ mod tests {
                 {"field": "species", "type": "nominal"}
             ]))
         );
+    }
+
+    #[test]
+    fn test_text_constant_font() {
+        use crate::naming;
+        use polars::prelude::*;
+
+        let renderer = TextRenderer;
+
+        // Create DataFrame where all rows have the same font
+        let df = df! {
+            naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
+            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
+            naming::aesthetic_column("family").as_str() => &["Arial", "Arial", "Arial"],
+        }
+        .unwrap();
+
+        // Prepare data - should result in single layer with empty component key
+        let prepared = renderer.prepare_data(&df, "test", &HashMap::new()).unwrap();
+
+        match prepared {
+            PreparedData::Composite { components, .. } => {
+                // Should have single component with empty key
+                assert_eq!(components.len(), 1);
+                assert!(components.contains_key(""));
+            }
+            _ => panic!("Expected Composite"),
+        }
+    }
+
+    #[test]
+    fn test_text_varying_font() {
+        use crate::naming;
+        use polars::prelude::*;
+
+        let renderer = TextRenderer;
+
+        // Create DataFrame with different fonts per row
+        let df = df! {
+            naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
+            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
+            naming::aesthetic_column("family").as_str() => &["Arial", "Courier", "Times"],
+        }
+        .unwrap();
+
+        // Prepare data - should result in multiple layers
+        let prepared = renderer.prepare_data(&df, "test", &HashMap::new()).unwrap();
+
+        match prepared {
+            PreparedData::Composite { components, .. } => {
+                // Should have 3 components (one per unique font) with suffix keys
+                assert_eq!(components.len(), 3);
+                assert!(components.contains_key("_font_0"));
+                assert!(components.contains_key("_font_1"));
+                assert!(components.contains_key("_font_2"));
+            }
+            _ => panic!("Expected Composite"),
+        }
     }
 }
