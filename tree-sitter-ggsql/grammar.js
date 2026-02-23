@@ -444,7 +444,7 @@ module.exports = grammar({
       $.draw_clause,
       $.scale_clause,
       $.facet_clause,
-      $.coord_clause,
+      $.project_clause,
       $.label_clause,
       $.theme_clause,
     ),
@@ -758,33 +758,33 @@ module.exports = grammar({
       'fixed', 'free', 'free_x', 'free_y'
     ),
 
-    // COORD clause - COORD [type] [SETTING prop => value, ...]
-    coord_clause: $ => seq(
-      caseInsensitive('COORD'),
+    // PROJECT clause - PROJECT [type] [SETTING prop => value, ...]
+    project_clause: $ => seq(
+      caseInsensitive('PROJECT'),
       choice(
-        // Type with optional SETTING: COORD polar SETTING theta => y
-        seq($.coord_type, optional(seq(caseInsensitive('SETTING'), $.coord_properties))),
-        // Just SETTING: COORD SETTING xlim => [0, 100] (defaults to cartesian)
-        seq(caseInsensitive('SETTING'), $.coord_properties)
+        // Type with optional SETTING: PROJECT polar SETTING theta => y
+        seq($.project_type, optional(seq(caseInsensitive('SETTING'), $.project_properties))),
+        // Just SETTING: PROJECT SETTING xlim => [0, 100] (defaults to cartesian)
+        seq(caseInsensitive('SETTING'), $.project_properties)
       )
     ),
 
-    coord_type: $ => choice(
+    project_type: $ => choice(
       'cartesian', 'polar', 'flip', 'fixed', 'trans', 'map', 'quickmap'
     ),
 
-    coord_properties: $ => seq(
-      $.coord_property,
-      repeat(seq(',', $.coord_property))
+    project_properties: $ => seq(
+      $.project_property,
+      repeat(seq(',', $.project_property))
     ),
 
-    coord_property: $ => seq(
-      field('name', $.coord_property_name),
+    project_property: $ => seq(
+      field('name', $.project_property_name),
       '=>',
       field('value', choice($.string, $.number, $.boolean, $.array, $.identifier))
     ),
 
-    coord_property_name: $ => choice(
+    project_property_name: $ => choice(
       'xlim', 'ylim', 'ratio', 'theta', 'clip',
       // Also allow aesthetic names as properties (for range specification)
       $.aesthetic_name

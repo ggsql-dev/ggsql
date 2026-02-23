@@ -11,20 +11,20 @@ SELECT date, revenue, region FROM sales WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
 SCALE x VIA date
-COORD cartesian SETTING ylim => [0, 100000]
+PROJECT cartesian SETTING ylim => [0, 100000]
 LABEL title => 'Sales by Region', x => 'Date', y => 'Revenue'
 THEME minimal
 ```
 
 **Statistics**:
 
-- ~7,500 lines of Rust code (including COORD implementation)
+- ~7,500 lines of Rust code (including PROJECT implementation)
 - 507-line Tree-sitter grammar (simplified, no external scanner)
 - Full bindings: Rust, C, Python, Node.js with tree-sitter integration
 - Syntax highlighting support via Tree-sitter queries
 - 916 total tests (174 parser tests, comprehensive builder and integration tests)
 - End-to-end working pipeline: SQL → Data → Visualization
-- Coordinate transformations: Cartesian (xlim/ylim), Flip, Polar
+- Projectinate transformations: Cartesian (xlim/ylim), Flip, Polar
 - VISUALISE FROM shorthand syntax with automatic SELECT injection
 
 ---
@@ -257,7 +257,7 @@ For detailed API documentation, see [`src/doc/API.md`](src/doc/API.md).
 
 - Uses `tree-sitter-ggsql` grammar (507 lines, simplified approach)
 - Parses **full query** (SQL + VISUALISE) into concrete syntax tree (CST)
-- Grammar supports: PLOT/TABLE/MAP types, DRAW/SCALE/FACET/COORD/LABEL/THEME clauses
+- Grammar supports: PLOT/TABLE/MAP types, DRAW/SCALE/FACET/PROJECT/LABEL/THEME clauses
 - British and American spellings: `VISUALISE` / `VISUALIZE`
 - **SQL portion parsing**: Basic SQL structure (SELECT, WITH, CREATE, INSERT, subqueries)
 - **Recursive subquery support**: Fully recursive grammar for complex SQL
@@ -303,7 +303,7 @@ pub struct Plot {
     pub layers: Vec<Layer>,            // DRAW clauses
     pub scales: Vec<Scale>,            // SCALE clauses
     pub facet: Option<Facet>,          // FACET clause
-    pub coord: Option<Coord>,          // COORD clause
+    pub project: Option<Project>,          // PROJECT clause
     pub labels: Option<Labels>,        // LABEL clause
     pub theme: Option<Theme>,          // THEME clause
 }
@@ -387,17 +387,17 @@ pub enum FacetScales {
     FreeY,      // 'free_y' - independent y-axis, shared x-axis
 }
 
-pub struct Coord {
-    pub coord_type: CoordType,
+pub struct Project {
+    pub project_type: ProjectType,
     pub properties: HashMap<String, ParameterValue>,
 }
 
-pub enum CoordType {
-    Cartesian,  // Standard x/y coordinates
-    Polar,      // Polar coordinates (pie charts, rose plots)
+pub enum ProjectType {
+    Cartesian,  // Standard x/y projectinates
+    Polar,      // Polar projectinates (pie charts, rose plots)
     Flip,       // Flipped Cartesian (swaps x and y)
     Fixed,      // Fixed aspect ratio
-    Trans,      // Transformed coordinates
+    Trans,      // Transformed projectinates
     Map,        // Map projections
     QuickMap,   // Quick map approximation
 }
@@ -809,7 +809,7 @@ The kernel includes enhanced support for Positron IDE:
 
 - Complete syntax highlighting for ggsql queries
 - SQL keyword support (SELECT, FROM, WHERE, JOIN, WITH, etc.)
-- ggsql clause highlighting (VISUALISE, SCALE, COORD, FACET, LABEL, etc.)
+- ggsql clause highlighting (VISUALISE, SCALE, PROJECT, FACET, LABEL, etc.)
 - Aesthetic highlighting (x, y, color, size, shape, etc.)
 - String and number literals
 - Comment support (`--` and `/* */`)
@@ -852,7 +852,7 @@ When running in Positron IDE, the extension provides enhanced functionality:
 
 **Syntax Scopes**:
 
-- `keyword.control.ggsql` - VISUALISE, DRAW, SCALE, COORD, etc.
+- `keyword.control.ggsql` - VISUALISE, DRAW, SCALE, PROJECT, etc.
 - `keyword.other.sql` - SELECT, FROM, WHERE, etc.
 - `entity.name.function.geom.ggsql` - point, line, bar, etc.
 - `variable.parameter.aesthetic.ggsql` - x, y, color, size, etc.
@@ -1178,7 +1178,7 @@ Where `<global_mapping>` can be:
 | `DRAW`      | ✅ Yes     | Define layers     | `DRAW line MAPPING date AS x, value AS y` |
 | `SCALE`     | ✅ Yes     | Configure scales  | `SCALE x VIA date`                        |
 | `FACET`     | ❌ No      | Small multiples   | `FACET WRAP region`                       |
-| `COORD`     | ❌ No      | Coordinate system | `COORD cartesian SETTING xlim => [0,100]` |
+| `PROJECT`     | ❌ No      | Projectinate system | `PROJECT cartesian SETTING xlim => [0,100]` |
 | `LABEL`     | ❌ No      | Text labels       | `LABEL title => 'My Chart', x => 'Date'`  |
 | `THEME`     | ❌ No      | Visual styling    | `THEME minimal`                           |
 
@@ -1346,7 +1346,7 @@ SCALE color FROM ['A', 'B'] TO ['red', 'blue']
 SCALE color TO viridis
 ```
 
-**Note**: Cannot specify range in both SCALE and COORD for the same aesthetic (will error).
+**Note**: Cannot specify range in both SCALE and PROJECT for the same aesthetic (will error).
 
 **Examples**:
 
@@ -1393,25 +1393,25 @@ FACET WRAP region SETTING scales => 'free_y'
 FACET region BY category SETTING scales => 'fixed'
 ```
 
-### COORD Clause
+### PROJECT Clause
 
 **Syntax**:
 
 ```sql
--- With coordinate type
-COORD <type> [SETTING <properties>]
+-- With projectinate type
+PROJECT <type> [SETTING <properties>]
 
 -- With properties only (defaults to cartesian)
-COORD SETTING <properties>
+PROJECT SETTING <properties>
 ```
 
-**Coordinate Types**:
+**Projectinate Types**:
 
-- **`cartesian`** - Standard x/y Cartesian coordinates (default)
+- **`cartesian`** - Standard x/y Cartesian projectinates (default)
 - **`flip`** - Flipped Cartesian (swaps x and y axes)
-- **`polar`** - Polar coordinates (for pie charts, rose plots)
+- **`polar`** - Polar projectinates (for pie charts, rose plots)
 - **`fixed`** - Fixed aspect ratio
-- **`trans`** - Transformed coordinates
+- **`trans`** - Transformed projectinates
 - **`map`** - Map projections
 - **`quickmap`** - Quick approximation for maps
 
@@ -1435,9 +1435,9 @@ COORD SETTING <properties>
 **Important Notes**:
 
 1. **Axis limits auto-swap**: `xlim => [100, 0]` automatically becomes `[0, 100]`
-2. **ggplot2 compatibility**: `coord_flip` preserves axis label names (labels stay with aesthetic names, not visual position)
-3. **Range conflicts**: Error if same aesthetic has input range in both SCALE and COORD
-4. **Multi-layer support**: All coordinate transforms apply to all layers
+2. **ggplot2 compatibility**: `project_flip` preserves axis label names (labels stay with aesthetic names, not visual position)
+3. **Range conflicts**: Error if same aesthetic has input range in both SCALE and PROJECT
+4. **Multi-layer support**: All projectinate transforms apply to all layers
 
 **Status**:
 
@@ -1450,29 +1450,29 @@ COORD SETTING <properties>
 
 ```sql
 -- Cartesian with axis limits
-COORD cartesian SETTING xlim => [0, 100], ylim => [0, 50]
+PROJECT cartesian SETTING xlim => [0, 100], ylim => [0, 50]
 
 -- Cartesian with aesthetic range
-COORD cartesian SETTING color => O ['red', 'green', 'blue']
+PROJECT cartesian SETTING color => O ['red', 'green', 'blue']
 
 -- Cartesian shorthand (type optional when using SETTING)
-COORD SETTING xlim => [0, 100]
+PROJECT SETTING xlim => [0, 100]
 
--- Flip coordinates for horizontal bar chart
-COORD flip
+-- Flip projectinates for horizontal bar chart
+PROJECT flip
 
 -- Flip with aesthetic range
-COORD flip SETTING color => ['A', 'B', 'C']
+PROJECT flip SETTING color => ['A', 'B', 'C']
 
 -- Polar for pie chart (theta defaults to y)
-COORD polar
+PROJECT polar
 
 -- Polar for rose plot (x maps to radius)
-COORD polar SETTING theta => y
+PROJECT polar SETTING theta => y
 
 -- Combined with other clauses
 DRAW bar MAPPING category AS x, value AS y
-COORD cartesian SETTING xlim => [0, 100], ylim => [0, 200]
+PROJECT cartesian SETTING xlim => [0, 100], ylim => [0, 200]
 LABEL x => 'Category', y => 'Count'
 ```
 

@@ -1,37 +1,37 @@
-//! Coordinate system transformations for Vega-Lite writer
+//! Projection transformations for Vega-Lite writer
 //!
-//! This module handles coordinate system transformations (cartesian, flip, polar)
-//! that modify the Vega-Lite spec structure based on the COORD clause.
+//! This module handles projection transformations (cartesian, flip, polar)
+//! that modify the Vega-Lite spec structure based on the PROJECT clause.
 
 use crate::plot::aesthetic::is_aesthetic_name;
-use crate::plot::{Coord, CoordType, ParameterValue};
+use crate::plot::{ParameterValue, Project, ProjectType};
 use crate::{DataFrame, GgsqlError, Plot, Result};
 use serde_json::{json, Value};
 
-/// Apply coordinate transformations to the spec and data
+/// Apply projection transformations to the spec and data
 /// Returns (possibly transformed DataFrame, possibly modified spec)
-pub(super) fn apply_coord_transforms(
+pub(super) fn apply_project_transforms(
     spec: &Plot,
     data: &DataFrame,
     vl_spec: &mut Value,
 ) -> Result<Option<DataFrame>> {
-    if let Some(ref coord) = spec.coord {
-        match coord.coord_type {
-            CoordType::Cartesian => {
-                apply_cartesian_coord(coord, vl_spec)?;
+    if let Some(ref project) = spec.project {
+        match project.project_type {
+            ProjectType::Cartesian => {
+                apply_cartesian_project(project, vl_spec)?;
                 Ok(None) // No DataFrame transformation needed
             }
-            CoordType::Flip => {
-                apply_flip_coord(vl_spec)?;
+            ProjectType::Flip => {
+                apply_flip_project(vl_spec)?;
                 Ok(None) // No DataFrame transformation needed
             }
-            CoordType::Polar => {
+            ProjectType::Polar => {
                 // Polar requires DataFrame transformation for percentages
-                let transformed_df = apply_polar_coord(coord, spec, data, vl_spec)?;
+                let transformed_df = apply_polar_project(project, spec, data, vl_spec)?;
                 Ok(Some(transformed_df))
             }
             _ => {
-                // Other coord types not yet implemented
+                // Other project types not yet implemented
                 Ok(None)
             }
         }
@@ -40,10 +40,10 @@ pub(super) fn apply_coord_transforms(
     }
 }
 
-/// Apply Cartesian coordinate properties (xlim, ylim, aesthetic domains)
-fn apply_cartesian_coord(coord: &Coord, vl_spec: &mut Value) -> Result<()> {
+/// Apply Cartesian projection properties (xlim, ylim, aesthetic domains)
+fn apply_cartesian_project(project: &Project, vl_spec: &mut Value) -> Result<()> {
     // Apply xlim/ylim to scale domains
-    for (prop_name, prop_value) in &coord.properties {
+    for (prop_name, prop_value) in &project.properties {
         match prop_name.as_str() {
             "xlim" => {
                 if let Some(limits) = extract_limits(prop_value)? {
@@ -70,8 +70,8 @@ fn apply_cartesian_coord(coord: &Coord, vl_spec: &mut Value) -> Result<()> {
     Ok(())
 }
 
-/// Apply Flip coordinate transformation (swap x and y)
-fn apply_flip_coord(vl_spec: &mut Value) -> Result<()> {
+/// Apply Flip projection transformation (swap x and y)
+fn apply_flip_project(vl_spec: &mut Value) -> Result<()> {
     if let Some(layers) = vl_spec.get_mut("layer") {
         if let Some(layers_arr) = layers.as_array_mut() {
             for layer in layers_arr {
@@ -90,15 +90,15 @@ fn apply_flip_coord(vl_spec: &mut Value) -> Result<()> {
     Ok(())
 }
 
-/// Apply Polar coordinate transformation (bar->arc, point->arc with radius)
-fn apply_polar_coord(
-    coord: &Coord,
+/// Apply Polar projection transformation (bar->arc, point->arc with radius)
+fn apply_polar_project(
+    project: &Project,
     spec: &Plot,
     data: &DataFrame,
     vl_spec: &mut Value,
 ) -> Result<DataFrame> {
     // Get theta field (defaults to 'y')
-    let theta_field = coord
+    let theta_field = project
         .properties
         .get("theta")
         .and_then(|v| match v {
@@ -179,7 +179,7 @@ fn convert_mark_to_polar(mark: &Value, _spec: &Plot) -> Result<Value> {
     }))
 }
 
-/// Update encoding channels for polar coordinates
+/// Update encoding channels for polar projection
 fn update_encoding_for_polar(encoding: &mut Value, theta_aesthetic: &str) -> Result<()> {
     let enc_obj = encoding
         .as_object_mut()

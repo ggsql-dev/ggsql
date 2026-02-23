@@ -434,7 +434,7 @@ LABEL
     y => 'Value'
 ```
 
-## Coordinate Transformations
+## Projections
 
 ### Flipped Coordinates (Horizontal Bar Chart)
 
@@ -445,7 +445,7 @@ GROUP BY region
 ORDER BY total DESC
 VISUALISE region AS x, total AS y, region AS fill
 DRAW bar
-COORD flip
+PROJECT flip
 LABEL 
     title => 'Total Revenue by Region', 
     x => 'Region', 
@@ -459,7 +459,7 @@ SELECT x, y FROM 'data.csv'
 VISUALISE x, y
 DRAW point 
     SETTING size => 4, color => 'blue'
-COORD cartesian 
+PROJECT cartesian 
     SETTING xlim => [0, 60], ylim => [0, 70]
 LABEL 
     title => 'Scatter Plot with Custom Axis Limits', 
@@ -475,7 +475,7 @@ FROM 'sales.csv'
 GROUP BY category
 VISUALISE total AS y, category AS fill
 DRAW bar
-COORD polar
+PROJECT polar
 LABEL 
     title => 'Revenue Distribution by Category'
 ```
@@ -656,7 +656,7 @@ regional_totals AS (
 )
 VISUALISE region AS x, total AS y, region AS fill FROM regional_totals
 DRAW bar
-COORD flip
+PROJECT flip
 LABEL 
     title => 'Total Revenue by Region', 
     x => 'Region', 

@@ -20,10 +20,10 @@
 //! // Can be rendered in browser with vega-embed
 //! ```
 
-mod coord;
 mod data;
 mod encoding;
 mod layer;
+mod project;
 
 // ArrayElement is used in tests and for pattern matching; suppress unused import warning
 #[allow(unused_imports)]
@@ -38,7 +38,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 // Re-export submodule functions for use in write()
-use coord::apply_coord_transforms;
+use project::apply_project_transforms;
 use data::{collect_binned_columns, is_binned_aesthetic, unify_datasets};
 use encoding::{
     build_detail_encoding, build_encoding_channel, infer_field_type, map_aesthetic_name,
@@ -491,9 +491,9 @@ impl Writer for VegaLiteWriter {
         )?;
         vl_spec["layer"] = json!(layers);
 
-        // 9. Apply coordinate transforms
+        // 9. Apply projection transforms
         let first_df = data.get(&layer_data_keys[0]).unwrap();
-        apply_coord_transforms(spec, first_df, &mut vl_spec)?;
+        apply_project_transforms(spec, first_df, &mut vl_spec)?;
 
         // 10. Apply faceting
         if let Some(facet) = &spec.facet {

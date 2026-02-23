@@ -7,7 +7,7 @@ This document provides a collection of basic examples demonstrating how to use g
 - [Basic Visualizations](#basic-visualizations)
 - [Multiple Layers](#multiple-layers)
 - [Scales and Transformations](#scales-and-transformations)
-- [Coordinate Systems](#coordinate-systems)
+- [Projections](#projections)
 - [Labels and Themes](#labels-and-themes)
 - [Faceting](#faceting)
 - [Common Table Expressions (CTEs)](#common-table-expressions-ctes)
@@ -125,7 +125,7 @@ SCALE DISCRETE fill FROM ['A', 'B', 'C', 'D']
 
 ---
 
-## Coordinate Systems
+## Projections
 
 ### Cartesian with Limits
 
@@ -133,27 +133,27 @@ SCALE DISCRETE fill FROM ['A', 'B', 'C', 'D']
 SELECT x, y FROM data
 VISUALISE x, y
 DRAW point
-COORD cartesian SETTING xlim => [0, 100], ylim => [0, 50]
+PROJECT cartesian SETTING xlim => [0, 100], ylim => [0, 50]
 ```
 
-### Flipped Coordinates (Horizontal Bar Chart)
+### Flipped Projection (Horizontal Bar Chart)
 
 ```sql
 SELECT category, value FROM data
 ORDER BY value DESC
 VISUALISE category AS x, value AS y
 DRAW bar
-COORD flip
+PROJECT flip
 ```
 
-### Polar Coordinates (Pie Chart)
+### Polar Projection (Pie Chart)
 
 ```sql
 SELECT category, SUM(value) as total FROM data
 GROUP BY category
 VISUALISE category AS x, total AS y
 DRAW bar
-COORD polar
+PROJECT polar
 ```
 
 ### Polar with Theta Specification
@@ -162,7 +162,7 @@ COORD polar
 SELECT category, value FROM data
 VISUALISE category AS x, value AS y
 DRAW bar
-COORD polar SETTING theta => y
+PROJECT polar SETTING theta => y
 ```
 
 ---
@@ -307,7 +307,7 @@ regional_totals AS (
 )
 VISUALISE region AS x, total AS y, region AS fill FROM regional_totals
 DRAW bar
-COORD flip
+PROJECT flip
 LABEL title => 'Total Revenue by Region',
       x => 'Region',
       y => 'Total Revenue ($)'
@@ -374,7 +374,7 @@ SELECT * FROM ranked_products WHERE rank <= 5
 VISUALISE product_name AS x, revenue AS y, category AS color
 DRAW bar
 FACET WRAP category SETTING scales => 'free_x'
-COORD flip
+PROJECT flip
 LABEL title => 'Top 5 Products per Category',
       x => 'Product',
       y => 'Revenue ($)'
@@ -476,7 +476,7 @@ LABEL title => 'Temperature Trends',
       y => 'Temperature (°C)'
 ```
 
-### Categorical Analysis with Flipped Coordinates
+### Categorical Analysis with Flipped Projection
 
 ```sql
 SELECT
@@ -488,7 +488,7 @@ ORDER BY total_revenue DESC
 LIMIT 10
 VISUALISE product_name AS x, total_revenue AS y, product_name AS fill
 DRAW bar
-COORD flip SETTING color => ['red', 'orange', 'yellow', 'green', 'blue',
+PROJECT flip SETTING color => ['red', 'orange', 'yellow', 'green', 'blue',
                           'indigo', 'violet', 'pink', 'brown', 'gray']
 LABEL title => 'Top 10 Products by Revenue',
       x => 'Product',
@@ -510,7 +510,7 @@ DRAW point
 SCALE x SETTING type => 'date'
 SCALE DISCRETE color FROM ['A', 'B', 'C']
 SCALE size SETTING limits => [0, 100]
-COORD cartesian SETTING ylim => [0, 150]
+PROJECT cartesian SETTING ylim => [0, 150]
 LABEL title => 'Measurement Distribution',
       x => 'Date',
       y => 'Value'
@@ -529,7 +529,7 @@ VISUALISE x, y, category AS color
 DRAW point SETTING size => 5
 DRAW text MAPPING label AS label
 SCALE color TO viridis
-COORD cartesian SETTING xlim => [0, 100], ylim => [0, 100]
+PROJECT cartesian SETTING xlim => [0, 100], ylim => [0, 100]
 LABEL title => 'Annotated Scatter Plot',
       x => 'X Axis',
       y => 'Y Axis'
@@ -630,7 +630,7 @@ Draw Line
 
 3. **Color Mappings**: Use `color` for continuous data and `fill` for categorical data in bars/areas.
 
-4. **Coordinate Limits**: Set explicit limits with `COORD cartesian SETTING xlim => [min, max]` to control axis ranges.
+4. **Coordinate Limits**: Set explicit limits with `PROJECT cartesian SETTING xlim => [min, max]` to control axis ranges.
 
 5. **Faceting**: Use faceting to create small multiples when comparing across categories.
 
@@ -640,7 +640,7 @@ Draw Line
 
 8. **Labels**: Always provide meaningful titles and axis labels for clarity.
 
-9. **Range Specification**: Use either SCALE or COORD for range/limit specification, but not both for the same aesthetic.
+9. **Range Specification**: Use either SCALE or PROJECT for range/limit specification, but not both for the same aesthetic.
 
 ---
 

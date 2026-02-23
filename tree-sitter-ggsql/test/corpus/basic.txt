@@ -531,12 +531,12 @@ LABEL title => 'My Plot', x => 'X Axis', y => 'Y Axis'
           (string))))))
 
 ================================================================================
-COORD cartesian with xlim
+PROJECT cartesian with xlim
 ================================================================================
 
 VISUALISE x, y
 DRAW point
-COORD cartesian SETTING xlim => [0, 100]
+PROJECT cartesian SETTING xlim => [0, 100]
 
 --------------------------------------------------------------------------------
 
@@ -557,11 +557,11 @@ COORD cartesian SETTING xlim => [0, 100]
       (draw_clause
         (geom_type)))
     (viz_clause
-      (coord_clause
-        (coord_type)
-        (coord_properties
-          (coord_property
-            (coord_property_name)
+      (project_clause
+        (project_type)
+        (project_properties
+          (project_property
+            (project_property_name)
             (array
               (array_element
                 (number))
@@ -569,12 +569,12 @@ COORD cartesian SETTING xlim => [0, 100]
                 (number)))))))))
 
 ================================================================================
-COORD flip
+PROJECT flip
 ================================================================================
 
 VISUALISE category AS x, value AS y
 DRAW bar
-COORD flip
+PROJECT flip
 
 --------------------------------------------------------------------------------
 
@@ -601,8 +601,8 @@ COORD flip
       (draw_clause
         (geom_type)))
     (viz_clause
-      (coord_clause
-        (coord_type)))))
+      (project_clause
+        (project_type)))))
 
 ================================================================================
 VISUALISE FROM with CTE
