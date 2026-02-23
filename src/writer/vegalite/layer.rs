@@ -234,22 +234,26 @@ pub struct TextRenderer;
 
 impl TextRenderer {
     /// Analyze DataFrame columns to build font property groups.
-    /// Returns HashMap mapping converted font property tuples to row indices.
-    fn analyze_font_columns(df: &DataFrame) -> Result<HashMap<FontKey, Vec<usize>>> {
+    /// Returns sorted Vec of (font_key, row_indices) tuples, ordered by first row index.
+    fn analyze_font_columns(df: &DataFrame) -> Result<Vec<(FontKey, Vec<usize>)>> {
         let nrows = df.height();
         let mut groups: HashMap<FontKey, Vec<usize>> = HashMap::new();
 
         // Extract all font columns (or use defaults if missing)
-        let family_col = df.column(&naming::aesthetic_column("family"))
+        let family_col = df
+            .column(&naming::aesthetic_column("family"))
             .ok()
             .and_then(|s| s.str().ok());
-        let fontface_col = df.column(&naming::aesthetic_column("fontface"))
+        let fontface_col = df
+            .column(&naming::aesthetic_column("fontface"))
             .ok()
             .and_then(|s| s.str().ok());
-        let hjust_col = df.column(&naming::aesthetic_column("hjust"))
+        let hjust_col = df
+            .column(&naming::aesthetic_column("hjust"))
             .ok()
             .and_then(|s| s.str().ok());
-        let vjust_col = df.column(&naming::aesthetic_column("vjust"))
+        let vjust_col = df
+            .column(&naming::aesthetic_column("vjust"))
             .ok()
             .and_then(|s| s.str().ok());
 
@@ -266,11 +270,21 @@ impl TextRenderer {
             let hjust_val = Self::convert_hjust(hjust_str);
             let vjust_val = Self::convert_vjust(vjust_str);
 
-            let key = (family_val, font_weight_val, font_style_val, hjust_val, vjust_val);
+            let key = (
+                family_val,
+                font_weight_val,
+                font_style_val,
+                hjust_val,
+                vjust_val,
+            );
             groups.entry(key).or_insert_with(Vec::new).push(row_idx);
         }
 
-        Ok(groups)
+        // Convert to Vec and sort by first occurrence (for ORDER BY preservation)
+        let mut sorted_groups: Vec<(FontKey, Vec<usize>)> = groups.into_iter().collect();
+        sorted_groups.sort_by_key(|(_, indices)| indices[0]);
+
+        Ok(sorted_groups)
     }
 
     /// Convert family string to Vega-Lite font value
@@ -339,16 +353,12 @@ impl TextRenderer {
         &self,
         prototype: Value,
         data_key: &str,
-        font_groups: &HashMap<FontKey, Vec<usize>>,
+        font_groups: &[(FontKey, Vec<usize>)],
     ) -> Result<Vec<Value>> {
-        // Sort groups by first index to match component key assignment order
-        let mut sorted_entries: Vec<_> = font_groups.iter().collect();
-        sorted_entries.sort_by_key(|(_, indices)| indices[0]);
-
         // Build layers
         let mut layer_tuples: Vec<(usize, Value)> = Vec::new(); // (first_index, layer_spec)
 
-        for (group_idx, (font_key, indices)) in sorted_entries.iter().enumerate() {
+        for (group_idx, (font_key, indices)) in font_groups.iter().enumerate() {
             let (family_val, font_weight_val, font_style_val, hjust_val, vjust_val) = font_key;
 
             // Component key suffix (matches prepare_data assignment)
@@ -410,17 +420,13 @@ impl GeomRenderer for TextRenderer {
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
     ) -> Result<PreparedData> {
-        // Analyze font columns to get groups
+        // Analyze font columns to get sorted groups
         let font_groups = Self::analyze_font_columns(df)?;
 
         // Split data by font groups
         let mut components: HashMap<String, Vec<Value>> = HashMap::new();
 
-        // Sort groups by first index to assign component keys in order
-        let mut sorted_entries: Vec<_> = font_groups.iter().collect();
-        sorted_entries.sort_by_key(|(_, indices)| indices[0]);
-
-        for (group_idx, (_font_key, row_indices)) in sorted_entries.iter().enumerate() {
+        for (group_idx, (_font_key, row_indices)) in font_groups.iter().enumerate() {
             // For single-group case (all constant), use empty suffix
             // For multi-group case, use _font_N suffix
             let suffix = if font_groups.len() == 1 {
@@ -472,9 +478,11 @@ impl GeomRenderer for TextRenderer {
         };
 
         // Downcast metadata to font groups
-        let font_groups = metadata.downcast_ref::<HashMap<FontKey, Vec<usize>>>().ok_or_else(|| {
-            GgsqlError::InternalError("Failed to downcast font groups".to_string())
-        })?;
+        let font_groups = metadata
+            .downcast_ref::<Vec<(FontKey, Vec<usize>)>>()
+            .ok_or_else(|| {
+                GgsqlError::InternalError("Failed to downcast font groups".to_string())
+            })?;
 
         // Generate layers from font groups
         self.finalize_layers(prototype, data_key, font_groups)
