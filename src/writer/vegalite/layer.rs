@@ -284,7 +284,40 @@ impl TextRenderer {
         let mut sorted_groups: Vec<(FontKey, Vec<usize>)> = groups.into_iter().collect();
         sorted_groups.sort_by_key(|(_, indices)| indices[0]);
 
-        Ok(sorted_groups)
+        // Split non-contiguous indices into separate ranges to preserve z-order
+        let mut split_groups = Vec::new();
+        for (font_key, indices) in sorted_groups {
+            let ranges = Self::split_contiguous(&indices);
+            for range in ranges {
+                split_groups.push((font_key.clone(), range));
+            }
+        }
+
+        Ok(split_groups)
+    }
+
+    /// Split indices into contiguous ranges
+    fn split_contiguous(indices: &[usize]) -> Vec<Vec<usize>> {
+        if indices.is_empty() {
+            return vec![];
+        }
+
+        let mut sorted = indices.to_vec();
+        sorted.sort_unstable();
+
+        let mut ranges = Vec::new();
+        let mut current = vec![sorted[0]];
+
+        for &idx in &sorted[1..] {
+            if idx == current.last().unwrap() + 1 {
+                current.push(idx);
+            } else {
+                ranges.push(current);
+                current = vec![idx];
+            }
+        }
+        ranges.push(current);
+        ranges
     }
 
     /// Convert family string to Vega-Lite font value
