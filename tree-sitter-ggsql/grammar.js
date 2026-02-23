@@ -729,7 +729,7 @@ module.exports = grammar({
       $.identifier
     ),
 
-    // FACET clause - FACET vars [BY vars] [SETTING ...] [RENAMING ...]
+    // FACET clause - FACET vars [BY vars] [SETTING ...]
     // Single variable = wrap layout, BY clause = grid layout
     facet_clause: $ => seq(
       caseInsensitive('FACET'),
@@ -738,8 +738,7 @@ module.exports = grammar({
         alias(caseInsensitive('BY'), $.facet_by),
         $.facet_vars
       )),
-      optional($.setting_clause),           // Reuse from DRAW/SCALE
-      optional($.facet_renaming_clause)     // Custom label mappings
+      optional($.setting_clause)            // Reuse from DRAW/SCALE
     ),
 
     facet_by: $ => 'BY',
@@ -747,14 +746,6 @@ module.exports = grammar({
     facet_vars: $ => seq(
       $.identifier,
       repeat(seq(',', $.identifier))
-    ),
-
-    // RENAMING clause for facet strip labels
-    // Syntax: RENAMING 'A' => 'Alpha', 'B' => 'Beta', * => 'Region: {}'
-    facet_renaming_clause: $ => seq(
-      caseInsensitive('RENAMING'),
-      $.renaming_assignment,                // Reuse from SCALE
-      repeat(seq(',', $.renaming_assignment))
     ),
 
     // COORD clause - COORD [type] [SETTING prop => value, ...]

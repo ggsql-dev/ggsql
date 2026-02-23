@@ -331,10 +331,8 @@ fn apply_faceting(
             // Build facet field definition with proper binned support
             let mut facet_def = build_facet_field_def(facet_df, &aes_col, scale);
 
-            // Prefer scale label_mapping over facet label_mapping
-            let label_mapping = scale
-                .and_then(|s| s.label_mapping.as_ref())
-                .or(facet.label_mapping.as_ref());
+            // Use scale label_mapping for custom labels
+            let label_mapping = scale.and_then(|s| s.label_mapping.as_ref());
 
             // Apply label renaming via header.labelExpr
             apply_facet_label_renaming(&mut facet_def, label_mapping, scale);
@@ -368,9 +366,7 @@ fn apply_faceting(
                 let row_scale = scales.iter().find(|s| s.aesthetic == "row");
                 let mut row_def = build_facet_field_def(facet_df, &row_aes_col, row_scale);
 
-                let row_label_mapping = row_scale
-                    .and_then(|s| s.label_mapping.as_ref())
-                    .or(facet.label_mapping.as_ref());
+                let row_label_mapping = row_scale.and_then(|s| s.label_mapping.as_ref());
                 apply_facet_label_renaming(&mut row_def, row_label_mapping, row_scale);
                 apply_facet_ordering(&mut row_def, row_scale);
 
@@ -383,9 +379,7 @@ fn apply_faceting(
                 let col_scale = scales.iter().find(|s| s.aesthetic == "column");
                 let mut col_def = build_facet_field_def(facet_df, &col_aes_col, col_scale);
 
-                let col_label_mapping = col_scale
-                    .and_then(|s| s.label_mapping.as_ref())
-                    .or(facet.label_mapping.as_ref());
+                let col_label_mapping = col_scale.and_then(|s| s.label_mapping.as_ref());
                 apply_facet_label_renaming(&mut col_def, col_label_mapping, col_scale);
                 apply_facet_ordering(&mut col_def, col_scale);
 
@@ -494,43 +488,63 @@ fn apply_facet_ordering(facet_def: &mut Value, scale: Option<&Scale>) {
     }
 }
 
-/// Apply scale resolution to Vega-Lite spec based on facet scales property
+/// Apply scale resolution to Vega-Lite spec based on facet free property
 ///
-/// Maps ggsql scales property to Vega-Lite resolve.scale configuration:
-/// - "fixed": shared scales (Vega-Lite default, no resolve needed)
-/// - "free": independent scales for both x and y
-/// - "free_x": independent x scale, shared y scale
-/// - "free_y": shared x scale, independent y scale
+/// Maps ggsql free property to Vega-Lite resolve.scale configuration:
+/// - absent or null: shared scales (Vega-Lite default, no resolve needed)
+/// - 'x': independent x scale, shared y scale
+/// - 'y': shared x scale, independent y scale
+/// - ['x', 'y']: independent scales for both x and y
 fn apply_facet_scale_resolution(vl_spec: &mut Value, properties: &HashMap<String, ParameterValue>) {
-    let scales = properties
-        .get("scales")
-        .and_then(|v| match v {
-            ParameterValue::String(s) => Some(s.as_str()),
-            _ => None,
-        })
-        .unwrap_or("fixed");
+    let Some(free_value) = properties.get("free") else {
+        // No free property means fixed/shared scales (Vega-Lite default)
+        return;
+    };
 
-    match scales {
-        "fixed" => {
-            // Vega-Lite default is shared scales, no resolve needed
+    match free_value {
+        ParameterValue::Null => {
+            // Explicit null means shared scales (same as default)
         }
-        "free" => {
-            vl_spec["resolve"] = json!({
-                "scale": {"x": "independent", "y": "independent"}
+        ParameterValue::String(s) => match s.as_str() {
+            "x" => {
+                vl_spec["resolve"] = json!({
+                    "scale": {"x": "independent"}
+                });
+            }
+            "y" => {
+                vl_spec["resolve"] = json!({
+                    "scale": {"y": "independent"}
+                });
+            }
+            _ => {
+                // Unknown value - resolution should have validated this
+            }
+        },
+        ParameterValue::Array(arr) => {
+            // Array means both x and y are free (already validated to be ['x', 'y'])
+            let has_x = arr.iter().any(|e| {
+                matches!(e, crate::plot::ArrayElement::String(s) if s == "x")
             });
-        }
-        "free_x" => {
-            vl_spec["resolve"] = json!({
-                "scale": {"x": "independent"}
+            let has_y = arr.iter().any(|e| {
+                matches!(e, crate::plot::ArrayElement::String(s) if s == "y")
             });
-        }
-        "free_y" => {
-            vl_spec["resolve"] = json!({
-                "scale": {"y": "independent"}
-            });
+
+            if has_x && has_y {
+                vl_spec["resolve"] = json!({
+                    "scale": {"x": "independent", "y": "independent"}
+                });
+            } else if has_x {
+                vl_spec["resolve"] = json!({
+                    "scale": {"x": "independent"}
+                });
+            } else if has_y {
+                vl_spec["resolve"] = json!({
+                    "scale": {"y": "independent"}
+                });
+            }
         }
         _ => {
-            // Unknown value - resolution should have validated this
+            // Invalid type - resolution should have validated this
         }
     }
 }
@@ -799,7 +813,7 @@ fn escape_vega_string(s: &str) -> String {
 /// Handles:
 /// - ncol: Number of columns for wrap facets (maps to Vega-Lite's "columns")
 ///
-/// Note: scales is handled separately by apply_facet_scale_resolution
+/// Note: free is handled separately by apply_facet_scale_resolution
 fn apply_facet_properties(
     vl_spec: &mut Value,
     properties: &HashMap<String, ParameterValue>,
@@ -813,7 +827,7 @@ fn apply_facet_properties(
                     vl_spec["columns"] = json!(*n as i64);
                 }
             }
-            "scales" => {
+            "free" => {
                 // Handled by apply_facet_scale_resolution
             }
             _ => {
@@ -916,20 +930,23 @@ impl Writer for VegaLiteWriter {
         // When using free scales, Vega-Lite computes independent domains per facet panel.
         // We must not set explicit domains (from SCALE or COORD) as they would override this.
         let (free_x, free_y) = if let Some(ref facet) = spec.facet {
-            let scales_value = facet
-                .properties
-                .get("scales")
-                .and_then(|v| match v {
-                    ParameterValue::String(s) => Some(s.as_str()),
-                    _ => None,
-                })
-                .unwrap_or("fixed");
-
-            match scales_value {
-                "free" => (true, true),
-                "free_x" => (true, false),
-                "free_y" => (false, true),
-                _ => (false, false), // "fixed" or unknown
+            match facet.properties.get("free") {
+                Some(ParameterValue::String(s)) => match s.as_str() {
+                    "x" => (true, false),
+                    "y" => (false, true),
+                    _ => (false, false),
+                },
+                Some(ParameterValue::Array(arr)) => {
+                    let has_x = arr.iter().any(|e| {
+                        matches!(e, crate::plot::ArrayElement::String(s) if s == "x")
+                    });
+                    let has_y = arr.iter().any(|e| {
+                        matches!(e, crate::plot::ArrayElement::String(s) if s == "y")
+                    });
+                    (has_x, has_y)
+                }
+                // null or absent means fixed/shared scales
+                _ => (false, false),
             }
         } else {
             (false, false)
@@ -1792,10 +1809,10 @@ mod tests {
 
     #[test]
     fn test_facet_free_scales_omits_domain() {
-        // Test that FACET with scales => 'free' does not set explicit domains
+        // Test that FACET with free => ['x', 'y'] does not set explicit domains
         // This allows Vega-Lite to compute independent domains per facet panel
         use crate::plot::scale::Scale;
-        use crate::plot::{Facet, FacetLayout, ParameterValue};
+        use crate::plot::{ArrayElement, Facet, FacetLayout, ParameterValue};
 
         let writer = VegaLiteWriter::new();
 
@@ -1811,27 +1828,28 @@ mod tests {
             );
         spec.layers.push(layer);
 
-        // Add facet with free scales
+        // Add facet with free => ['x', 'y']
         let mut facet_properties = HashMap::new();
         facet_properties.insert(
-            "scales".to_string(),
-            ParameterValue::String("free".to_string()),
+            "free".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::String("x".to_string()),
+                ArrayElement::String("y".to_string()),
+            ]),
         );
         spec.facet = Some(Facet {
             layout: FacetLayout::Wrap {
                 variables: vec!["category".to_string()],
             },
             properties: facet_properties,
-            label_mapping: None,
-            label_template: "{}".to_string(),
             resolved: true,
         });
 
         // Add scale with explicit domain that should be skipped
         let mut x_scale = Scale::new("x");
         x_scale.input_range = Some(vec![
-            crate::plot::ArrayElement::Number(0.0),
-            crate::plot::ArrayElement::Number(100.0),
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(100.0),
         ]);
         spec.scales.push(x_scale);
 
@@ -1872,9 +1890,9 @@ mod tests {
 
     #[test]
     fn test_facet_free_y_only_omits_y_domain() {
-        // Test that FACET with scales => 'free_y' omits y domain but keeps x domain
+        // Test that FACET with free => 'y' omits y domain but keeps x domain
         use crate::plot::scale::Scale;
-        use crate::plot::{Facet, FacetLayout, ParameterValue};
+        use crate::plot::{ArrayElement, Facet, FacetLayout, ParameterValue};
 
         let writer = VegaLiteWriter::new();
 
@@ -1890,34 +1908,32 @@ mod tests {
             );
         spec.layers.push(layer);
 
-        // Add facet with free_y scales
+        // Add facet with free => 'y'
         let mut facet_properties = HashMap::new();
         facet_properties.insert(
-            "scales".to_string(),
-            ParameterValue::String("free_y".to_string()),
+            "free".to_string(),
+            ParameterValue::String("y".to_string()),
         );
         spec.facet = Some(Facet {
             layout: FacetLayout::Wrap {
                 variables: vec!["category".to_string()],
             },
             properties: facet_properties,
-            label_mapping: None,
-            label_template: "{}".to_string(),
             resolved: true,
         });
 
         // Add scales with explicit domains
         let mut x_scale = Scale::new("x");
         x_scale.input_range = Some(vec![
-            crate::plot::ArrayElement::Number(0.0),
-            crate::plot::ArrayElement::Number(100.0),
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(100.0),
         ]);
         spec.scales.push(x_scale);
 
         let mut y_scale = Scale::new("y");
         y_scale.input_range = Some(vec![
-            crate::plot::ArrayElement::Number(0.0),
-            crate::plot::ArrayElement::Number(50.0),
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(50.0),
         ]);
         spec.scales.push(y_scale);
 
@@ -1950,7 +1966,7 @@ mod tests {
             .is_some();
         assert!(
             x_has_domain,
-            "x encoding SHOULD have domain when using free_y scales"
+            "x encoding SHOULD have domain when using free => 'y'"
         );
 
         // y encoding should NOT have domain (free)
@@ -1961,16 +1977,16 @@ mod tests {
             .is_some();
         assert!(
             !y_has_domain,
-            "y encoding should NOT have domain when using free_y scales, got: {}",
+            "y encoding should NOT have domain when using free => 'y', got: {}",
             serde_json::to_string_pretty(&y_encoding).unwrap()
         );
     }
 
     #[test]
     fn test_facet_fixed_scales_keeps_domain() {
-        // Test that FACET with scales => 'fixed' (default) keeps explicit domains
+        // Test that FACET without free property (default) keeps explicit domains
         use crate::plot::scale::Scale;
-        use crate::plot::{Facet, FacetLayout, ParameterValue};
+        use crate::plot::{ArrayElement, Facet, FacetLayout};
 
         let writer = VegaLiteWriter::new();
 
@@ -1986,27 +2002,20 @@ mod tests {
             );
         spec.layers.push(layer);
 
-        // Add facet with fixed scales (default)
-        let mut facet_properties = HashMap::new();
-        facet_properties.insert(
-            "scales".to_string(),
-            ParameterValue::String("fixed".to_string()),
-        );
+        // Add facet without free property (default = fixed/shared scales)
         spec.facet = Some(Facet {
             layout: FacetLayout::Wrap {
                 variables: vec!["category".to_string()],
             },
-            properties: facet_properties,
-            label_mapping: None,
-            label_template: "{}".to_string(),
+            properties: HashMap::new(), // No free property
             resolved: true,
         });
 
         // Add scale with explicit domain
         let mut x_scale = Scale::new("x");
         x_scale.input_range = Some(vec![
-            crate::plot::ArrayElement::Number(0.0),
-            crate::plot::ArrayElement::Number(100.0),
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(100.0),
         ]);
         spec.scales.push(x_scale);
 

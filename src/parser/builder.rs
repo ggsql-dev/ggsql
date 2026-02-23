@@ -826,15 +826,13 @@ fn parse_scale_renaming_clause(
 
 /// Build a Facet from a facet_clause node
 ///
-/// New syntax: FACET vars [BY vars] [SETTING ...] [RENAMING ...]
+/// FACET vars [BY vars] [SETTING ...]
 /// - Single variable = wrap layout (no WRAP keyword needed)
 /// - BY clause = grid layout
 fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
     let mut row_vars = Vec::new();
     let mut column_vars = Vec::new();
     let mut properties = HashMap::new();
-    let mut label_mapping: Option<HashMap<String, Option<String>>> = None;
-    let mut label_template = "{}".to_string();
 
     let mut cursor = node.walk();
     let mut next_vars_are_cols = false;
@@ -858,14 +856,6 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
                 // Reuse existing setting_clause parser
                 properties = parse_setting_clause(&child, source)?;
             }
-            "facet_renaming_clause" => {
-                // Parse RENAMING clause (same syntax as scale renaming)
-                let (mappings, template) = parse_facet_renaming_clause(&child, source)?;
-                if !mappings.is_empty() {
-                    label_mapping = Some(mappings);
-                }
-                label_template = template;
-            }
             _ => {}
         }
     }
@@ -885,8 +875,6 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
     Ok(Facet {
         layout,
         properties,
-        label_mapping,
-        label_template,
         resolved: false,
     })
 }
@@ -895,68 +883,6 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
 fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
     let query = "(identifier) @var";
     Ok(source.find_texts(node, query))
-}
-
-/// Parse RENAMING clause for facets: RENAMING 'A' => 'Alpha', * => 'Region: {}'
-///
-/// Same syntax as scale renaming. Returns:
-/// - HashMap where: Key = original value, Value = Some(label) or None for suppressed
-/// - Template string for wildcard mappings (* => '...'), defaults to "{}"
-fn parse_facet_renaming_clause(
-    node: &Node,
-    source: &SourceTree,
-) -> Result<(HashMap<String, Option<String>>, String)> {
-    let mut mappings = HashMap::new();
-    let mut template = "{}".to_string();
-
-    // Find all renaming_assignment nodes
-    let query = "(renaming_assignment) @assign";
-    let assignment_nodes = source.find_nodes(node, query);
-
-    for assignment_node in assignment_nodes {
-        // Extract name and value nodes using field-based queries
-        let (name_node, value_node) = extract_name_value_nodes(&assignment_node, "facet renaming")?;
-
-        // Check if 'name' is a wildcard
-        let is_wildcard = name_node.kind() == "*";
-
-        // Parse 'name' (from) value - wildcards, strings need unquoting, numbers are raw
-        let from_value = match name_node.kind() {
-            "*" => "*".to_string(),
-            "string" => parse_string_node(&name_node, source),
-            "number" => source.get_text(&name_node),
-            _ => {
-                return Err(GgsqlError::ParseError(format!(
-                    "Invalid 'from' type in facet renaming: {}",
-                    name_node.kind()
-                )));
-            }
-        };
-
-        // Parse 'value' (to) - string or NULL
-        let to_value: Option<String> = match value_node.kind() {
-            "string" => Some(parse_string_node(&value_node, source)),
-            "null_literal" => None, // NULL suppresses the label
-            _ => {
-                return Err(GgsqlError::ParseError(format!(
-                    "Invalid 'to' type in facet renaming: {}",
-                    value_node.kind()
-                )));
-            }
-        };
-
-        if is_wildcard {
-            // Wildcard: * => 'template'
-            if let Some(tmpl) = to_value {
-                template = tmpl;
-            }
-        } else {
-            // Explicit mapping: 'A' => 'Alpha'
-            mappings.insert(from_value, to_value);
-        }
-    }
-
-    Ok((mappings, template))
 }
 
 // ============================================================================

@@ -6,11 +6,6 @@ use crate::plot::ParameterValue;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Default label template for facets
-fn default_label_template() -> String {
-    "{}".to_string()
-}
-
 /// Faceting specification (from FACET clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Facet {
@@ -20,13 +15,6 @@ pub struct Facet {
     /// After resolution, includes validated and defaulted values
     #[serde(default)]
     pub properties: HashMap<String, ParameterValue>,
-    /// Custom label mappings from RENAMING clause
-    /// Key = original value, Value = Some(label) or None for suppressed labels
-    #[serde(default)]
-    pub label_mapping: Option<HashMap<String, Option<String>>>,
-    /// Label template for wildcard mappings (* => '...'), defaults to "{}"
-    #[serde(default = "default_label_template")]
-    pub label_template: String,
     /// Whether properties have been resolved (validated and defaults applied)
     #[serde(skip, default)]
     pub resolved: bool,
@@ -53,8 +41,6 @@ impl Facet {
         Self {
             layout,
             properties: HashMap::new(),
-            label_mapping: None,
-            label_template: "{}".to_string(),
             resolved: false,
         }
     }

@@ -2,8 +2,6 @@
 //!
 //! Validates facet properties and applies data-aware defaults.
 
-use crate::format::apply_label_template;
-use crate::plot::ArrayElement;
 use crate::plot::ParameterValue;
 use crate::DataFrame;
 use std::collections::HashMap;
@@ -53,16 +51,16 @@ impl FacetDataContext {
 }
 
 /// Allowed properties for wrap facets
-const WRAP_ALLOWED: &[&str] = &["scales", "ncol", "missing"];
+const WRAP_ALLOWED: &[&str] = &["free", "ncol", "missing"];
 
 /// Allowed properties for grid facets
-const GRID_ALLOWED: &[&str] = &["scales", "missing"];
+const GRID_ALLOWED: &[&str] = &["free", "missing"];
 
 /// Valid values for the missing property
 const MISSING_VALUES: &[&str] = &["repeat", "null"];
 
-/// Valid values for the scales property
-const SCALES_VALUES: &[&str] = &["fixed", "free", "free_x", "free_y"];
+/// Valid string values for the free property
+const FREE_STRING_VALUES: &[&str] = &["x", "y"];
 
 /// Compute smart default ncol for wrap facets based on number of levels
 ///
@@ -89,13 +87,11 @@ fn compute_default_ncol(num_levels: usize) -> i64 {
 /// 1. Skips if already resolved
 /// 2. Validates all properties are allowed for this layout
 /// 3. Validates property values:
-///    - `scales`: must be fixed/free/free_x/free_y
+///    - `free`: must be null, 'x', 'y', or ['x', 'y']
 ///    - `ncol`: positive integer
 /// 4. Applies defaults for missing properties:
-///    - `scales`: "fixed"
 ///    - `ncol` (wrap only): computed from `context.num_levels`
-/// 5. Resolves label mappings by applying wildcard template to unique values
-/// 6. Sets `resolved = true`
+/// 5. Sets `resolved = true`
 pub fn resolve_properties(facet: &mut Facet, context: &FacetDataContext) -> Result<(), String> {
     // Skip if already resolved
     if facet.resolved {
@@ -110,11 +106,11 @@ pub fn resolve_properties(facet: &mut Facet, context: &FacetDataContext) -> Resu
         if !allowed.contains(&key.as_str()) {
             if key == "ncol" && !is_wrap {
                 return Err(
-                    "property 'ncol' is only allowed for wrap facets, not grid facets".to_string(),
+                    "Setting `ncol` is only allowed for 1 dimensional facets, not 2 dimensional facets".to_string(),
                 );
             }
             return Err(format!(
-                "unknown property '{}'. Allowed properties: {}",
+                "Unknown setting: '{}'. Allowed settings: {}",
                 key,
                 allowed.join(", ")
             ));
@@ -122,15 +118,12 @@ pub fn resolve_properties(facet: &mut Facet, context: &FacetDataContext) -> Resu
     }
 
     // Step 2: Validate property values
-    validate_scales_property(facet)?;
+    validate_free_property(facet)?;
     validate_ncol_property(facet)?;
     validate_missing_property(facet)?;
 
     // Step 3: Apply defaults for missing properties
     apply_defaults(facet, context);
-
-    // Step 4: Resolve label mappings (apply wildcard template to unique values)
-    resolve_label_mapping(facet, context);
 
     // Mark as resolved
     facet.resolved = true;
@@ -138,65 +131,62 @@ pub fn resolve_properties(facet: &mut Facet, context: &FacetDataContext) -> Resu
     Ok(())
 }
 
-/// Resolve label mappings by applying wildcard template to unique values
+/// Validate free property value
 ///
-/// If a wildcard template is specified (e.g., `* => 'Region: {}'`), this function
-/// expands it into explicit mappings for each unique value in the facet variables.
-///
-/// Uses the same `apply_label_template` function as scales, which supports:
-/// - `{}` - plain substitution
-/// - `{:UPPER}`, `{:lower}`, `{:Title}` - case transformations
-/// - `{:time %fmt}` - datetime formatting
-/// - `{:num %fmt}` - number formatting
-fn resolve_label_mapping(facet: &mut Facet, context: &FacetDataContext) {
-    let template = &facet.label_template;
-
-    // If default template and no explicit mappings, nothing to do
-    if template == "{}" && facet.label_mapping.is_none() {
-        return;
-    }
-
-    // Collect all unique values from facet variables as ArrayElements
-    let variables = facet.get_variables();
-    let mut values: Vec<ArrayElement> = Vec::new();
-    for var in &variables {
-        if let Some(var_values) = context.unique_values.get(var) {
-            for v in var_values {
-                values.push(ArrayElement::String(v.clone()));
-            }
-        }
-    }
-
-    // Apply label template using the same function as scales
-    let generated_labels = apply_label_template(&values, template, &facet.label_mapping);
-    facet.label_mapping = Some(generated_labels);
-
-    // Reset template (same as scales - ensures ggsql controls formatting)
-    facet.label_template = "{}".to_string();
-}
-
-/// Validate scales property value
-fn validate_scales_property(facet: &Facet) -> Result<(), String> {
-    if let Some(value) = facet.properties.get("scales") {
+/// Accepts:
+/// - `null` (ParameterValue::Null) - shared scales (default when absent)
+/// - `'x'` or `'y'` (strings) - independent scale for that axis only
+/// - `['x', 'y']` or `['y', 'x']` (arrays) - independent scales for both axes
+fn validate_free_property(facet: &Facet) -> Result<(), String> {
+    if let Some(value) = facet.properties.get("free") {
         match value {
+            ParameterValue::Null => {
+                // Explicit null means shared scales (same as default)
+                Ok(())
+            }
             ParameterValue::String(s) => {
-                if !SCALES_VALUES.contains(&s.as_str()) {
+                if !FREE_STRING_VALUES.contains(&s.as_str()) {
                     return Err(format!(
-                        "invalid 'scales' value '{}'. Expected one of: {}",
-                        s,
-                        SCALES_VALUES.join(", ")
+                        "invalid 'free' value '{}'. Expected 'x', 'y', ['x', 'y'], or null",
+                        s
                     ));
                 }
+                Ok(())
             }
-            _ => {
-                return Err(
-                    "'scales' must be a string (e.g., 'fixed', 'free', 'free_x', 'free_y')"
-                        .to_string(),
-                );
+            ParameterValue::Array(arr) => {
+                // Must be exactly ['x', 'y'] or ['y', 'x']
+                if arr.len() != 2 {
+                    return Err(format!(
+                        "invalid 'free' array: expected ['x', 'y'], got {} elements",
+                        arr.len()
+                    ));
+                }
+                let mut has_x = false;
+                let mut has_y = false;
+                for elem in arr {
+                    match elem {
+                        crate::plot::ArrayElement::String(s) if s == "x" => has_x = true,
+                        crate::plot::ArrayElement::String(s) if s == "y" => has_y = true,
+                        _ => {
+                            return Err(
+                                "invalid 'free' array: elements must be 'x' or 'y'".to_string()
+                            );
+                        }
+                    }
+                }
+                if !has_x || !has_y {
+                    return Err(
+                        "invalid 'free' array: expected ['x', 'y'] with both 'x' and 'y'"
+                            .to_string(),
+                    );
+                }
+                Ok(())
             }
+            _ => Err("'free' must be null, a string ('x' or 'y'), or an array ['x', 'y']".to_string()),
         }
+    } else {
+        Ok(())
     }
-    Ok(())
 }
 
 /// Validate ncol property value
@@ -205,7 +195,7 @@ fn validate_ncol_property(facet: &Facet) -> Result<(), String> {
         match value {
             ParameterValue::Number(n) => {
                 if *n <= 0.0 || n.fract() != 0.0 {
-                    return Err(format!("'ncol' must be a positive integer, got {}", n));
+                    return Err(format!("`ncol` must be a positive integer, got {}", n));
                 }
             }
             _ => {
@@ -239,13 +229,8 @@ fn validate_missing_property(facet: &Facet) -> Result<(), String> {
 
 /// Apply default values for missing properties
 fn apply_defaults(facet: &mut Facet, context: &FacetDataContext) {
-    // Default scales to "fixed"
-    if !facet.properties.contains_key("scales") {
-        facet.properties.insert(
-            "scales".to_string(),
-            ParameterValue::String("fixed".to_string()),
-        );
-    }
+    // Note: absence of 'free' property means fixed/shared scales (default)
+    // No need to insert a default value
 
     // Default ncol for wrap facets (computed from data)
     if facet.is_wrap() && !facet.properties.contains_key("ncol") {
@@ -283,18 +268,6 @@ mod tests {
         }
     }
 
-    fn make_context_with_values(variable: &str, values: Vec<&str>) -> FacetDataContext {
-        let mut unique_values = HashMap::new();
-        unique_values.insert(
-            variable.to_string(),
-            values.iter().map(|s| s.to_string()).collect(),
-        );
-        FacetDataContext {
-            num_levels: values.len(),
-            unique_values,
-        }
-    }
-
     #[test]
     fn test_compute_default_ncol() {
         assert_eq!(compute_default_ncol(1), 1);
@@ -316,10 +289,8 @@ mod tests {
         resolve_properties(&mut facet, &context).unwrap();
 
         assert!(facet.resolved);
-        assert_eq!(
-            facet.properties.get("scales"),
-            Some(&ParameterValue::String("fixed".to_string()))
-        );
+        // Note: absence of 'free' means fixed scales (no default inserted)
+        assert!(!facet.properties.contains_key("free"));
         assert_eq!(
             facet.properties.get("ncol"),
             Some(&ParameterValue::Number(3.0))
@@ -330,8 +301,11 @@ mod tests {
     fn test_resolve_preserves_user_values() {
         let mut facet = make_wrap_facet();
         facet.properties.insert(
-            "scales".to_string(),
-            ParameterValue::String("free".to_string()),
+            "free".to_string(),
+            ParameterValue::Array(vec![
+                crate::plot::ArrayElement::String("x".to_string()),
+                crate::plot::ArrayElement::String("y".to_string()),
+            ]),
         );
         facet
             .properties
@@ -340,10 +314,8 @@ mod tests {
         let context = make_context(10);
         resolve_properties(&mut facet, &context).unwrap();
 
-        assert_eq!(
-            facet.properties.get("scales"),
-            Some(&ParameterValue::String("free".to_string()))
-        );
+        // free => ['x', 'y'] preserved
+        assert!(facet.properties.contains_key("free"));
         assert_eq!(
             facet.properties.get("ncol"),
             Some(&ParameterValue::Number(2.0))
@@ -359,7 +331,7 @@ mod tests {
         resolve_properties(&mut facet, &context).unwrap();
 
         // Should not have applied defaults since it was already resolved
-        assert!(!facet.properties.contains_key("scales"));
+        assert!(!facet.properties.contains_key("ncol"));
     }
 
     #[test]
@@ -375,7 +347,7 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("unknown property"));
+        assert!(err.contains("Unknown setting"));
         assert!(err.contains("columns"));
     }
 
@@ -392,7 +364,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("ncol"));
-        assert!(err.contains("wrap"));
+        assert!(err.contains("1 dimensional"));
     }
 
     #[test]
@@ -407,14 +379,14 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("unknown property"));
+        assert!(err.contains("Unknown setting"));
     }
 
     #[test]
-    fn test_error_invalid_scales_value() {
+    fn test_error_invalid_free_value() {
         let mut facet = make_wrap_facet();
         facet.properties.insert(
-            "scales".to_string(),
+            "free".to_string(),
             ParameterValue::String("invalid".to_string()),
         );
 
@@ -424,7 +396,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("invalid"));
-        assert!(err.contains("scales"));
+        assert!(err.contains("free"));
     }
 
     #[test]
@@ -468,8 +440,9 @@ mod tests {
 
         // Grid facets should not get ncol default
         assert!(!facet.properties.contains_key("ncol"));
-        // But should still get scales default
-        assert!(facet.properties.contains_key("scales"));
+        // No free property by default (means fixed/shared scales)
+        assert!(!facet.properties.contains_key("free"));
+        assert!(facet.resolved);
     }
 
     #[test]
@@ -504,181 +477,6 @@ mod tests {
 
         let context = FacetDataContext::from_dataframe(&df, &[]);
         assert_eq!(context.num_levels, 1);
-    }
-
-    // ========================================
-    // Label Resolution Tests
-    // ========================================
-
-    #[test]
-    fn test_label_template_expansion() {
-        let mut facet = make_wrap_facet();
-        facet.label_template = "Region: {}".to_string();
-
-        let context = make_context_with_values("category", vec!["A", "B", "C"]);
-        resolve_properties(&mut facet, &context).unwrap();
-
-        // Template should be reset
-        assert_eq!(facet.label_template, "{}");
-
-        // All values should have expanded mappings
-        let mappings = facet.label_mapping.as_ref().unwrap();
-        assert_eq!(mappings.get("A"), Some(&Some("Region: A".to_string())));
-        assert_eq!(mappings.get("B"), Some(&Some("Region: B".to_string())));
-        assert_eq!(mappings.get("C"), Some(&Some("Region: C".to_string())));
-    }
-
-    #[test]
-    fn test_label_explicit_mapping_preserved() {
-        let mut facet = make_wrap_facet();
-        facet.label_template = "Region: {}".to_string();
-        let mut mappings = HashMap::new();
-        mappings.insert("A".to_string(), Some("Alpha".to_string()));
-        facet.label_mapping = Some(mappings);
-
-        let context = make_context_with_values("category", vec!["A", "B", "C"]);
-        resolve_properties(&mut facet, &context).unwrap();
-
-        // Explicit mapping should be preserved, template applied to others
-        let mappings = facet.label_mapping.as_ref().unwrap();
-        assert_eq!(mappings.get("A"), Some(&Some("Alpha".to_string()))); // Preserved
-        assert_eq!(mappings.get("B"), Some(&Some("Region: B".to_string()))); // Template
-        assert_eq!(mappings.get("C"), Some(&Some("Region: C".to_string()))); // Template
-    }
-
-    #[test]
-    fn test_label_null_suppression_preserved() {
-        let mut facet = make_wrap_facet();
-        facet.label_template = "Region: {}".to_string();
-        let mut mappings = HashMap::new();
-        mappings.insert("A".to_string(), None); // Suppressed
-        facet.label_mapping = Some(mappings);
-
-        let context = make_context_with_values("category", vec!["A", "B"]);
-        resolve_properties(&mut facet, &context).unwrap();
-
-        let mappings = facet.label_mapping.as_ref().unwrap();
-        assert_eq!(mappings.get("A"), Some(&None)); // Still suppressed
-        assert_eq!(mappings.get("B"), Some(&Some("Region: B".to_string())));
-    }
-
-    #[test]
-    fn test_no_template_no_expansion() {
-        let mut facet = make_wrap_facet();
-        // Default template "{}" - no expansion needed
-
-        let context = make_context_with_values("category", vec!["A", "B", "C"]);
-        resolve_properties(&mut facet, &context).unwrap();
-
-        // No label_mapping should be created
-        assert!(facet.label_mapping.is_none());
-    }
-
-    #[test]
-    fn test_context_stores_unique_values() {
-        let df = df! {
-            "category" => &["A", "B", "C", "A", "B"],
-        }
-        .unwrap();
-
-        let context = FacetDataContext::from_dataframe(&df, &["category".to_string()]);
-
-        let values = context.unique_values.get("category").unwrap();
-        assert_eq!(values.len(), 3);
-        // Values should include A, B, C (order may vary)
-        assert!(values.iter().any(|v| v.contains('A')));
-        assert!(values.iter().any(|v| v.contains('B')));
-        assert!(values.iter().any(|v| v.contains('C')));
-    }
-
-    // ========================================
-    // Advanced Placeholder Tests (via format.rs)
-    // ========================================
-
-    #[test]
-    fn test_label_upper_placeholder() {
-        let mut facet = make_wrap_facet();
-        facet.label_template = "{:UPPER}".to_string();
-
-        let context = make_context_with_values("category", vec!["north", "south"]);
-        resolve_properties(&mut facet, &context).unwrap();
-
-        let mappings = facet.label_mapping.as_ref().unwrap();
-        assert_eq!(mappings.get("north"), Some(&Some("NORTH".to_string())));
-        assert_eq!(mappings.get("south"), Some(&Some("SOUTH".to_string())));
-    }
-
-    #[test]
-    fn test_label_lower_placeholder() {
-        let mut facet = make_wrap_facet();
-        facet.label_template = "{:lower}".to_string();
-
-        let context = make_context_with_values("category", vec!["HELLO", "WORLD"]);
-        resolve_properties(&mut facet, &context).unwrap();
-
-        let mappings = facet.label_mapping.as_ref().unwrap();
-        assert_eq!(mappings.get("HELLO"), Some(&Some("hello".to_string())));
-        assert_eq!(mappings.get("WORLD"), Some(&Some("world".to_string())));
-    }
-
-    #[test]
-    fn test_label_title_placeholder() {
-        let mut facet = make_wrap_facet();
-        facet.label_template = "Region: {:Title}".to_string();
-
-        let context = make_context_with_values("category", vec!["us east", "eu west"]);
-        resolve_properties(&mut facet, &context).unwrap();
-
-        let mappings = facet.label_mapping.as_ref().unwrap();
-        assert_eq!(
-            mappings.get("us east"),
-            Some(&Some("Region: Us East".to_string()))
-        );
-        assert_eq!(
-            mappings.get("eu west"),
-            Some(&Some("Region: Eu West".to_string()))
-        );
-    }
-
-    #[test]
-    fn test_label_datetime_placeholder() {
-        let mut facet = make_wrap_facet();
-        facet.label_template = "{:time %b %Y}".to_string();
-
-        let context = make_context_with_values("category", vec!["2024-01-15", "2024-06-15"]);
-        resolve_properties(&mut facet, &context).unwrap();
-
-        let mappings = facet.label_mapping.as_ref().unwrap();
-        assert_eq!(
-            mappings.get("2024-01-15"),
-            Some(&Some("Jan 2024".to_string()))
-        );
-        assert_eq!(
-            mappings.get("2024-06-15"),
-            Some(&Some("Jun 2024".to_string()))
-        );
-    }
-
-    #[test]
-    fn test_label_explicit_takes_priority_with_template() {
-        let mut facet = make_wrap_facet();
-        facet.label_template = "{:UPPER}".to_string();
-        let mut mappings = HashMap::new();
-        mappings.insert("north".to_string(), Some("Northern Region".to_string()));
-        facet.label_mapping = Some(mappings);
-
-        let context = make_context_with_values("category", vec!["north", "south", "east"]);
-        resolve_properties(&mut facet, &context).unwrap();
-
-        let mappings = facet.label_mapping.as_ref().unwrap();
-        // Explicit mapping should be preserved
-        assert_eq!(
-            mappings.get("north"),
-            Some(&Some("Northern Region".to_string()))
-        );
-        // Others get template applied
-        assert_eq!(mappings.get("south"), Some(&Some("SOUTH".to_string())));
-        assert_eq!(mappings.get("east"), Some(&Some("EAST".to_string())));
     }
 
     // ========================================
@@ -755,5 +553,136 @@ mod tests {
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context);
         assert!(result.is_ok());
+    }
+
+    // ========================================
+    // Free Property Tests
+    // ========================================
+
+    #[test]
+    fn test_free_property_x_valid() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "free".to_string(),
+            ParameterValue::String("x".to_string()),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_free_property_y_valid() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "free".to_string(),
+            ParameterValue::String("y".to_string()),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_free_property_array_valid() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "free".to_string(),
+            ParameterValue::Array(vec![
+                crate::plot::ArrayElement::String("x".to_string()),
+                crate::plot::ArrayElement::String("y".to_string()),
+            ]),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_free_property_array_reversed_valid() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "free".to_string(),
+            ParameterValue::Array(vec![
+                crate::plot::ArrayElement::String("y".to_string()),
+                crate::plot::ArrayElement::String("x".to_string()),
+            ]),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_free_property_null_valid() {
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("free".to_string(), ParameterValue::Null);
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_error_free_array_single_element() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "free".to_string(),
+            ParameterValue::Array(vec![crate::plot::ArrayElement::String("x".to_string())]),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("free"));
+        // Single element fails both the length check (1 != 2) and the "both x and y" check
+        assert!(
+            err.contains("1 elements") || err.contains("both 'x' and 'y'"),
+            "Expected error about array length or missing elements, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_error_free_array_invalid_element() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "free".to_string(),
+            ParameterValue::Array(vec![
+                crate::plot::ArrayElement::String("x".to_string()),
+                crate::plot::ArrayElement::String("z".to_string()),
+            ]),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("free"));
+        assert!(err.contains("'x' or 'y'"));
+    }
+
+    #[test]
+    fn test_error_free_wrong_type() {
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("free".to_string(), ParameterValue::Number(1.0));
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("free"));
     }
 }

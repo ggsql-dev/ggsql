@@ -372,8 +372,6 @@ pub enum Facet {
         variables: Vec<String>,
         scales: FacetScales,
         properties: HashMap<String, ParameterValue>,  // From SETTING clause
-        label_mapping: Option<HashMap<String, Option<String>>>,  // From RENAMING
-        label_template: String,  // Wildcard template, defaults to "{}"
     },
     /// FACET rows BY cols (grid layout)
     Grid {
@@ -381,8 +379,6 @@ pub enum Facet {
         cols: Vec<String>,
         scales: FacetScales,
         properties: HashMap<String, ParameterValue>,  // From SETTING clause
-        label_mapping: Option<HashMap<String, Option<String>>>,  // From RENAMING
-        label_template: String,  // Wildcard template, defaults to "{}"
     },
 }
 
@@ -1379,32 +1375,28 @@ SCALE x VIA date FROM ['2024-01-01', '2024-12-31'] SETTING breaks => '1 month'
 
 ```sql
 -- Wrap layout (single variable = automatic wrap)
-FACET <vars> [SETTING <param> => <value>, ...] [RENAMING <from> => <to>, ...]
+FACET <vars> [SETTING <param> => <value>, ...]
 
 -- Grid layout (BY clause for row × column)
-FACET <row_vars> BY <col_vars> [SETTING ...] [RENAMING ...]
+FACET <row_vars> BY <col_vars> [SETTING ...]
 ```
 
 **SETTING Properties**:
 
-- `scales => <sharing>` - Scale sharing mode (see below)
+- `free => <axes>` - Which axes have independent scales (see below)
 - `ncol => <number>` - Number of columns for wrap layout
 - `spacing => <number>` - Space between facets
 
-**Scale Sharing** (`scales` property):
+**Free Scales** (`free` property):
 
-- `'fixed'` (default) - Same scales across all facets
-- `'free'` - Independent scales for each facet
-- `'free_x'` - Independent x-axis, shared y-axis
-- `'free_y'` - Independent y-axis, shared x-axis
+- `null` or omitted (default) - Shared/fixed scales across all facets
+- `'x'` - Independent x-axis, shared y-axis
+- `'y'` - Shared x-axis, independent y-axis
+- `['x', 'y']` - Independent scales for both axes
 
-**RENAMING Clause**:
+**Customizing Strip Labels**:
 
-Customize facet strip labels:
-
-- Explicit mappings: `'North' => 'Northern Region'`
-- Wildcard template: `* => 'Region: {}'` (substitutes original value)
-- NULL suppression: `'internal' => NULL` (hides label)
+To customize facet strip labels, use `SCALE panel RENAMING ...` (for wrap) or `SCALE row/column RENAMING ...` (for grid).
 
 **Examples**:
 
@@ -1415,22 +1407,19 @@ FACET region
 -- Grid facet with BY
 FACET region BY category
 
--- With scale sharing
-FACET region SETTING scales => 'free_y'
+-- With free y-axis scales
+FACET region SETTING free => 'y'
 
 -- With column count for wrap
 FACET region SETTING ncol => 3
 
--- With label renaming
-FACET region RENAMING 'N' => 'North', 'S' => 'South'
+-- With label renaming via scale
+FACET region
+SCALE panel RENAMING 'N' => 'North', 'S' => 'South'
 
--- With wildcard template
-FACET region RENAMING * => 'Region: {}'
-
--- Combined
+-- Combined grid with settings
 FACET region BY category
-    SETTING scales => 'free', spacing => 10
-    RENAMING 'A' => 'Category A', 'B' => 'Category B'
+    SETTING free => ['x', 'y'], spacing => 10
 ```
 
 ### COORD Clause
