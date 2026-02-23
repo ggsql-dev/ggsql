@@ -428,7 +428,7 @@ fn cross_join_with_facet_values(
     for col in df.get_columns() {
         // Repeat each value n_values times: [a, b, c] with n_values=2 -> [a, a, b, b, c, c]
         let indices: Vec<u32> = (0..n_rows)
-            .flat_map(|i| std::iter::repeat(i as u32).take(n_values))
+            .flat_map(|i| std::iter::repeat_n(i as u32, n_values))
             .collect();
         let idx = IdxCa::new(PlSmallStr::EMPTY, &indices);
         let repeated = col.as_materialized_series().take(&idx).map_err(|e| {
