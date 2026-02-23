@@ -10,15 +10,18 @@ use serde_json::{json, Value};
 
 /// Apply projection transformations to the spec and data
 /// Returns (possibly transformed DataFrame, possibly modified spec)
+/// free_x/free_y indicate whether facets have independent scales (affects domain application)
 pub(super) fn apply_project_transforms(
     spec: &Plot,
     data: &DataFrame,
     vl_spec: &mut Value,
+    free_x: bool,
+    free_y: bool,
 ) -> Result<Option<DataFrame>> {
     if let Some(ref project) = spec.project {
         match project.coord {
             Coord::Cartesian => {
-                apply_cartesian_project(project, vl_spec)?;
+                apply_cartesian_project(project, vl_spec, free_x, free_y)?;
                 Ok(None) // No DataFrame transformation needed
             }
             Coord::Flip => {
@@ -41,18 +44,30 @@ pub(super) fn apply_project_transforms(
 }
 
 /// Apply Cartesian projection properties (xlim, ylim, aesthetic domains)
-fn apply_cartesian_project(project: &Projection, vl_spec: &mut Value) -> Result<()> {
+/// Skip applying axis limits if facets have free scales for that axis
+fn apply_cartesian_project(
+    project: &Projection,
+    vl_spec: &mut Value,
+    free_x: bool,
+    free_y: bool,
+) -> Result<()> {
     // Apply xlim/ylim to scale domains
     for (prop_name, prop_value) in &project.properties {
         match prop_name.as_str() {
             "xlim" => {
-                if let Some(limits) = extract_limits(prop_value)? {
-                    apply_axis_limits(vl_spec, "x", limits)?;
+                // Don't apply xlim if facets have free x scales
+                if !free_x {
+                    if let Some(limits) = extract_limits(prop_value)? {
+                        apply_axis_limits(vl_spec, "x", limits)?;
+                    }
                 }
             }
             "ylim" => {
-                if let Some(limits) = extract_limits(prop_value)? {
-                    apply_axis_limits(vl_spec, "y", limits)?;
+                // Don't apply ylim if facets have free y scales
+                if !free_y {
+                    if let Some(limits) = extract_limits(prop_value)? {
+                        apply_axis_limits(vl_spec, "y", limits)?;
+                    }
                 }
             }
             _ if is_aesthetic_name(prop_name) => {

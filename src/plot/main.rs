@@ -45,7 +45,7 @@ pub use super::scale::{Scale, ScaleType};
 pub use super::project::{Coord, Projection};
 
 // Re-export Facet types from the facet module
-pub use super::facet::{Facet, FacetScales};
+pub use super::facet::{Facet, FacetLayout};
 
 /// Complete ggsql visualization specification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
