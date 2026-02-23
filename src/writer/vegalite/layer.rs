@@ -234,9 +234,6 @@ struct FontStrategy {
 
 /// A group of rows with identical font property values
 struct FontGroup {
-    /// Unique signature for this combination (for data key suffix)
-    #[allow(dead_code)]
-    signature: String,
     /// Mark properties for this group
     properties: HashMap<String, Value>,
     /// Row indices belonging to this group
@@ -282,7 +279,6 @@ impl TextRenderer {
             // All constant or not present → single group with all rows
             let all_indices: Vec<usize> = (0..df.height()).collect();
             let groups = vec![FontGroup {
-                signature: String::new(),
                 properties: constant_values.clone(),
                 row_indices: all_indices,
             }];
@@ -351,7 +347,6 @@ impl TextRenderer {
                 let group_idx = groups.len();
                 signature_to_idx.insert(signature.clone(), group_idx);
                 groups.push(FontGroup {
-                    signature,
                     properties,
                     row_indices: vec![row_idx],
                 });
