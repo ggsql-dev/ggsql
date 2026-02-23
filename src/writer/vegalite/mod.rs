@@ -23,7 +23,7 @@
 mod data;
 mod encoding;
 mod layer;
-mod project;
+mod projection;
 
 use crate::plot::ArrayElement;
 use crate::plot::{ParameterValue, Scale, ScaleTypeKind};
@@ -36,12 +36,12 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 // Re-export submodule functions for use in write()
-use project::apply_project_transforms;
 use data::{collect_binned_columns, is_binned_aesthetic, unify_datasets};
 use encoding::{
     build_detail_encoding, build_encoding_channel, infer_field_type, map_aesthetic_name,
 };
 use layer::{geom_to_mark, get_renderer, validate_layer_columns, GeomRenderer, PreparedData};
+use projection::apply_project_transforms;
 
 /// Conversion factor from points to pixels (CSS standard: 96 DPI, 72 points/inch)
 /// 1 point = 96/72 pixels = 1.333

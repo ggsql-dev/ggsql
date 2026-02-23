@@ -127,13 +127,14 @@ SCALE DISCRETE fill FROM ['A', 'B', 'C', 'D']
 
 ## Projections
 
-### Cartesian with Limits
+### Cartesian with Axis Limits
 
 ```sql
 SELECT x, y FROM data
 VISUALISE x, y
 DRAW point
-PROJECT cartesian SETTING xlim => [0, 100], ylim => [0, 50]
+SCALE x FROM [0, 100]
+SCALE y FROM [0, 50]
 ```
 
 ### Flipped Projection (Horizontal Bar Chart)
@@ -510,7 +511,7 @@ DRAW point
 SCALE x SETTING type => 'date'
 SCALE DISCRETE color FROM ['A', 'B', 'C']
 SCALE size SETTING limits => [0, 100]
-PROJECT cartesian SETTING ylim => [0, 150]
+SCALE y FROM [0, 150]
 LABEL title => 'Measurement Distribution',
       x => 'Date',
       y => 'Value'
@@ -529,7 +530,8 @@ VISUALISE x, y, category AS color
 DRAW point SETTING size => 5
 DRAW text MAPPING label AS label
 SCALE color TO viridis
-PROJECT cartesian SETTING xlim => [0, 100], ylim => [0, 100]
+SCALE x FROM [0, 100]
+SCALE y FROM [0, 100]
 LABEL title => 'Annotated Scatter Plot',
       x => 'X Axis',
       y => 'Y Axis'
@@ -630,7 +632,7 @@ Draw Line
 
 3. **Color Mappings**: Use `color` for continuous data and `fill` for categorical data in bars/areas.
 
-4. **Coordinate Limits**: Set explicit limits with `PROJECT cartesian SETTING xlim => [min, max]` to control axis ranges.
+4. **Axis Limits**: Set explicit limits with `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]` to control axis ranges.
 
 5. **Faceting**: Use faceting to create small multiples when comparing across categories.
 

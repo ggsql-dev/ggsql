@@ -13,13 +13,13 @@
 //! - `layer` - Layer struct and Geom subsystem
 //! - `scale` - Scale and Guide types
 //! - `facet` - Facet types for small multiples
-//! - `project` - Projection types
+//! - `projection` - Projection types
 
 pub mod aesthetic;
 pub mod facet;
 pub mod layer;
 pub mod main;
-pub mod project;
+pub mod projection;
 pub mod scale;
 pub mod types;
 
@@ -28,6 +28,6 @@ pub use aesthetic::*;
 pub use facet::*;
 pub use layer::*;
 pub use main::*;
-pub use project::*;
+pub use projection::*;
 pub use scale::*;
 pub use types::*;

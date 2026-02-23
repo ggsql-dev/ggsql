@@ -41,8 +41,8 @@ pub use super::layer::Layer;
 // Re-export Scale types from the scale module
 pub use super::scale::{Scale, ScaleType};
 
-// Re-export Projection types from the project module
-pub use super::project::{Coord, Projection};
+// Re-export Projection types from the projection module
+pub use super::projection::{Coord, Projection};
 
 // Re-export Facet types from the facet module
 pub use super::facet::{Facet, FacetLayout};

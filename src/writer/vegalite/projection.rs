@@ -4,7 +4,7 @@
 //! that modify the Vega-Lite spec structure based on the PROJECT clause.
 
 use crate::plot::aesthetic::is_aesthetic_name;
-use crate::plot::{Coord, ParameterValue, Projection};
+use crate::plot::{CoordKind, ParameterValue, Projection};
 use crate::{DataFrame, GgsqlError, Plot, Result};
 use serde_json::{json, Value};
 
@@ -19,23 +19,19 @@ pub(super) fn apply_project_transforms(
     free_y: bool,
 ) -> Result<Option<DataFrame>> {
     if let Some(ref project) = spec.project {
-        match project.coord {
-            Coord::Cartesian => {
+        match project.coord.coord_kind() {
+            CoordKind::Cartesian => {
                 apply_cartesian_project(project, vl_spec, free_x, free_y)?;
                 Ok(None) // No DataFrame transformation needed
             }
-            Coord::Flip => {
+            CoordKind::Flip => {
                 apply_flip_project(vl_spec)?;
                 Ok(None) // No DataFrame transformation needed
             }
-            Coord::Polar => {
+            CoordKind::Polar => {
                 // Polar requires DataFrame transformation for percentages
                 let transformed_df = apply_polar_project(project, spec, data, vl_spec)?;
                 Ok(Some(transformed_df))
-            }
-            _ => {
-                // Other coord types not yet implemented
-                Ok(None)
             }
         }
     } else {
@@ -43,43 +39,22 @@ pub(super) fn apply_project_transforms(
     }
 }
 
-/// Apply Cartesian projection properties (xlim, ylim, aesthetic domains)
-/// Skip applying axis limits if facets have free scales for that axis
+/// Apply Cartesian projection properties (aesthetic domains)
+/// Note: xlim/ylim removed - use SCALE x/y FROM instead
 fn apply_cartesian_project(
     project: &Projection,
     vl_spec: &mut Value,
-    free_x: bool,
-    free_y: bool,
+    _free_x: bool,
+    _free_y: bool,
 ) -> Result<()> {
-    // Apply xlim/ylim to scale domains
     for (prop_name, prop_value) in &project.properties {
-        match prop_name.as_str() {
-            "xlim" => {
-                // Don't apply xlim if facets have free x scales
-                if !free_x {
-                    if let Some(limits) = extract_limits(prop_value)? {
-                        apply_axis_limits(vl_spec, "x", limits)?;
-                    }
-                }
-            }
-            "ylim" => {
-                // Don't apply ylim if facets have free y scales
-                if !free_y {
-                    if let Some(limits) = extract_limits(prop_value)? {
-                        apply_axis_limits(vl_spec, "y", limits)?;
-                    }
-                }
-            }
-            _ if is_aesthetic_name(prop_name) => {
-                // Aesthetic domain specification
-                if let Some(domain) = extract_input_range(prop_value)? {
-                    apply_aesthetic_input_range(vl_spec, prop_name, domain)?;
-                }
-            }
-            _ => {
-                // ratio, clip - not yet implemented (TODO comments added by validation)
+        if is_aesthetic_name(prop_name) {
+            // Aesthetic domain specification
+            if let Some(domain) = extract_input_range(prop_value)? {
+                apply_aesthetic_input_range(vl_spec, prop_name, domain)?;
             }
         }
+        // ratio, clip - not yet implemented
     }
 
     Ok(())
@@ -230,33 +205,6 @@ fn update_encoding_for_polar(encoding: &mut Value, theta_aesthetic: &str) -> Res
 
 // Helper methods
 
-fn extract_limits(value: &ParameterValue) -> Result<Option<(f64, f64)>> {
-    match value {
-        ParameterValue::Array(arr) => {
-            if arr.len() != 2 {
-                return Err(GgsqlError::WriterError(format!(
-                    "xlim/ylim must be exactly 2 numbers, got {}",
-                    arr.len()
-                )));
-            }
-            let min = arr[0].to_f64().ok_or_else(|| {
-                GgsqlError::WriterError("xlim/ylim values must be numeric".to_string())
-            })?;
-            let max = arr[1].to_f64().ok_or_else(|| {
-                GgsqlError::WriterError("xlim/ylim values must be numeric".to_string())
-            })?;
-
-            // Auto-swap if reversed
-            let (min, max) = if min > max { (max, min) } else { (min, max) };
-
-            Ok(Some((min, max)))
-        }
-        _ => Err(GgsqlError::WriterError(
-            "xlim/ylim must be an array".to_string(),
-        )),
-    }
-}
-
 fn extract_input_range(value: &ParameterValue) -> Result<Option<Vec<Value>>> {
     match value {
         ParameterValue::Array(arr) => {
@@ -265,24 +213,6 @@ fn extract_input_range(value: &ParameterValue) -> Result<Option<Vec<Value>>> {
         }
         _ => Ok(None),
     }
-}
-
-fn apply_axis_limits(vl_spec: &mut Value, axis: &str, limits: (f64, f64)) -> Result<()> {
-    let domain = json!([limits.0, limits.1]);
-
-    if let Some(layers) = vl_spec.get_mut("layer") {
-        if let Some(layers_arr) = layers.as_array_mut() {
-            for layer in layers_arr {
-                if let Some(encoding) = layer.get_mut("encoding") {
-                    if let Some(axis_enc) = encoding.get_mut(axis) {
-                        axis_enc["scale"] = json!({"domain": domain});
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
 
 fn apply_aesthetic_input_range(

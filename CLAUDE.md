@@ -11,7 +11,7 @@ SELECT date, revenue, region FROM sales WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
 SCALE x VIA date
-PROJECT cartesian SETTING ylim => [0, 100000]
+SCALE y FROM [0, 100000]
 LABEL title => 'Sales by Region', x => 'Date', y => 'Revenue'
 THEME minimal
 ```
@@ -24,7 +24,7 @@ THEME minimal
 - Syntax highlighting support via Tree-sitter queries
 - 916 total tests (174 parser tests, comprehensive builder and integration tests)
 - End-to-end working pipeline: SQL → Data → Visualization
-- Projectinate transformations: Cartesian (xlim/ylim), Flip, Polar
+- Projectinate transformations: Cartesian, Flip, Polar
 - VISUALISE FROM shorthand syntax with automatic SELECT injection
 
 ---
@@ -1180,7 +1180,7 @@ Where `<global_mapping>` can be:
 | `DRAW`      | ✅ Yes     | Define layers     | `DRAW line MAPPING date AS x, value AS y` |
 | `SCALE`     | ✅ Yes     | Configure scales  | `SCALE x VIA date`                        |
 | `FACET`     | ❌ No      | Small multiples   | `FACET region`                            |
-| `PROJECT`   | ❌ No      | Coordinate system | `PROJECT cartesian SETTING xlim => [0,100]` |
+| `PROJECT`   | ❌ No      | Coordinate system | `PROJECT flip` |
 | `LABEL`     | ❌ No      | Text labels       | `LABEL title => 'My Chart', x => 'Date'`  |
 | `THEME`     | ❌ No      | Visual styling    | `THEME minimal`                           |
 
@@ -1448,9 +1448,10 @@ PROJECT SETTING <properties>
 
 **Cartesian**:
 
-- `xlim => [min, max]` - Set x-axis limits
-- `ylim => [min, max]` - Set y-axis limits
+- `ratio => <number>` - Set aspect ratio
 - `<aesthetic> => [values...]` - Set range for any aesthetic (color, fill, size, etc.)
+
+Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]` instead.
 
 **Flip**:
 
@@ -1463,7 +1464,7 @@ PROJECT SETTING <properties>
 
 **Important Notes**:
 
-1. **Axis limits auto-swap**: `xlim => [100, 0]` automatically becomes `[0, 100]`
+1. **Axis limits**: Use `SCALE x/y FROM [min, max]` to set axis limits (not PROJECT)
 2. **ggplot2 compatibility**: `project_flip` preserves axis label names (labels stay with aesthetic names, not visual position)
 3. **Range conflicts**: Error if same aesthetic has input range in both SCALE and PROJECT
 4. **Multi-layer support**: All projectinate transforms apply to all layers
@@ -1478,14 +1479,12 @@ PROJECT SETTING <properties>
 **Examples**:
 
 ```sql
--- Cartesian with axis limits
-PROJECT cartesian SETTING xlim => [0, 100], ylim => [0, 50]
+-- Cartesian with axis limits (use SCALE, not PROJECT)
+SCALE x FROM [0, 100]
+SCALE y FROM [0, 50]
 
 -- Cartesian with aesthetic range
-PROJECT cartesian SETTING color => O ['red', 'green', 'blue']
-
--- Cartesian shorthand (type optional when using SETTING)
-PROJECT SETTING xlim => [0, 100]
+PROJECT cartesian SETTING color => ['red', 'green', 'blue']
 
 -- Flip projectinates for horizontal bar chart
 PROJECT flip
@@ -1501,7 +1500,8 @@ PROJECT polar SETTING theta => y
 
 -- Combined with other clauses
 DRAW bar MAPPING category AS x, value AS y
-PROJECT cartesian SETTING xlim => [0, 100], ylim => [0, 200]
+SCALE x FROM [0, 100]
+SCALE y FROM [0, 200]
 LABEL x => 'Category', y => 'Count'
 ```
 

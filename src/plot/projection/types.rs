@@ -5,7 +5,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::super::types::ParameterValue;
+use super::coord::Coord;
+use crate::plot::ParameterValue;
 
 /// Projection (from PROJECT clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -14,16 +15,4 @@ pub struct Projection {
     pub coord: Coord,
     /// Projection-specific options
     pub properties: HashMap<String, ParameterValue>,
-}
-
-/// Coordinate system types
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Coord {
-    Cartesian,
-    Polar,
-    Flip,
-    Fixed,
-    Trans,
-    Map,
-    QuickMap,
 }

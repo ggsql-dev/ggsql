@@ -1,0 +1,148 @@
+//! Polar coordinate system implementation
+
+use super::{CoordKind, CoordTrait};
+use crate::plot::ParameterValue;
+
+/// Polar coordinate system - for pie charts, rose plots
+#[derive(Debug, Clone, Copy)]
+pub struct Polar;
+
+impl CoordTrait for Polar {
+    fn coord_kind(&self) -> CoordKind {
+        CoordKind::Polar
+    }
+
+    fn name(&self) -> &'static str {
+        "polar"
+    }
+
+    fn allowed_properties(&self) -> &'static [&'static str] {
+        &["theta"]
+    }
+
+    fn allows_aesthetic_properties(&self) -> bool {
+        true
+    }
+
+    fn get_property_default(&self, name: &str) -> Option<ParameterValue> {
+        match name {
+            "theta" => Some(ParameterValue::String("y".to_string())),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for Polar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plot::ArrayElement;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_polar_properties() {
+        let polar = Polar;
+        assert_eq!(polar.coord_kind(), CoordKind::Polar);
+        assert_eq!(polar.name(), "polar");
+        assert!(polar.allows_aesthetic_properties());
+    }
+
+    #[test]
+    fn test_polar_allowed_properties() {
+        let polar = Polar;
+        let allowed = polar.allowed_properties();
+        assert!(allowed.contains(&"theta"));
+        assert_eq!(allowed.len(), 1);
+    }
+
+    #[test]
+    fn test_polar_theta_default() {
+        let polar = Polar;
+        let default = polar.get_property_default("theta");
+        assert!(default.is_some());
+        assert_eq!(default.unwrap(), ParameterValue::String("y".to_string()));
+    }
+
+    #[test]
+    fn test_polar_resolve_adds_theta_default() {
+        let polar = Polar;
+        let props = HashMap::new();
+
+        let resolved = polar.resolve_properties(&props);
+        assert!(resolved.is_ok());
+        let resolved = resolved.unwrap();
+        assert!(resolved.contains_key("theta"));
+        assert_eq!(
+            resolved.get("theta").unwrap(),
+            &ParameterValue::String("y".to_string())
+        );
+    }
+
+    #[test]
+    fn test_polar_resolve_with_explicit_theta() {
+        let polar = Polar;
+        let mut props = HashMap::new();
+        props.insert("theta".to_string(), ParameterValue::String("x".to_string()));
+
+        let resolved = polar.resolve_properties(&props);
+        assert!(resolved.is_ok());
+        let resolved = resolved.unwrap();
+        assert_eq!(
+            resolved.get("theta").unwrap(),
+            &ParameterValue::String("x".to_string())
+        );
+    }
+
+    #[test]
+    fn test_polar_accepts_aesthetic_properties() {
+        let polar = Polar;
+        let mut props = HashMap::new();
+        props.insert(
+            "color".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::String("red".to_string()),
+                ArrayElement::String("blue".to_string()),
+            ]),
+        );
+
+        let resolved = polar.resolve_properties(&props);
+        assert!(resolved.is_ok());
+    }
+
+    #[test]
+    fn test_polar_rejects_xlim() {
+        let polar = Polar;
+        let mut props = HashMap::new();
+        props.insert(
+            "xlim".to_string(),
+            ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]),
+        );
+
+        let resolved = polar.resolve_properties(&props);
+        assert!(resolved.is_err());
+        let err = resolved.unwrap_err();
+        assert!(err.contains("xlim"));
+        assert!(err.contains("not valid"));
+    }
+
+    #[test]
+    fn test_polar_rejects_ylim() {
+        let polar = Polar;
+        let mut props = HashMap::new();
+        props.insert(
+            "ylim".to_string(),
+            ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]),
+        );
+
+        let resolved = polar.resolve_properties(&props);
+        assert!(resolved.is_err());
+        let err = resolved.unwrap_err();
+        assert!(err.contains("ylim"));
+        assert!(err.contains("not valid"));
+    }
+}

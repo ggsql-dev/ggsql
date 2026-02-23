@@ -761,7 +761,7 @@ module.exports = grammar({
     ),
 
     project_type: $ => choice(
-      'cartesian', 'polar', 'flip', 'fixed', 'trans', 'map', 'quickmap'
+      'cartesian', 'polar', 'flip'
     ),
 
     project_properties: $ => seq(
@@ -776,7 +776,7 @@ module.exports = grammar({
     ),
 
     project_property_name: $ => choice(
-      'xlim', 'ylim', 'ratio', 'theta', 'clip',
+      'ratio', 'theta', 'clip',
       // Also allow aesthetic names as properties (for range specification)
       $.aesthetic_name
     ),
