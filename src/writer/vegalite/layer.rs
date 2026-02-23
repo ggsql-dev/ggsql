@@ -226,157 +226,94 @@ impl GeomRenderer for PathRenderer {
 // Text Renderer
 // =============================================================================
 
+/// Font property tuple: (family, fontWeight, fontStyle, align, baseline) as converted Vega-Lite Values
+type FontKey = (Value, Value, Value, Value, Value);
+
 /// Renderer for text geom - handles font properties via data splitting
 pub struct TextRenderer;
 
 impl TextRenderer {
-    /// Analyze DataFrame columns to find font aesthetics.
-    /// Returns groups: Vec<(properties, row_indices)> where each group has identical font values.
-    fn analyze_font_columns(df: &DataFrame) -> Result<Vec<(HashMap<String, Value>, Vec<usize>)>> {
+    /// Analyze DataFrame columns to build font property groups.
+    /// Returns HashMap mapping converted font property tuples to row indices.
+    fn analyze_font_columns(df: &DataFrame) -> Result<HashMap<FontKey, Vec<usize>>> {
+        let nrows = df.height();
+        let mut groups: HashMap<FontKey, Vec<usize>> = HashMap::new();
 
-        let mut varying_columns: Vec<(String, String)> = Vec::new(); // (aesthetic, column_name)
-        let mut constant_values: HashMap<String, Value> = HashMap::new();
+        // Extract all font columns (or use defaults if missing)
+        let family_col = df.column(&naming::aesthetic_column("family"))
+            .ok()
+            .and_then(|s| s.str().ok());
+        let fontface_col = df.column(&naming::aesthetic_column("fontface"))
+            .ok()
+            .and_then(|s| s.str().ok());
+        let hjust_col = df.column(&naming::aesthetic_column("hjust"))
+            .ok()
+            .and_then(|s| s.str().ok());
+        let vjust_col = df.column(&naming::aesthetic_column("vjust"))
+            .ok()
+            .and_then(|s| s.str().ok());
 
-        // Check for font aesthetic columns in DataFrame
-        for &aesthetic in &["family", "fontface", "hjust", "vjust"] {
-            let col_name = naming::aesthetic_column(aesthetic);
-
-            if let Ok(col) = df.column(&col_name) {
-                let unique_count = col
-                    .n_unique()
-                    .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
-
-                if unique_count == 1 {
-                    // All same → treat as constant
-                    let value_str = col
-                        .str()
-                        .map_err(|e| GgsqlError::WriterError(e.to_string()))?
-                        .get(0)
-                        .unwrap_or("");
-                    let converted = Self::convert_to_mark_property(aesthetic, value_str);
-                    constant_values.insert(aesthetic.to_string(), converted);
-                } else if unique_count > 1 {
-                    // Multiple values → needs splitting
-                    varying_columns.push((aesthetic.to_string(), col_name));
-                }
-            }
-        }
-
-        if varying_columns.is_empty() {
-            // All constant or not present → single group with all rows
-            let all_indices: Vec<usize> = (0..df.height()).collect();
-            Ok(vec![(constant_values, all_indices)])
-        } else {
-            // Some varying → multi-layer
-            Self::build_font_groups_from_df(df, &varying_columns, &constant_values)
-        }
-    }
-
-    /// Build groups from DataFrame columns (used in prepare_data)
-    fn build_font_groups_from_df(
-        data: &DataFrame,
-        varying: &[(String, String)], // (aesthetic, column_name)
-        constant: &HashMap<String, Value>,
-    ) -> Result<Vec<(HashMap<String, Value>, Vec<usize>)>> {
-        use polars::prelude::{ChunkedArray, StringType};
-
-        let nrows = data.height();
-        let mut groups_map: HashMap<String, (HashMap<String, Value>, Vec<usize>)> = HashMap::new();
-
-        // Pre-fetch all varying font columns
-        let font_columns: Vec<(String, ChunkedArray<StringType>)> = varying
-            .iter()
-            .map(|(aes, col)| {
-                let series = data
-                    .column(col)
-                    .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
-                let ca = series
-                    .str()
-                    .map_err(|e| GgsqlError::WriterError(e.to_string()))?
-                    .clone();
-                Ok((aes.clone(), ca))
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        // Iterate rows and build groups
+        // Group rows by converted font property tuple
         for row_idx in 0..nrows {
-            // Build signature for this row
-            let mut sig_parts: Vec<String> = Vec::new();
-            let mut properties = constant.clone();
+            let family_str = family_col.and_then(|ca| ca.get(row_idx)).unwrap_or("");
+            let fontface_str = fontface_col.and_then(|ca| ca.get(row_idx)).unwrap_or("");
+            let hjust_str = hjust_col.and_then(|ca| ca.get(row_idx)).unwrap_or("");
+            let vjust_str = vjust_col.and_then(|ca| ca.get(row_idx)).unwrap_or("");
 
-            for (aesthetic, ca) in &font_columns {
-                let value = ca.get(row_idx).unwrap_or("");
-                sig_parts.push(format!("{}:{}", aesthetic, value));
+            // Convert to Vega-Lite property values immediately
+            let family_val = Self::convert_family(family_str);
+            let (font_weight_val, font_style_val) = Self::convert_fontface(fontface_str);
+            let hjust_val = Self::convert_hjust(hjust_str);
+            let vjust_val = Self::convert_vjust(vjust_str);
 
-                // Convert to mark property
-                let prop_value = Self::convert_to_mark_property(aesthetic, value);
-                properties.insert(aesthetic.to_string(), prop_value);
-            }
-
-            let signature = sig_parts.join("|");
-
-            // Add to existing group or create new entry
-            groups_map
-                .entry(signature)
-                .or_insert_with(|| (properties.clone(), Vec::new()))
-                .1
-                .push(row_idx);
+            let key = (family_val, font_weight_val, font_style_val, hjust_val, vjust_val);
+            groups.entry(key).or_insert_with(Vec::new).push(row_idx);
         }
-
-        // Convert to Vec and sort by first occurrence
-        let mut groups: Vec<(HashMap<String, Value>, Vec<usize>)> = groups_map
-            .into_values()
-            .collect();
-
-        groups.sort_by_key(|(_, indices)| indices[0]);
 
         Ok(groups)
     }
 
-    /// Convert ggsql font aesthetic value to Vega-Lite mark property
-    fn convert_to_mark_property(aesthetic: &str, value: &str) -> Value {
-        match aesthetic {
-            "family" => json!(value),
-            "fontface" => {
-                // Map ggplot2 fontface to fontWeight/fontStyle
-                match value {
-                    "bold" => json!({"fontWeight": "bold"}),
-                    "italic" => json!({"fontStyle": "italic"}),
-                    "bold.italic" | "bolditalic" => json!({
-                        "fontWeight": "bold",
-                        "fontStyle": "italic"
-                    }),
-                    _ => json!({"fontWeight": "normal"}),
-                }
-            }
-            "hjust" => {
-                // Map 0/0.5/1 or string to left/center/right
-                let align = match value.parse::<f64>() {
-                    Ok(v) if v <= 0.25 => "left",
-                    Ok(v) if v >= 0.75 => "right",
-                    _ => match value {
-                        "left" => "left",
-                        "right" => "right",
-                        _ => "center",
-                    },
-                };
-                json!(align)
-            }
-            "vjust" => {
-                // Map 0/0.5/1 or string to bottom/middle/top
-                let baseline = match value.parse::<f64>() {
-                    Ok(v) if v <= 0.25 => "bottom",
-                    Ok(v) if v >= 0.75 => "top",
-                    _ => match value {
-                        "top" => "top",
-                        "bottom" => "bottom",
-                        _ => "middle",
-                    },
-                };
-                json!(baseline)
-            }
-            _ => json!(value),
+    /// Convert family string to Vega-Lite font value
+    fn convert_family(value: &str) -> Value {
+        json!(value)
+    }
+
+    /// Convert fontface string to Vega-Lite fontWeight and fontStyle values
+    fn convert_fontface(value: &str) -> (Value, Value) {
+        match value {
+            "bold" => (json!("bold"), json!("normal")),
+            "italic" => (json!("normal"), json!("italic")),
+            "bold.italic" | "bolditalic" => (json!("bold"), json!("italic")),
+            _ => (json!("normal"), json!("normal")),
         }
+    }
+
+    /// Convert hjust string to Vega-Lite align value
+    fn convert_hjust(value: &str) -> Value {
+        let align = match value.parse::<f64>() {
+            Ok(v) if v <= 0.25 => "left",
+            Ok(v) if v >= 0.75 => "right",
+            _ => match value {
+                "left" => "left",
+                "right" => "right",
+                _ => "center",
+            },
+        };
+        json!(align)
+    }
+
+    /// Convert vjust string to Vega-Lite baseline value
+    fn convert_vjust(value: &str) -> Value {
+        let baseline = match value.parse::<f64>() {
+            Ok(v) if v <= 0.25 => "bottom",
+            Ok(v) if v >= 0.75 => "top",
+            _ => match value {
+                "top" => "top",
+                "bottom" => "bottom",
+                _ => "middle",
+            },
+        };
+        json!(baseline)
     }
 
     /// Filter DataFrame to specific row indices
@@ -397,62 +334,47 @@ impl TextRenderer {
             .map_err(|e| GgsqlError::WriterError(e.to_string()))
     }
 
-    /// Map aesthetic name to Vega-Lite mark property name
-    fn map_aesthetic_to_mark_property(aesthetic: &str) -> &str {
-        match aesthetic {
-            "family" => "font",
-            "hjust" => "align",
-            "vjust" => "baseline",
-            _ => aesthetic,
-        }
-    }
-
-    /// Apply mark property, handling special cases like fontface
-    fn apply_mark_property(mark_obj: &mut Map<String, Value>, key: &str, value: &Value) {
-        if key == "fontface" || value.is_object() {
-            // fontface may contain multiple properties (fontWeight + fontStyle)
-            if let Some(obj) = value.as_object() {
-                for (k, v) in obj {
-                    mark_obj.insert(k.clone(), v.clone());
-                }
-                return;
-            }
-        }
-        mark_obj.insert(key.to_string(), value.clone());
-    }
-
-    /// Finalize single layer case
     /// Finalize layers from font groups (handles both single and multi-group cases)
     fn finalize_layers(
         &self,
         prototype: Value,
         data_key: &str,
-        groups: &[(HashMap<String, Value>, Vec<usize>)],
+        font_groups: &HashMap<FontKey, Vec<usize>>,
     ) -> Result<Vec<Value>> {
-        let mut layers = Vec::new();
+        // Sort groups by first index to match component key assignment order
+        let mut sorted_entries: Vec<_> = font_groups.iter().collect();
+        sorted_entries.sort_by_key(|(_, indices)| indices[0]);
 
-        for (group_idx, (properties, _indices)) in groups.iter().enumerate() {
-            let mut layer_spec = prototype.clone();
-            // For single-group case (all constant), use empty suffix
-            // For multi-group case, use _font_N suffix
-            let suffix = if groups.len() == 1 {
+        // Build layers
+        let mut layer_tuples: Vec<(usize, Value)> = Vec::new(); // (first_index, layer_spec)
+
+        for (group_idx, (font_key, indices)) in sorted_entries.iter().enumerate() {
+            let (family_val, font_weight_val, font_style_val, hjust_val, vjust_val) = font_key;
+
+            // Component key suffix (matches prepare_data assignment)
+            let suffix = if font_groups.len() == 1 {
                 String::new()
             } else {
                 format!("_font_{}", group_idx)
             };
             let source_key = format!("{}{}", data_key, suffix);
 
-            // Apply mark properties
+            // Create layer spec with font properties
+            let mut layer_spec = prototype.clone();
             if let Some(mark) = layer_spec.get_mut("mark") {
                 if let Some(mark_obj) = mark.as_object_mut() {
-                    for (aesthetic, value) in properties {
-                        let vl_key = Self::map_aesthetic_to_mark_property(aesthetic);
-                        Self::apply_mark_property(mark_obj, vl_key, value);
+                    // Apply font properties
+                    if family_val.as_str().map_or(true, |s| !s.is_empty()) {
+                        mark_obj.insert("font".to_string(), family_val.clone());
                     }
+                    mark_obj.insert("fontWeight".to_string(), font_weight_val.clone());
+                    mark_obj.insert("fontStyle".to_string(), font_style_val.clone());
+                    mark_obj.insert("align".to_string(), hjust_val.clone());
+                    mark_obj.insert("baseline".to_string(), vjust_val.clone());
                 }
             }
 
-            // Add source filter for this group
+            // Add source filter
             let source_filter = json!({
                 "filter": {
                     "field": naming::SOURCE_COLUMN,
@@ -470,8 +392,12 @@ impl TextRenderer {
             new_transforms.extend(existing_transforms);
             layer_spec["transform"] = json!(new_transforms);
 
-            layers.push(layer_spec);
+            layer_tuples.push((indices[0], layer_spec));
         }
+
+        // Sort by first index (already sorted, but explicit for clarity)
+        layer_tuples.sort_by_key(|(idx, _)| *idx);
+        let layers = layer_tuples.into_iter().map(|(_, spec)| spec).collect();
 
         Ok(layers)
     }
@@ -485,15 +411,19 @@ impl GeomRenderer for TextRenderer {
         binned_columns: &HashMap<String, Vec<f64>>,
     ) -> Result<PreparedData> {
         // Analyze font columns to get groups
-        let groups = Self::analyze_font_columns(df)?;
+        let font_groups = Self::analyze_font_columns(df)?;
 
-        // Split data by groups (even if just 1 group for constant fonts)
+        // Split data by font groups
         let mut components: HashMap<String, Vec<Value>> = HashMap::new();
 
-        for (group_idx, (_properties, row_indices)) in groups.iter().enumerate() {
+        // Sort groups by first index to assign component keys in order
+        let mut sorted_entries: Vec<_> = font_groups.iter().collect();
+        sorted_entries.sort_by_key(|(_, indices)| indices[0]);
+
+        for (group_idx, (_font_key, row_indices)) in sorted_entries.iter().enumerate() {
             // For single-group case (all constant), use empty suffix
             // For multi-group case, use _font_N suffix
-            let suffix = if groups.len() == 1 {
+            let suffix = if font_groups.len() == 1 {
                 String::new()
             } else {
                 format!("_font_{}", group_idx)
@@ -511,7 +441,7 @@ impl GeomRenderer for TextRenderer {
 
         Ok(PreparedData::Composite {
             components,
-            metadata: Box::new(groups),
+            metadata: Box::new(font_groups),
         })
     }
 
@@ -541,13 +471,13 @@ impl GeomRenderer for TextRenderer {
             ));
         };
 
-        // Downcast metadata to groups
-        let groups = metadata.downcast_ref::<Vec<(HashMap<String, Value>, Vec<usize>)>>().ok_or_else(|| {
+        // Downcast metadata to font groups
+        let font_groups = metadata.downcast_ref::<HashMap<FontKey, Vec<usize>>>().ok_or_else(|| {
             GgsqlError::InternalError("Failed to downcast font groups".to_string())
         })?;
 
-        // Generate layers from groups (1 group = single layer, N groups = N layers)
-        self.finalize_layers(prototype, data_key, groups)
+        // Generate layers from font groups
+        self.finalize_layers(prototype, data_key, font_groups)
     }
 }
 
