@@ -20,6 +20,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -77,6 +112,7 @@ ul.task-list li input[type="checkbox"] {
 
 
 <meta property="og:title" content="Create small multiples with FACET – ggsql">
+<meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
 <meta property="og:image" content="https://ggsql.org/syntax/clause/assets/logo.png">
 <meta property="og:site_name" content="ggsql">
 <meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
@@ -84,6 +120,7 @@ handle is made up of the classic database silo icon and is coloured in a
 gradient teal.
 ">
 <meta name="twitter:title" content="Create small multiples with FACET – ggsql">
+<meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
 <meta name="twitter:image" content="https://ggsql.org/syntax/clause/assets/logo.png">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
@@ -447,6 +484,12 @@ gradient teal.
  <span class="menu-text">Size</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/scale/aesthetic/Z_facetting.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Faceting</span></a>
+  </div>
+</li>
       </ul>
   </li>
       </ul>
@@ -456,8 +499,20 @@ gradient teal.
 </nav>
 <div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
-    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
-        
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#clause-syntax" id="toc-clause-syntax" class="nav-link active" data-scroll-target="#clause-syntax">Clause syntax</a>
+  <ul class="collapse">
+  <li><a href="#by" id="toc-by" class="nav-link" data-scroll-target="#by"><code>BY</code></a></li>
+  <li><a href="#setting" id="toc-setting" class="nav-link" data-scroll-target="#setting"><code>SETTING</code></a></li>
+  <li><a href="#facet-variables-as-aesthetics" id="toc-facet-variables-as-aesthetics" class="nav-link" data-scroll-target="#facet-variables-as-aesthetics">Facet variables as aesthetics</a></li>
+  <li><a href="#customizing-facet-strip-labels" id="toc-customizing-facet-strip-labels" class="nav-link" data-scroll-target="#customizing-facet-strip-labels">Customizing facet strip labels</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
@@ -481,8 +536,46 @@ gradient teal.
 </header>
 
 
+<p>The <code>FACET</code> clause allows you to split your data, by one or two variables, and plot each group as a small version of the plot: a technique called ‘small multiples’. The technique is great for preventing overplotting. Because each small plot shares the same positional scales by default, visual comparisons between groups become easy.</p>
+<section id="clause-syntax" class="level2">
+<h2 class="anchored" data-anchor-id="clause-syntax">Clause syntax</h2>
+<p>The <code>FACET</code> syntax contains a number of subclauses that are all optional</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> <span class="op">&lt;</span>column<span class="op">&gt;</span> BY <span class="op">&lt;</span>column<span class="op">&gt;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="op">&lt;</span>parameter<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>value<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The first <code>column</code> is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the <code>missing</code> parameter of the facet.</p>
+<section id="by" class="level3">
+<h3 class="anchored" data-anchor-id="by"><code>BY</code></h3>
+<p>The optional <code>BY</code> clause is used to define an additional column to split the data by. If it is missing the small multiples are laid out in a grid with the facet panels filling the cells in a row-wise fashion. If <code>BY</code> is present then the categories of the first <code>column</code> defines the rows of the grid and the categories of the second <code>column</code> the columns of the grid. Each multiple is then positioned according to that.</p>
+</section>
+<section id="setting" class="level3">
+<h3 class="anchored" data-anchor-id="setting"><code>SETTING</code></h3>
+<p>This clause behaves much like the <code>SETTINGS</code> clause in <code>DRAW</code>, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:</p>
+<ul>
+<li><code>free</code>: Controls whether the positional scales are independent across the small multiples. Permissible values are:
+<ul>
+<li><code>null</code> or omitted (default): Shared/fixed scales across all panels</li>
+<li><code>'x'</code>: Independent x-axis scale, shared y-axis scale</li>
+<li><code>'y'</code>: Shared x-axis scale, independent y-axis scale</li>
+<li><code>['x', 'y']</code>: Independent scales for both axes</li>
+</ul></li>
+<li><code>missing</code>: Determines how layers behave when the faceting column is missing. It can take two values: <code>'repeat'</code> (default), and <code>'null'</code>. If <code>'repeat'</code> is set, then the layer data is repeated in each panel. If <code>'null'</code>, then such layers are only displayed if a null panel is shown, as controlled by the facet scale.</li>
+<li><code>ncol</code>: The number of panel columns to use when faceting by a single variable. Default is 3 when fewer than 6 categories are present, 4 when fewer than 12 categeries are present and otherwise 5. When the <code>BY</code>-clause is used to set a second faceting variable, the <code>ncol</code> setting is not allowed. There is no <code>nrow</code> setting as this is derived from the number of panels and the <code>ncol</code> setting.</li>
+</ul>
+</section>
+<section id="facet-variables-as-aesthetics" class="level3">
+<h3 class="anchored" data-anchor-id="facet-variables-as-aesthetics">Facet variables as aesthetics</h3>
+<p>When you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no <code>BY</code> clause) the aesthetic is called <code>panel</code> and for 2-dimensional faceting the aesthetics are called <code>row</code> and <code>column</code>. You can read more about these aesthetics in <a href="../../syntax/scale/aesthetic/Z_facetting.html">their documentation</a></p>
+</section>
+<section id="customizing-facet-strip-labels" class="level3">
+<h3 class="anchored" data-anchor-id="customizing-facet-strip-labels">Customizing facet strip labels</h3>
+<p>To customize facet strip labels (e.g., renaming categories), use the <code>RENAMING</code> clause on the facet scale:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> region</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> panel <span class="kw">RENAMING</span> <span class="st">'N'</span> <span class="op">=&gt;</span> <span class="st">'North'</span>, <span class="st">'S'</span> <span class="op">=&gt;</span> <span class="st">'South'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>See the <a href="../../syntax/scale/aesthetic/Z_facetting.html">facet scale documentation</a> for more details on label customization.</p>
 
 
+</section>
+</section>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
@@ -890,4 +983,4 @@ gradient teal.
 
 
 
-<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

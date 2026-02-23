@@ -484,6 +484,12 @@ gradient teal.
  <span class="menu-text">Size</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/scale/aesthetic/Z_facetting.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Faceting</span></a>
+  </div>
+</li>
       </ul>
   </li>
       </ul>
@@ -537,7 +543,7 @@ gradient teal.
 <p>The <code>SCALE</code> clause takes a number of subclauses, all of them optional:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="op">&lt;</span><span class="at">type</span><span class="op">&gt;</span> <span class="op">&lt;</span>aesthetic<span class="op">&gt;</span> <span class="kw">FROM</span> <span class="op">&lt;</span>input<span class="op">-</span><span class="at">range</span><span class="op">&gt;</span> <span class="kw">TO</span> <span class="op">&lt;</span>output<span class="op">-</span><span class="at">range</span><span class="op">&gt;</span> <span class="kw">VIA</span> <span class="op">&lt;</span>transform<span class="op">&gt;</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="op">&lt;</span>parameter<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>value<span class="op">&gt;</span>, ...</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    RENAMING <span class="op">&lt;</span>break<span class="op">-</span>value<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>string<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">RENAMING</span> <span class="op">&lt;</span>break<span class="op">-</span>value<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>string<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The <code>type</code> defines the class of scale to use. It can be one of four different types:</p>
 <ul>
 <li><code>CONTINUOUS</code> to interpret and treat data as continuous</li>

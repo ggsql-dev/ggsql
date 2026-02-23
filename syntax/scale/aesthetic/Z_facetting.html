@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Linewidth – ggsql</title>
+<title>Faceting – ggsql</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -58,7 +58,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 
 
-<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -108,10 +108,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     "search-label": "Search"
   }
 }</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
 
 
-<meta property="og:title" content="Linewidth – ggsql">
+<meta property="og:title" content="Faceting – ggsql">
 <meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
 <meta property="og:image" content="https://ggsql.org/syntax/scale/aesthetic/assets/logo.png">
 <meta property="og:site_name" content="ggsql">
@@ -119,7 +122,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 handle is made up of the classic database silo icon and is coloured in a
 gradient teal.
 ">
-<meta name="twitter:title" content="Linewidth – ggsql">
+<meta name="twitter:title" content="Faceting – ggsql">
 <meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
 <meta name="twitter:image" content="https://ggsql.org/syntax/scale/aesthetic/assets/logo.png">
 <meta name="twitter:card" content="summary">
@@ -224,7 +227,7 @@ gradient teal.
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Scales</li><li class="breadcrumb-item"><a href="../../../syntax/scale/aesthetic/0_position.html">Aesthetics</a></li><li class="breadcrumb-item"><a href="../../../syntax/scale/aesthetic/linewidth.html">Linewidth</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Scales</li><li class="breadcrumb-item"><a href="../../../syntax/scale/aesthetic/0_position.html">Aesthetics</a></li><li class="breadcrumb-item"><a href="../../../syntax/scale/aesthetic/Z_facetting.html">Faceting</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -468,7 +471,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/aesthetic/linewidth.html" class="sidebar-item-text sidebar-link active">
+  <a href="../../../syntax/scale/aesthetic/linewidth.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Linewidth</span></a>
   </div>
 </li>
@@ -486,7 +489,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/aesthetic/Z_facetting.html" class="sidebar-item-text sidebar-link">
+  <a href="../../../syntax/scale/aesthetic/Z_facetting.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">Faceting</span></a>
   </div>
 </li>
@@ -505,16 +508,16 @@ gradient teal.
    
   <ul>
   <li><a href="#literal-values" id="toc-literal-values" class="nav-link active" data-scroll-target="#literal-values">Literal values</a></li>
-  <li><a href="#palettes" id="toc-palettes" class="nav-link" data-scroll-target="#palettes">Palettes</a></li>
+  <li><a href="#scale-types" id="toc-scale-types" class="nav-link" data-scroll-target="#scale-types">Scale types</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Scales</li><li class="breadcrumb-item"><a href="../../../syntax/scale/aesthetic/0_position.html">Aesthetics</a></li><li class="breadcrumb-item"><a href="../../../syntax/scale/aesthetic/linewidth.html">Linewidth</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Scales</li><li class="breadcrumb-item"><a href="../../../syntax/scale/aesthetic/0_position.html">Aesthetics</a></li><li class="breadcrumb-item"><a href="../../../syntax/scale/aesthetic/Z_facetting.html">Faceting</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">Linewidth</h1>
+<h1 class="title">Faceting</h1>
 </div>
 
 
@@ -531,17 +534,177 @@ gradient teal.
 </header>
 
 
-<p>The <code>linewidth</code> aesthetic sets the width of strokes and lines. It is measured in points (1pt = 1/72 inch). Linewidth can be used to represent continuous data. However, care should be taken because the eye is not good at differentiating the relative thinness of thin lines, and using thick lines will often result in severe overplotting.</p>
+<p>ggsql provides one or two aesthetics related to faceting. These are special in the sense that they do not alter the display of the single data values, but rather alter in which plot they appear. While it is possible to map to these aesthetics in a layer they are most often applied globally as part of the <a href="../../../syntax/clause/facet.html"><code>FACET</code> clause</a>.</p>
+<p>The aesthetics provided are either <code>panel</code> (for 1-dimensional faceting) or <code>row</code> and <code>column</code> (for 2-dimensional faceting). These aesthetics have to compatible with the facet clause: it is not possible to map to <code>panel</code> in a 2-dimensional faceting plot nor is it possible to map <code>row</code> and <code>column</code> in a 1-dimensional plot.</p>
 <section id="literal-values" class="level2">
 <h2 class="anchored" data-anchor-id="literal-values">Literal values</h2>
-<p>Linewidth are given as bare numbers and measured in points. The following code sets the width of the lines to 3pt:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">linewidth</span> <span class="op">=&gt;</span> <span class="dv">3</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Scales for facet aesthetics never use an output range and always relate to the input range. This means that no concept of literal values applies.</p>
 </section>
-<section id="palettes" class="level2">
-<h2 class="anchored" data-anchor-id="palettes">Palettes</h2>
-<p>Linewidth can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 1pt to 6 pt and interpolate between them. This can be overwritten by providing a manual output range specification</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">linewidth</span> <span class="kw">TO</span> [<span class="dv">3</span>, <span class="dv">9</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="scale-types" class="level2">
+<h2 class="anchored" data-anchor-id="scale-types">Scale types</h2>
+<p>Since panels are discrete by nature it is not possible to have a continuous scale for a facet. If continuous data is mapped to a facet aesthetic, a binned scale will be applied by default.</p>
+<div id="18212701" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Temp <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> Date </span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="dt">free</span> <span class="op">=&gt;</span> <span class="st">'x'</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> panel</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="st">'month'</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> </span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="st">'weeks'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<div id="vis-1771854166618"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","columns":3,"config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-01","__ggsql_aes_y__":67,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-02","__ggsql_aes_y__":72,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-03","__ggsql_aes_y__":74,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-04","__ggsql_aes_y__":62,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-05","__ggsql_aes_y__":56,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-06","__ggsql_aes_y__":66,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-07","__ggsql_aes_y__":65,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-08","__ggsql_aes_y__":59,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-09","__ggsql_aes_y__":61,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-10","__ggsql_aes_y__":69,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-11","__ggsql_aes_y__":74,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-12","__ggsql_aes_y__":69,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-13","__ggsql_aes_y__":66,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-14","__ggsql_aes_y__":68,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-15","__ggsql_aes_y__":58,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-16","__ggsql_aes_y__":64,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-17","__ggsql_aes_y__":66,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-18","__ggsql_aes_y__":57,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-19","__ggsql_aes_y__":68,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-20","__ggsql_aes_y__":62,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-21","__ggsql_aes_y__":59,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-22","__ggsql_aes_y__":73,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-23","__ggsql_aes_y__":61,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-24","__ggsql_aes_y__":61,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-25","__ggsql_aes_y__":57,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-26","__ggsql_aes_y__":58,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-27","__ggsql_aes_y__":57,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-28","__ggsql_aes_y__":67,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-29","__ggsql_aes_y__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-30","__ggsql_aes_y__":79,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-05-16","__ggsql_aes_x__":"1973-05-31","__ggsql_aes_y__":76,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-01","__ggsql_aes_y__":78,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-02","__ggsql_aes_y__":74,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-03","__ggsql_aes_y__":67,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-04","__ggsql_aes_y__":84,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-05","__ggsql_aes_y__":85,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-06","__ggsql_aes_y__":79,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-07","__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-08","__ggsql_aes_y__":87,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-09","__ggsql_aes_y__":90,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-10","__ggsql_aes_y__":87,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-11","__ggsql_aes_y__":93,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-12","__ggsql_aes_y__":92,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-13","__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-14","__ggsql_aes_y__":80,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-15","__ggsql_aes_y__":79,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-16","__ggsql_aes_y__":77,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-17","__ggsql_aes_y__":72,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-18","__ggsql_aes_y__":65,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-19","__ggsql_aes_y__":73,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-20","__ggsql_aes_y__":76,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-21","__ggsql_aes_y__":77,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-22","__ggsql_aes_y__":76,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-23","__ggsql_aes_y__":76,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-24","__ggsql_aes_y__":76,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-25","__ggsql_aes_y__":75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-26","__ggsql_aes_y__":78,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-27","__ggsql_aes_y__":73,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-28","__ggsql_aes_y__":80,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-29","__ggsql_aes_y__":77,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-06-16","__ggsql_aes_x__":"1973-06-30","__ggsql_aes_y__":83,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-01","__ggsql_aes_y__":84,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-02","__ggsql_aes_y__":85,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-03","__ggsql_aes_y__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-04","__ggsql_aes_y__":84,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-05","__ggsql_aes_y__":83,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-06","__ggsql_aes_y__":83,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-07","__ggsql_aes_y__":88,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-08","__ggsql_aes_y__":92,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-09","__ggsql_aes_y__":92,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-10","__ggsql_aes_y__":89,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-11","__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-12","__ggsql_aes_y__":73,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-13","__ggsql_aes_y__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-14","__ggsql_aes_y__":91,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-15","__ggsql_aes_y__":80,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-16","__ggsql_aes_y__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-17","__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-18","__ggsql_aes_y__":84,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-19","__ggsql_aes_y__":87,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-20","__ggsql_aes_y__":85,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-21","__ggsql_aes_y__":74,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-22","__ggsql_aes_y__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-23","__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-24","__ggsql_aes_y__":86,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-25","__ggsql_aes_y__":85,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-26","__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-27","__ggsql_aes_y__":86,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-28","__ggsql_aes_y__":88,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-29","__ggsql_aes_y__":86,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-30","__ggsql_aes_y__":83,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-07-16","__ggsql_aes_x__":"1973-07-31","__ggsql_aes_y__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-01","__ggsql_aes_y__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-02","__ggsql_aes_y__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-03","__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-04","__ggsql_aes_y__":86,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-05","__ggsql_aes_y__":85,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-06","__ggsql_aes_y__":87,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-07","__ggsql_aes_y__":89,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-08","__ggsql_aes_y__":90,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-09","__ggsql_aes_y__":90,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-10","__ggsql_aes_y__":92,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-11","__ggsql_aes_y__":86,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-12","__ggsql_aes_y__":86,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-13","__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-14","__ggsql_aes_y__":80,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-15","__ggsql_aes_y__":79,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-16","__ggsql_aes_y__":77,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-17","__ggsql_aes_y__":79,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-18","__ggsql_aes_y__":76,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-19","__ggsql_aes_y__":78,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-20","__ggsql_aes_y__":78,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-21","__ggsql_aes_y__":77,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-22","__ggsql_aes_y__":72,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-23","__ggsql_aes_y__":75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-24","__ggsql_aes_y__":79,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-25","__ggsql_aes_y__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-26","__ggsql_aes_y__":86,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-27","__ggsql_aes_y__":88,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-28","__ggsql_aes_y__":97,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-29","__ggsql_aes_y__":94,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-30","__ggsql_aes_y__":96,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-08-16","__ggsql_aes_x__":"1973-08-31","__ggsql_aes_y__":94,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-01","__ggsql_aes_y__":91,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-02","__ggsql_aes_y__":92,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-03","__ggsql_aes_y__":93,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-04","__ggsql_aes_y__":93,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-05","__ggsql_aes_y__":87,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-06","__ggsql_aes_y__":84,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-07","__ggsql_aes_y__":80,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-08","__ggsql_aes_y__":78,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-09","__ggsql_aes_y__":75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-10","__ggsql_aes_y__":73,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-11","__ggsql_aes_y__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-12","__ggsql_aes_y__":76,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-13","__ggsql_aes_y__":77,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-14","__ggsql_aes_y__":71,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-15","__ggsql_aes_y__":71,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-16","__ggsql_aes_y__":78,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-17","__ggsql_aes_y__":67,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-18","__ggsql_aes_y__":76,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-19","__ggsql_aes_y__":68,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-20","__ggsql_aes_y__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-21","__ggsql_aes_y__":64,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-22","__ggsql_aes_y__":71,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-23","__ggsql_aes_y__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-24","__ggsql_aes_y__":69,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-25","__ggsql_aes_y__":63,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-26","__ggsql_aes_y__":70,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-27","__ggsql_aes_y__":77,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-28","__ggsql_aes_y__":75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-29","__ggsql_aes_y__":76,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"1973-09-16","__ggsql_aes_x__":"1973-09-30","__ggsql_aes_y__":68,"__ggsql_source__":"__ggsql_layer_0__"}]},"facet":{"field":"__ggsql_aes_panel__","header":{"labelExpr":"datum.value == '1973-05-16' ? '1973-05-01 – 1973-06-01' : datum.value == '1973-06-16' ? '1973-06-01 – 1973-07-01' : datum.value == '1973-07-16' ? '1973-07-01 – 1973-08-01' : datum.value == '1973-08-16' ? '1973-08-01 – 1973-09-01' : datum.value == '1973-09-16' ? '1973-09-01 – 1973-10-01' : datum.value"},"type":"nominal"},"height":"container","resolve":{"scale":{"x":"independent"}},"spec":{"layer":[{"encoding":{"detail":{"field":"__ggsql_aes_panel__","type":"nominal"},"x":{"axis":{"labelExpr":"timeFormat(datum.value, '%Y-%m-%d') == '1973-06-11' ? '1973-06-11' : timeFormat(datum.value, '%Y-%m-%d') == '1973-06-25' ? '1973-06-25' : timeFormat(datum.value, '%Y-%m-%d') == '1973-05-07' ? '1973-05-07' : timeFormat(datum.value, '%Y-%m-%d') == '1973-08-27' ? '1973-08-27' : timeFormat(datum.value, '%Y-%m-%d') == '1973-06-18' ? '1973-06-18' : timeFormat(datum.value, '%Y-%m-%d') == '1973-07-09' ? '1973-07-09' : timeFormat(datum.value, '%Y-%m-%d') == '1973-05-21' ? '1973-05-21' : timeFormat(datum.value, '%Y-%m-%d') == '1973-08-13' ? '1973-08-13' : timeFormat(datum.value, '%Y-%m-%d') == '1973-06-04' ? '1973-06-04' : timeFormat(datum.value, '%Y-%m-%d') == '1973-09-17' ? '1973-09-17' : timeFormat(datum.value, '%Y-%m-%d') == '1973-07-23' ? '1973-07-23' : timeFormat(datum.value, '%Y-%m-%d') == '1973-04-30' ? '1973-04-30' : timeFormat(datum.value, '%Y-%m-%d') == '1973-08-20' ? '1973-08-20' : timeFormat(datum.value, '%Y-%m-%d') == '1973-04-23' ? '1973-04-23' : timeFormat(datum.value, '%Y-%m-%d') == '1973-09-24' ? '1973-09-24' : timeFormat(datum.value, '%Y-%m-%d') == '1973-08-06' ? '1973-08-06' : timeFormat(datum.value, '%Y-%m-%d') == '1973-05-28' ? '1973-05-28' : timeFormat(datum.value, '%Y-%m-%d') == '1973-10-01' ? '1973-10-01' : timeFormat(datum.value, '%Y-%m-%d') == '1973-09-03' ? '1973-09-03' : timeFormat(datum.value, '%Y-%m-%d') == '1973-05-14' ? '1973-05-14' : timeFormat(datum.value, '%Y-%m-%d') == '1973-09-10' ? '1973-09-10' : timeFormat(datum.value, '%Y-%m-%d') == '1973-07-02' ? '1973-07-02' : timeFormat(datum.value, '%Y-%m-%d') == '1973-07-30' ? '1973-07-30' : timeFormat(datum.value, '%Y-%m-%d') == '1973-07-16' ? '1973-07-16' : timeFormat(datum.value, '%Y-%m-%d') == '1973-10-08' ? '1973-10-08' : datum.label","values":["1973-04-23","1973-04-30","1973-05-07","1973-05-14","1973-05-21","1973-05-28","1973-06-04","1973-06-11","1973-06-18","1973-06-25","1973-07-02","1973-07-09","1973-07-16","1973-07-23","1973-07-30","1973-08-06","1973-08-13","1973-08-20","1973-08-27","1973-09-03","1973-09-10","1973-09-17","1973-09-24","1973-10-01","1973-10-08"]},"field":"__ggsql_aes_x__","scale":{"zero":false},"title":"Date","type":"temporal"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '90' ? '90' : datum.label == '80' ? '80' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_y__","scale":{"domain":[53.95,99.05],"zero":false},"title":"Temp","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}]},"width":"container"};
+    const visId = 'vis-1771854166618';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>In order to show data where the facet variable is null, it is necessary to explicitly include <code>null</code> in the input range of a facet aesthetic scale. Just like discrete positional aesthetics. You can also use <code>RENAMING</code> on the scale to customize facet strip labels.</p>
+<div id="86a5ab80" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> sex <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> species</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> panel <span class="kw">FROM</span> [<span class="st">'Adelie'</span>, null]</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">RENAMING</span> null <span class="op">=&gt;</span> <span class="st">'The rest'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div id="vis-1771854166644"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","columns":2,"config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_panel__":null,"__ggsql_aes_x__":"male","__ggsql_aes_y__":95,"__ggsql_aes_yend__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":null,"__ggsql_aes_x__":null,"__ggsql_aes_y__":5,"__ggsql_aes_yend__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":null,"__ggsql_aes_x__":"female","__ggsql_aes_y__":92,"__ggsql_aes_yend__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"Adelie","__ggsql_aes_x__":"male","__ggsql_aes_y__":73,"__ggsql_aes_yend__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"Adelie","__ggsql_aes_x__":"female","__ggsql_aes_y__":73,"__ggsql_aes_yend__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_panel__":"Adelie","__ggsql_aes_x__":null,"__ggsql_aes_y__":6,"__ggsql_aes_yend__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"facet":{"field":"__ggsql_aes_panel__","header":{"labelExpr":"datum.value == null ? 'The rest' : datum.value == 'Adelie' ? 'Adelie' : datum.value"},"sort":["Adelie",null],"type":"nominal"},"height":"container","spec":{"layer":[{"encoding":{"detail":{"field":"__ggsql_aes_panel__","type":"nominal"},"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == 'male' ? 'male' : datum.label == 'female' ? 'female' : datum.label"},"field":"__ggsql_aes_x__","scale":{"domain":["female","male",null],"zero":false},"title":"sex","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '0' ? '0' : datum.label == '60' ? '60' : datum.label == '20' ? '20' : datum.label == '80' ? '80' : datum.label","values":[0.0,20.0,40.0,60.0,80.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-4.75,99.75],"zero":false},"title":"count","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '0' ? '0' : datum.label == '60' ? '60' : datum.label == '20' ? '20' : datum.label == '80' ? '80' : datum.label","values":[0.0,20.0,40.0,60.0,80.0]},"field":"__ggsql_aes_yend__","scale":{"domain":[-4.75,99.75]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}]},"width":"container"};
+    const visId = 'vis-1771854166644';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
 
 
 </section>
