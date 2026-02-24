@@ -254,7 +254,12 @@ fn build_layer_encoding(
             continue;
         }
 
-        let channel_name = map_aesthetic_name(aesthetic);
+        let mut channel_name = map_aesthetic_name(aesthetic);
+        // Opacity is retargeted to the fill when fill is supported
+        if channel_name == "opacity" && layer.mappings.contains_key("fill") {
+            channel_name = "fillOpacity".to_string();
+        }
+
         let channel_encoding = build_encoding_channel(aesthetic, value, &mut enc_ctx)?;
         encoding.insert(channel_name, channel_encoding);
 
