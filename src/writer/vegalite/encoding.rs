@@ -400,6 +400,10 @@ struct ScaleContext<'a> {
     is_binned_legend: bool,
     #[allow(dead_code)]
     spec: &'a Plot, // Reserved for future use (e.g., multi-scale legend decisions)
+    /// Whether to skip domain for x axis (facet free scales)
+    free_x: bool,
+    /// Whether to skip domain for y axis (facet free scales)
+    free_y: bool,
 }
 
 /// Build scale properties from SCALE clause
@@ -414,9 +418,15 @@ fn build_scale_properties(
     let mut scale_obj = serde_json::Map::new();
     let mut needs_gradient_legend = false;
 
+    // Check if we should skip domain due to facet free scales
+    // When using free scales, Vega-Lite computes independent domains per facet panel.
+    // Setting an explicit domain would override this behavior.
+    let skip_domain = (ctx.aesthetic == "x" && ctx.free_x) || (ctx.aesthetic == "y" && ctx.free_y);
+
     // Apply domain from input_range (FROM clause)
     // Skip for threshold scales - they use internal breaks as domain instead
-    if !ctx.is_binned_legend {
+    // Skip for free facet scales - Vega-Lite should compute independent domains
+    if !ctx.is_binned_legend && !skip_domain {
         if let Some(ref domain_values) = scale.input_range {
             let domain_json: Vec<Value> = domain_values.iter().map(|elem| elem.to_json()).collect();
             scale_obj.insert("domain".to_string(), json!(domain_json));
@@ -730,6 +740,10 @@ pub(super) struct EncodingContext<'a> {
     pub spec: &'a Plot,
     pub titled_families: &'a mut HashSet<String>,
     pub primary_aesthetics: &'a HashSet<String>,
+    /// Whether facet has free x scale (independent domains per panel)
+    pub free_x: bool,
+    /// Whether facet has free y scale (independent domains per panel)
+    pub free_y: bool,
 }
 
 /// Build encoding channel from aesthetic mapping
@@ -807,6 +821,8 @@ fn build_column_encoding(
             aesthetic,
             spec: ctx.spec,
             is_binned_legend,
+            free_x: ctx.free_x,
+            free_y: ctx.free_y,
         };
         let (scale_obj, needs_gradient) = build_scale_properties(scale, &scale_ctx);
 
@@ -858,7 +874,12 @@ fn build_column_encoding(
 /// Build encoding for a literal aesthetic value
 fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value> {
     let val = match lit {
-        ParameterValue::String(s) => json!(s),
+        ParameterValue::String(s) => match aesthetic {
+            "linetype" => linetype_to_stroke_dash(s)
+                .map(|arr| json!(arr))
+                .unwrap_or_else(|| json!(s)),
+            _ => json!(s),
+        },
         ParameterValue::Number(n) => {
             match aesthetic {
                 // Size: radius (points) → area (pixels²)
@@ -868,10 +889,7 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
                 _ => json!(n),
             }
         }
-        ParameterValue::Boolean(b) => json!(b),
-        ParameterValue::Array(_) | ParameterValue::Null => {
-            unreachable!("Grammar prevents arrays and null in literal aesthetic mappings")
-        }
+        _ => lit.to_json(),
     };
     Ok(json!({"value": val}))
 }

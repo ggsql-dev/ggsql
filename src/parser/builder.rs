@@ -5,7 +5,7 @@
 
 use crate::plot::aesthetic::is_aesthetic_name;
 use crate::plot::layer::geom::Geom;
-use crate::plot::scale::{color_to_hex, is_color_aesthetic, Transform};
+use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_facet_aesthetic, Transform};
 use crate::plot::*;
 use crate::{GgsqlError, Result};
 use std::collections::HashMap;
@@ -673,6 +673,14 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
         }
     }
 
+    // Validate facet aesthetics cannot have output ranges (TO clause)
+    if is_facet_aesthetic(&aesthetic) && output_range.is_some() {
+        return Err(GgsqlError::ValidationError(format!(
+            "SCALE {}: facet variables cannot have output ranges (TO clause)",
+            aesthetic
+        )));
+    }
+
     Ok(Scale {
         aesthetic,
         scale_type,
@@ -778,6 +786,7 @@ fn parse_scale_renaming_clause(
             "*" => "*".to_string(),
             "string" => parse_string_node(&name_node, source),
             "number" => source.get_text(&name_node),
+            "null_literal" => "null".to_string(), // null key for renaming null values
             _ => {
                 return Err(GgsqlError::ParseError(format!(
                     "Invalid 'from' type in scale renaming: {}",
@@ -817,75 +826,64 @@ fn parse_scale_renaming_clause(
 // ============================================================================
 
 /// Build a Facet from a facet_clause node
+///
+/// FACET vars [BY vars] [SETTING ...]
+/// - Single variable = wrap layout (no WRAP keyword needed)
+/// - BY clause = grid layout
 fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
-    let mut is_wrap = false;
     let mut row_vars = Vec::new();
-    let mut col_vars = Vec::new();
-    let mut scales = FacetScales::Fixed;
+    let mut column_vars = Vec::new();
+    let mut properties = HashMap::new();
 
     let mut cursor = node.walk();
     let mut next_vars_are_cols = false;
 
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "FACET" | "SETTING" | "=>" => continue,
-            "facet_wrap" => {
-                is_wrap = true;
-            }
+            "FACET" => continue,
             "facet_by" => {
                 next_vars_are_cols = true;
             }
             "facet_vars" => {
                 // Parse list of variable names
                 let vars = parse_facet_vars(&child, source)?;
-                if is_wrap {
-                    row_vars = vars;
-                } else if next_vars_are_cols {
-                    col_vars = vars;
+                if next_vars_are_cols {
+                    column_vars = vars;
                 } else {
                     row_vars = vars;
                 }
             }
-            "facet_scales" => {
-                scales = parse_facet_scales(&child, source)?;
+            "setting_clause" => {
+                // Reuse existing setting_clause parser
+                properties = parse_setting_clause(&child, source)?;
             }
             _ => {}
         }
     }
 
-    if is_wrap {
-        Ok(Facet::Wrap {
+    // Determine layout variant: if column_vars is empty, it's a wrap layout
+    let layout = if column_vars.is_empty() {
+        FacetLayout::Wrap {
             variables: row_vars,
-            scales,
-        })
+        }
     } else {
-        Ok(Facet::Grid {
-            rows: row_vars,
-            cols: col_vars,
-            scales,
-        })
-    }
+        FacetLayout::Grid {
+            row: row_vars,
+            column: column_vars,
+        }
+    };
+
+    Ok(Facet {
+        layout,
+        properties,
+        resolved: false,
+    })
 }
 
 /// Parse facet variables from a facet_vars node
 fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
     let query = "(identifier) @var";
     Ok(source.find_texts(node, query))
-}
-
-/// Parse facet scales from a facet_scales node
-fn parse_facet_scales(node: &Node, source: &SourceTree) -> Result<FacetScales> {
-    let text = source.get_text(node);
-    match text.as_str() {
-        "fixed" => Ok(FacetScales::Fixed),
-        "free" => Ok(FacetScales::Free),
-        "free_x" => Ok(FacetScales::FreeX),
-        "free_y" => Ok(FacetScales::FreeY),
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unknown facet scales: {}",
-            text
-        ))),
-    }
 }
 
 // ============================================================================
