@@ -1614,8 +1614,8 @@ mod tests {
         // Point default stroke = "black"
         assert_eq!(encoding["stroke"]["value"], "black");
 
-        // Point default opacity = 1.0
-        assert_eq!(encoding["opacity"]["value"], 1.0);
+        // Point default opacity = 0.8 (retargeted to fillOpacity when fill is present)
+        assert_eq!(encoding["fillOpacity"]["value"], 0.8);
     }
 
     #[test]
@@ -1638,8 +1638,9 @@ mod tests {
 
         let encoding = &json["layer"][0]["encoding"];
 
-        // Should use SETTING value (0.5), not default (1.0)
-        assert_eq!(encoding["opacity"]["value"], 0.5);
+        // Should use SETTING value (0.5), not default (0.8)
+        // Opacity is retargeted to fillOpacity when fill is present
+        assert_eq!(encoding["fillOpacity"]["value"], 0.5);
     }
 
     #[test]
