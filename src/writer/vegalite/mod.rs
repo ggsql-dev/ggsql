@@ -490,65 +490,75 @@ fn apply_facet_ordering(facet_def: &mut Value, scale: Option<&Scale>) {
     }
 }
 
+/// Extract free scales from facet properties as a boolean vector
+///
+/// After facet resolution, the `free` property is normalized to a boolean array:
+/// - `[true, false]` = free x/theta, fixed y/radius
+/// - `[false, true]` = fixed x/theta, free y/radius
+/// - `[true, true]` = both free
+/// - `[false, false]` = both fixed (default)
+///
+/// Returns (free_x, free_y) for Vega-Lite output (position-indexed).
+fn get_free_scales(facet: Option<&crate::plot::Facet>) -> (bool, bool) {
+    let Some(facet) = facet else {
+        return (false, false);
+    };
+
+    let Some(ParameterValue::Array(arr)) = facet.properties.get("free") else {
+        return (false, false);
+    };
+
+    let free_pos1 = arr
+        .first()
+        .map(|e| matches!(e, crate::plot::ArrayElement::Boolean(true)))
+        .unwrap_or(false);
+    let free_pos2 = arr
+        .get(1)
+        .map(|e| matches!(e, crate::plot::ArrayElement::Boolean(true)))
+        .unwrap_or(false);
+
+    (free_pos1, free_pos2)
+}
+
 /// Apply scale resolution to Vega-Lite spec based on facet free property
 ///
-/// Maps ggsql free property to Vega-Lite resolve.scale configuration:
-/// - absent or null: shared scales (Vega-Lite default, no resolve needed)
-/// - 'x': independent x scale, shared y scale
-/// - 'y': shared x scale, independent y scale
-/// - ['x', 'y']: independent scales for both x and y
+/// Maps ggsql free property (boolean array) to Vega-Lite resolve.scale configuration:
+/// - `[false, false]`: shared scales (Vega-Lite default, no resolve needed)
+/// - `[true, false]`: independent x/theta scale, shared y/radius scale
+/// - `[false, true]`: shared x/theta scale, independent y/radius scale
+/// - `[true, true]`: independent scales for both axes
 fn apply_facet_scale_resolution(vl_spec: &mut Value, properties: &HashMap<String, ParameterValue>) {
-    let Some(free_value) = properties.get("free") else {
+    let Some(ParameterValue::Array(arr)) = properties.get("free") else {
         // No free property means fixed/shared scales (Vega-Lite default)
         return;
     };
 
-    match free_value {
-        ParameterValue::Null => {
-            // Explicit null means shared scales (same as default)
-        }
-        ParameterValue::String(s) => match s.as_str() {
-            "x" => {
-                vl_spec["resolve"] = json!({
-                    "scale": {"x": "independent"}
-                });
-            }
-            "y" => {
-                vl_spec["resolve"] = json!({
-                    "scale": {"y": "independent"}
-                });
-            }
-            _ => {
-                // Unknown value - resolution should have validated this
-            }
-        },
-        ParameterValue::Array(arr) => {
-            // Array means both x and y are free (already validated to be ['x', 'y'])
-            let has_x = arr
-                .iter()
-                .any(|e| matches!(e, crate::plot::ArrayElement::String(s) if s == "x"));
-            let has_y = arr
-                .iter()
-                .any(|e| matches!(e, crate::plot::ArrayElement::String(s) if s == "y"));
+    // Extract booleans from the array (position-indexed)
+    let free_x = arr
+        .first()
+        .map(|e| matches!(e, crate::plot::ArrayElement::Boolean(true)))
+        .unwrap_or(false);
+    let free_y = arr
+        .get(1)
+        .map(|e| matches!(e, crate::plot::ArrayElement::Boolean(true)))
+        .unwrap_or(false);
 
-            if has_x && has_y {
-                vl_spec["resolve"] = json!({
-                    "scale": {"x": "independent", "y": "independent"}
-                });
-            } else if has_x {
-                vl_spec["resolve"] = json!({
-                    "scale": {"x": "independent"}
-                });
-            } else if has_y {
-                vl_spec["resolve"] = json!({
-                    "scale": {"y": "independent"}
-                });
-            }
-        }
-        _ => {
-            // Invalid type - resolution should have validated this
-        }
+    // Apply resolve configuration to Vega-Lite spec
+    // Note: Vega-Lite uses x/y for output, regardless of coord system
+    if free_x && free_y {
+        vl_spec["resolve"] = json!({
+            "scale": {"x": "independent", "y": "independent"}
+        });
+    } else if free_x {
+        vl_spec["resolve"] = json!({
+            "scale": {"x": "independent"}
+        });
+    } else if free_y {
+        vl_spec["resolve"] = json!({
+            "scale": {"y": "independent"}
+        });
     }
+    // If neither is free, don't add resolve (Vega-Lite default is shared)
 }
 
 /// Apply label renaming to a facet definition via header.labelExpr
@@ -931,28 +941,8 @@ impl Writer for VegaLiteWriter {
         // 2. Determine if facet free scales should omit x/y domains
         // When using free scales, Vega-Lite computes independent domains per facet panel.
         // We must not set explicit domains (from SCALE or COORD) as they would override this.
-        let (free_x, free_y) = if let Some(ref facet) = spec.facet {
-            match facet.properties.get("free") {
-                Some(ParameterValue::String(s)) => match s.as_str() {
-                    "x" => (true, false),
-                    "y" => (false, true),
-                    _ => (false, false),
-                },
-                Some(ParameterValue::Array(arr)) => {
-                    let has_x = arr
-                        .iter()
-                        .any(|e| matches!(e, crate::plot::ArrayElement::String(s) if s == "x"));
-                    let has_y = arr
-                        .iter()
-                        .any(|e| matches!(e, crate::plot::ArrayElement::String(s) if s == "y"));
-                    (has_x, has_y)
-                }
-                // null or absent means fixed/shared scales
-                _ => (false, false),
-            }
-        } else {
-            (false, false)
-        };
+        // The free property is normalized to a boolean array [pos1_free, pos2_free].
+        let (free_x, free_y) = get_free_scales(spec.facet.as_ref());
 
         // 3. Determine layer data keys
         let layer_data_keys: Vec<String> = spec
@@ -1843,7 +1833,7 @@ mod tests {
 
     #[test]
     fn test_facet_free_scales_omits_domain() {
-        // Test that FACET with free => ['x', 'y'] does not set explicit domains
+        // Test that FACET with free => [true, true] does not set explicit domains
         // This allows Vega-Lite to compute independent domains per facet panel
         use crate::plot::scale::Scale;
         use crate::plot::{ArrayElement, Facet, FacetLayout, ParameterValue};
@@ -1862,13 +1852,14 @@ mod tests {
             );
         spec.layers.push(layer);
 
-        // Add facet with free => ['x', 'y']
+        // Add facet with free => [true, true] (both x and y free)
+        // This is the normalized format after facet resolution
         let mut facet_properties = HashMap::new();
         facet_properties.insert(
             "free".to_string(),
             ParameterValue::Array(vec![
-                ArrayElement::String("x".to_string()),
-                ArrayElement::String("y".to_string()),
+                ArrayElement::Boolean(true), // pos1 (x) is free
+                ArrayElement::Boolean(true), // pos2 (y) is free
             ]),
         );
         spec.facet = Some(Facet {
@@ -1922,7 +1913,7 @@ mod tests {
 
     #[test]
     fn test_facet_free_y_only_omits_y_domain() {
-        // Test that FACET with free => 'y' omits y domain but keeps x domain
+        // Test that FACET with free => [false, true] omits y domain but keeps x domain
         use crate::plot::scale::Scale;
         use crate::plot::{ArrayElement, Facet, FacetLayout, ParameterValue};
 
@@ -1940,9 +1931,16 @@ mod tests {
             );
         spec.layers.push(layer);
 
-        // Add facet with free => 'y'
+        // Add facet with free => [false, true] (only y is free)
+        // This is the normalized format after facet resolution
         let mut facet_properties = HashMap::new();
-        facet_properties.insert("free".to_string(), ParameterValue::String("y".to_string()));
+        facet_properties.insert(
+            "free".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Boolean(false), // pos1 (x) is fixed
+                ArrayElement::Boolean(true),  // pos2 (y) is free
+            ]),
+        );
         spec.facet = Some(Facet {
             layout: FacetLayout::Wrap {
                 variables: vec!["category".to_string()],
