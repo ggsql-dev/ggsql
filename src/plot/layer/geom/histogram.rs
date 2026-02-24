@@ -24,9 +24,9 @@ impl GeomTrait for Histogram {
             defaults: &[
                 ("x", DefaultAestheticValue::Required),
                 ("weight", DefaultAestheticValue::Null),
-                ("fill", DefaultAestheticValue::String("#000000B2")),
+                ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),
-                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("opacity", DefaultAestheticValue::Number(0.8)),
                 // y and xend are produced by stat_histogram but not valid for manual MAPPING
                 ("y", DefaultAestheticValue::Delayed),
                 ("xend", DefaultAestheticValue::Delayed),
