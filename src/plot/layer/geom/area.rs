@@ -18,7 +18,7 @@ impl GeomTrait for Area {
             defaults: &[
                 ("x", DefaultAestheticValue::Required),
                 ("y", DefaultAestheticValue::Required),
-                ("fill", DefaultAestheticValue::String("black")),
+                ("fill", DefaultAestheticValue::String("#000000B2")),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(0.8)),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),

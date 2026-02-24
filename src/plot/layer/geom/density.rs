@@ -29,8 +29,8 @@ impl GeomTrait for Density {
             defaults: &[
                 ("x", DefaultAestheticValue::Required),
                 ("weight", DefaultAestheticValue::Null),
-                ("fill", DefaultAestheticValue::String("black")),
-                ("stroke", DefaultAestheticValue::String("#000000B2")),
+                ("fill", DefaultAestheticValue::String("#000000B2")),
+                ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(0.8)),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("linetype", DefaultAestheticValue::String("solid")),
