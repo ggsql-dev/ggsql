@@ -367,16 +367,18 @@ pub enum ScaleType {
 }
 
 pub enum Facet {
-    /// FACET WRAP variables
+    /// FACET variables (wrap layout)
     Wrap {
         variables: Vec<String>,
         scales: FacetScales,
+        properties: HashMap<String, ParameterValue>,  // From SETTING clause
     },
-    /// FACET rows BY cols
+    /// FACET rows BY cols (grid layout)
     Grid {
         rows: Vec<String>,
         cols: Vec<String>,
         scales: FacetScales,
+        properties: HashMap<String, ParameterValue>,  // From SETTING clause
     },
 }
 
@@ -1177,7 +1179,7 @@ Where `<global_mapping>` can be:
 | `VISUALISE` | ✅ Yes     | Entry point       | `VISUALISE date AS x, revenue AS y`       |
 | `DRAW`      | ✅ Yes     | Define layers     | `DRAW line MAPPING date AS x, value AS y` |
 | `SCALE`     | ✅ Yes     | Configure scales  | `SCALE x VIA date`                        |
-| `FACET`     | ❌ No      | Small multiples   | `FACET WRAP region`                       |
+| `FACET`     | ❌ No      | Small multiples   | `FACET region`                            |
 | `COORD`     | ❌ No      | Coordinate system | `COORD cartesian SETTING xlim => [0,100]` |
 | `LABEL`     | ❌ No      | Text labels       | `LABEL title => 'My Chart', x => 'Date'`  |
 | `THEME`     | ❌ No      | Visual styling    | `THEME minimal`                           |
@@ -1372,25 +1374,52 @@ SCALE x VIA date FROM ['2024-01-01', '2024-12-31'] SETTING breaks => '1 month'
 **Syntax**:
 
 ```sql
--- Grid layout
-FACET <row_vars> BY <col_vars> [SETTING scales => <sharing>]
+-- Wrap layout (single variable = automatic wrap)
+FACET <vars> [SETTING <param> => <value>, ...]
 
--- Wrapped layout
-FACET WRAP <vars> [SETTING scales => <sharing>]
+-- Grid layout (BY clause for row × column)
+FACET <row_vars> BY <col_vars> [SETTING ...]
 ```
 
-**Scale Sharing**:
+**SETTING Properties**:
 
-- `'fixed'` (default) - Same scales across all facets
-- `'free'` - Independent scales for each facet
-- `'free_x'` - Independent x-axis, shared y-axis
-- `'free_y'` - Independent y-axis, shared x-axis
+- `free => <axes>` - Which axes have independent scales (see below)
+- `ncol => <number>` - Number of columns for wrap layout
+- `spacing => <number>` - Space between facets
 
-**Example**:
+**Free Scales** (`free` property):
+
+- `null` or omitted (default) - Shared/fixed scales across all facets
+- `'x'` - Independent x-axis, shared y-axis
+- `'y'` - Shared x-axis, independent y-axis
+- `['x', 'y']` - Independent scales for both axes
+
+**Customizing Strip Labels**:
+
+To customize facet strip labels, use `SCALE panel RENAMING ...` (for wrap) or `SCALE row/column RENAMING ...` (for grid).
+
+**Examples**:
 
 ```sql
-FACET WRAP region SETTING scales => 'free_y'
-FACET region BY category SETTING scales => 'fixed'
+-- Simple wrap facet
+FACET region
+
+-- Grid facet with BY
+FACET region BY category
+
+-- With free y-axis scales
+FACET region SETTING free => 'y'
+
+-- With column count for wrap
+FACET region SETTING ncol => 3
+
+-- With label renaming via scale
+FACET region
+SCALE panel RENAMING 'N' => 'North', 'S' => 'South'
+
+-- Combined grid with settings
+FACET region BY category
+    SETTING free => ['x', 'y'], spacing => 10
 ```
 
 ### COORD Clause
@@ -1536,7 +1565,7 @@ DRAW line
 DRAW point
     MAPPING sale_date AS x, total AS y, region AS color
 SCALE x VIA date
-FACET WRAP region
+FACET region
 LABEL title => 'Sales Trends by Region', x => 'Date', y => 'Total Quantity'
 THEME minimal
 ```

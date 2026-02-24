@@ -648,6 +648,8 @@ module.exports = grammar({
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
       // Text aesthetics
       'label', 'family', 'fontface', 'hjust', 'vjust',
+      // Facet aesthetics
+      'panel', 'row', 'column',
       // Computed variables
       'offset'
     ),
@@ -691,7 +693,8 @@ module.exports = grammar({
       field('name', choice(
         '*',                              // Wildcard for template
         $.string,
-        $.number
+        $.number,
+        $.null_literal                    // NULL for renaming null values
       )),
       '=>',
       field('value', choice($.string, $.null_literal))  // String label or NULL to suppress
@@ -727,35 +730,23 @@ module.exports = grammar({
       $.identifier
     ),
 
-    // FACET clause - FACET ... SETTING scales => ...
-    facet_clause: $ => choice(
-      // FACET row_vars BY col_vars
-      seq(
-        caseInsensitive('FACET'),
-        $.facet_vars,
+    // FACET clause - FACET vars [BY vars] [SETTING ...]
+    // Single variable = wrap layout, BY clause = grid layout
+    facet_clause: $ => seq(
+      caseInsensitive('FACET'),
+      $.facet_vars,
+      optional(seq(
         alias(caseInsensitive('BY'), $.facet_by),
-        $.facet_vars,
-        optional(seq(caseInsensitive('SETTING'), caseInsensitive('scales'), '=>', $.facet_scales))
-      ),
-      // FACET WRAP vars
-      seq(
-        caseInsensitive('FACET'),
-        alias(caseInsensitive('WRAP'), $.facet_wrap),
-        $.facet_vars,
-        optional(seq(caseInsensitive('SETTING'), caseInsensitive('scales'), '=>', $.facet_scales))
-      )
+        $.facet_vars
+      )),
+      optional($.setting_clause)            // Reuse from DRAW/SCALE
     ),
 
-    facet_wrap: $ => 'WRAP',
     facet_by: $ => 'BY',
 
     facet_vars: $ => seq(
       $.identifier,
       repeat(seq(',', $.identifier))
-    ),
-
-    facet_scales: $ => choice(
-      'fixed', 'free', 'free_x', 'free_y'
     ),
 
     // COORD clause - COORD [type] [SETTING prop => value, ...]
