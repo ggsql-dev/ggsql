@@ -434,9 +434,22 @@ impl TextRenderer {
         prototype: Value,
         data_key: &str,
         font_runs: &[(FontKey, usize)],
+        layer: &Layer,
     ) -> Result<Vec<Value>> {
         // Extract shared encoding from prototype
         let shared_encoding = prototype.get("encoding").cloned();
+
+        // Build base mark object with nudge parameters (prototype for all runs)
+        let mut base_mark = json!({"type": "text"});
+        if let Some(mark_map) = base_mark.as_object_mut() {
+            // Extract nudge parameters (nudge_x → xOffset, nudge_y → yOffset)
+            if let Some(ParameterValue::Number(x_offset)) = layer.parameters.get("nudge_x") {
+                mark_map.insert("xOffset".to_string(), json!(x_offset));
+            }
+            if let Some(ParameterValue::Number(y_offset)) = layer.parameters.get("nudge_y") {
+                mark_map.insert("yOffset".to_string(), json!(y_offset));
+            }
+        }
 
         // Build individual layers without encoding (mark + transform only)
         // font_runs preserves natural row order through RLE
@@ -447,8 +460,8 @@ impl TextRenderer {
                 let suffix = format!("_font_{}", run_idx);
                 let source_key = format!("{}{}", data_key, suffix);
 
-                // Create mark object with font properties
-                let mut mark_obj = json!({"type": "text"});
+                // Clone base mark and add font-specific properties
+                let mut mark_obj = base_mark.clone();
                 if let Some(mark_map) = mark_obj.as_object_mut() {
                     Self::apply_font_properties(mark_map, font_key);
                 }
@@ -533,7 +546,7 @@ impl GeomRenderer for TextRenderer {
     fn finalize(
         &self,
         prototype: Value,
-        _layer: &Layer,
+        layer: &Layer,
         data_key: &str,
         prepared: &PreparedData,
     ) -> Result<Vec<Value>> {
@@ -551,7 +564,7 @@ impl GeomRenderer for TextRenderer {
             })?;
 
         // Generate nested layers from font runs (works for single or multiple runs)
-        self.finalize_nested_layers(prototype, data_key, font_runs)
+        self.finalize_nested_layers(prototype, data_key, font_runs, layer)
     }
 }
 
@@ -1594,6 +1607,73 @@ mod tests {
                 row[&angle_col].is_number(),
                 "Data row should have numeric angle: {:?}",
                 row
+            );
+        }
+    }
+
+    #[test]
+    fn test_text_nudge_parameters() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Integration test: nudge_x and nudge_y parameters should map to xOffset/yOffset
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Query with nudge parameters
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                chr(65 + n::INTEGER) as label
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, label
+            DRAW text SETTING nudge_x => 5, nudge_y => -10
+        "#;
+
+        // Execute and prepare data
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        assert_eq!(prepared.specs.len(), 1);
+
+        let spec = &prepared.specs[0];
+        assert_eq!(spec.layers.len(), 1);
+
+        // Generate Vega-Lite JSON
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Text renderer creates nested layers structure
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        assert_eq!(top_layers.len(), 1);
+
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        // All nested layers should have xOffset and yOffset in mark
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+
+            assert!(
+                mark.contains_key("xOffset"),
+                "Mark should have xOffset from nudge_x"
+            );
+            assert_eq!(
+                mark["xOffset"].as_f64().unwrap(),
+                5.0,
+                "xOffset should be 5"
+            );
+
+            assert!(
+                mark.contains_key("yOffset"),
+                "Mark should have yOffset from nudge_y"
+            );
+            assert_eq!(
+                mark["yOffset"].as_f64().unwrap(),
+                -10.0,
+                "yOffset should be -10"
             );
         }
     }

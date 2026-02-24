@@ -1,4 +1,6 @@
 //! Label geom implementation
+use crate::plot::{DefaultParam, DefaultParamValue};
+
 use super::{GeomAesthetics, GeomTrait, GeomType};
 
 /// Label geom - text labels with background
@@ -19,6 +21,19 @@ impl GeomTrait for Label {
             required: &["x", "y"],
             hidden: &[],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[
+            DefaultParam {
+                name: "nudge_x",
+                default: DefaultParamValue::Null,
+            },
+            DefaultParam {
+                name: "nudge_y",
+                default: DefaultParamValue::Null,
+            },
+        ]
     }
 }
 

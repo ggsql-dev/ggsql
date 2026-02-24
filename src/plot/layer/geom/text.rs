@@ -1,5 +1,7 @@
 //! Text geom implementation
 
+use crate::plot::{DefaultParam, DefaultParamValue};
+
 use super::{GeomAesthetics, GeomTrait, GeomType};
 
 /// Text geom - text labels at positions
@@ -20,6 +22,19 @@ impl GeomTrait for Text {
             required: &["x", "y"],
             hidden: &[],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[
+            DefaultParam {
+                name: "nudge_x",
+                default: DefaultParamValue::Null,
+            },
+            DefaultParam {
+                name: "nudge_y",
+                default: DefaultParamValue::Null,
+            },
+        ]
     }
 }
 
