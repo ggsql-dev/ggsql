@@ -16,15 +16,15 @@ impl GeomTrait for Area {
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
             supported: &[
-                "x",
-                "y",
+                "pos1",
+                "pos2",
                 "fill",
                 "stroke",
                 "opacity",
                 "linewidth",
                 // "linetype", // vegalite doesn't support strokeDash
             ],
-            required: &["x", "y"],
+            required: &["pos1", "pos2"],
             hidden: &[],
         }
     }

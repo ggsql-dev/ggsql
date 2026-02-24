@@ -22,6 +22,8 @@ use crate::naming;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use super::aesthetic::AestheticContext;
+
 // Re-export input types
 pub use super::types::{
     AestheticValue, ArrayElement, ColumnInfo, DataSource, DefaultAestheticValue, Mappings,
@@ -48,7 +50,7 @@ pub use super::projection::{Coord, Projection};
 pub use super::facet::{Facet, FacetLayout};
 
 /// Complete ggsql visualization specification
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Plot {
     /// Global aesthetic mappings (from VISUALISE clause)
     pub global_mappings: Mappings,
@@ -66,6 +68,10 @@ pub struct Plot {
     pub labels: Option<Labels>,
     /// Theme styling (from THEME clause)
     pub theme: Option<Theme>,
+    /// Aesthetic context for coordinate-specific aesthetic names
+    /// Computed from the coord type and facet, used for transformations
+    #[serde(skip)]
+    pub aesthetic_context: Option<AestheticContext>,
 }
 
 /// Text labels (from LABELS clause)
@@ -84,6 +90,20 @@ pub struct Theme {
     pub properties: HashMap<String, ParameterValue>,
 }
 
+// Manual PartialEq implementation (aesthetic_context is derived, not compared)
+impl PartialEq for Plot {
+    fn eq(&self, other: &Self) -> bool {
+        self.global_mappings == other.global_mappings
+            && self.source == other.source
+            && self.layers == other.layers
+            && self.scales == other.scales
+            && self.facet == other.facet
+            && self.project == other.project
+            && self.labels == other.labels
+            && self.theme == other.theme
+    }
+}
+
 impl Plot {
     /// Create a new empty Plot
     pub fn new() -> Self {
@@ -96,6 +116,7 @@ impl Plot {
             project: None,
             labels: None,
             theme: None,
+            aesthetic_context: None,
         }
     }
 
@@ -110,6 +131,70 @@ impl Plot {
             project: None,
             labels: None,
             theme: None,
+            aesthetic_context: None,
+        }
+    }
+
+    /// Get the aesthetic context, creating a default one if not set
+    pub fn get_aesthetic_context(&self) -> AestheticContext {
+        if let Some(ref ctx) = self.aesthetic_context {
+            ctx.clone()
+        } else {
+            // Create default based on coord (Cartesian if no project specified)
+            let positional_names = self
+                .project
+                .as_ref()
+                .map(|p| p.coord.positional_aesthetic_names())
+                .unwrap_or(&["x", "y"]);
+            let facet_names = self
+                .facet
+                .as_ref()
+                .map(|f| f.layout.get_aesthetics())
+                .unwrap_or_default();
+            AestheticContext::new(positional_names, &facet_names)
+        }
+    }
+
+    /// Set the aesthetic context based on the current coord and facet
+    pub fn initialize_aesthetic_context(&mut self) {
+        let positional_names = self
+            .project
+            .as_ref()
+            .map(|p| p.coord.positional_aesthetic_names())
+            .unwrap_or(&["x", "y"]);
+        let facet_names = self
+            .facet
+            .as_ref()
+            .map(|f| f.layout.get_aesthetics())
+            .unwrap_or_default();
+        self.aesthetic_context = Some(AestheticContext::new(positional_names, &facet_names));
+    }
+
+    /// Transform all aesthetic keys from user-facing to internal names.
+    ///
+    /// This should be called after the Plot is fully built and the aesthetic context
+    /// is initialized. It transforms:
+    /// - Global mappings
+    /// - Layer aesthetics
+    /// - Layer remappings
+    /// - Scale aesthetics
+    pub fn transform_aesthetics_to_internal(&mut self) {
+        let ctx = self.get_aesthetic_context();
+
+        // Transform global mappings
+        self.global_mappings.transform_to_internal(&ctx);
+
+        // Transform layer aesthetics and remappings
+        for layer in &mut self.layers {
+            layer.mappings.transform_to_internal(&ctx);
+            layer.remappings.transform_to_internal(&ctx);
+        }
+
+        // Transform scale aesthetics
+        for scale in &mut self.scales {
+            if let Some(internal) = ctx.map_user_to_internal(&scale.aesthetic) {
+                scale.aesthetic = internal.to_string();
+            }
         }
     }
 
@@ -263,21 +348,22 @@ mod tests {
 
     #[test]
     fn test_layer_validation() {
+        // Use internal aesthetic names (pos1, pos2) as geoms expect internal names
         let valid_point = Layer::new(Geom::point())
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x"))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y"));
+            .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"))
+            .with_aesthetic("pos2".to_string(), AestheticValue::standard_column("y"));
 
         assert!(valid_point.validate_required_aesthetics().is_ok());
 
         let invalid_point = Layer::new(Geom::point())
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x"));
+            .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"));
 
         assert!(invalid_point.validate_required_aesthetics().is_err());
 
         let valid_ribbon = Layer::new(Geom::ribbon())
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x"))
-            .with_aesthetic("ymin".to_string(), AestheticValue::standard_column("ymin"))
-            .with_aesthetic("ymax".to_string(), AestheticValue::standard_column("ymax"));
+            .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"))
+            .with_aesthetic("pos2min".to_string(), AestheticValue::standard_column("ymin"))
+            .with_aesthetic("pos2max".to_string(), AestheticValue::standard_column("ymax"));
 
         assert!(valid_ribbon.validate_required_aesthetics().is_ok());
     }
@@ -381,49 +467,52 @@ mod tests {
     fn test_geom_aesthetics() {
         // Point geom
         let point = Geom::point().aesthetics();
-        assert!(point.supported.contains(&"x"));
+        assert!(point.supported.contains(&"pos1"));
         assert!(point.supported.contains(&"size"));
         assert!(point.supported.contains(&"shape"));
         assert!(!point.supported.contains(&"linetype"));
-        assert_eq!(point.required, &["x", "y"]);
+        assert_eq!(point.required, &["pos1", "pos2"]);
 
         // Line geom
         let line = Geom::line().aesthetics();
         assert!(line.supported.contains(&"linetype"));
         assert!(line.supported.contains(&"linewidth"));
         assert!(!line.supported.contains(&"size"));
-        assert_eq!(line.required, &["x", "y"]);
+        assert_eq!(line.required, &["pos1", "pos2"]);
 
-        // Bar geom - optional x and y (stat decides aggregation)
+        // Bar geom - optional pos1 and pos2 (stat decides aggregation)
         let bar = Geom::bar().aesthetics();
         assert!(bar.supported.contains(&"fill"));
         assert!(bar.supported.contains(&"width"));
-        assert!(bar.supported.contains(&"y")); // Bar accepts optional y
-        assert!(bar.supported.contains(&"x")); // Bar accepts optional x
+        assert!(bar.supported.contains(&"pos2")); // Bar accepts optional pos2
+        assert!(bar.supported.contains(&"pos1")); // Bar accepts optional pos1
         assert_eq!(bar.required, &[] as &[&str]); // No required aesthetics
 
         // Text geom
         let text = Geom::text().aesthetics();
         assert!(text.supported.contains(&"label"));
         assert!(text.supported.contains(&"family"));
-        assert_eq!(text.required, &["x", "y"]);
+        assert_eq!(text.required, &["pos1", "pos2"]);
 
-        // Statistical geoms only require x
-        assert_eq!(Geom::histogram().aesthetics().required, &["x"]);
-        assert_eq!(Geom::density().aesthetics().required, &["x"]);
+        // Statistical geoms only require pos1
+        assert_eq!(Geom::histogram().aesthetics().required, &["pos1"]);
+        assert_eq!(Geom::density().aesthetics().required, &["pos1"]);
 
-        // Ribbon requires ymin/ymax
-        assert_eq!(Geom::ribbon().aesthetics().required, &["x", "ymin", "ymax"]);
+        // Ribbon requires pos2min/pos2max
+        assert_eq!(
+            Geom::ribbon().aesthetics().required,
+            &["pos1", "pos2min", "pos2max"]
+        );
 
         // Segment/arrow require endpoints
         assert_eq!(
             Geom::segment().aesthetics().required,
-            &["x", "y", "xend", "yend"]
+            &["pos1", "pos2", "pos1end", "pos2end"]
         );
 
-        // Reference lines
-        assert_eq!(Geom::hline().aesthetics().required, &["yintercept"]);
-        assert_eq!(Geom::vline().aesthetics().required, &["xintercept"]);
+        // Reference lines (these are special - they use intercept aesthetics, not positional)
+        assert_eq!(Geom::hline().aesthetics().required, &["pos2intercept"]);
+        assert_eq!(Geom::vline().aesthetics().required, &["pos1intercept"]);
         assert_eq!(
             Geom::abline().aesthetics().required,
             &["slope", "intercept"]
@@ -435,41 +524,49 @@ mod tests {
 
     #[test]
     fn test_aesthetic_family_primary_lookup() {
-        // Test that variant aesthetics map to their primary
-        assert_eq!(primary_aesthetic("x"), "x");
-        assert_eq!(primary_aesthetic("xmin"), "x");
-        assert_eq!(primary_aesthetic("xmax"), "x");
-        assert_eq!(primary_aesthetic("xend"), "x");
-        assert_eq!(primary_aesthetic("y"), "y");
-        assert_eq!(primary_aesthetic("ymin"), "y");
-        assert_eq!(primary_aesthetic("ymax"), "y");
-        assert_eq!(primary_aesthetic("yend"), "y");
+        // NOTE: primary_aesthetic() now only handles internal names (pos1, pos2, etc.)
+        // and non-positional aesthetics. For user-facing families, use AestheticContext.
 
-        // Non-family aesthetics return themselves
+        // Test that internal variant aesthetics map to their primary
+        assert_eq!(primary_aesthetic("pos1"), "pos1");
+        assert_eq!(primary_aesthetic("pos1min"), "pos1");
+        assert_eq!(primary_aesthetic("pos1max"), "pos1");
+        assert_eq!(primary_aesthetic("pos1end"), "pos1");
+        assert_eq!(primary_aesthetic("pos2"), "pos2");
+        assert_eq!(primary_aesthetic("pos2min"), "pos2");
+        assert_eq!(primary_aesthetic("pos2max"), "pos2");
+        assert_eq!(primary_aesthetic("pos2end"), "pos2");
+
+        // Non-positional aesthetics return themselves
         assert_eq!(primary_aesthetic("color"), "color");
         assert_eq!(primary_aesthetic("size"), "size");
         assert_eq!(primary_aesthetic("fill"), "fill");
+
+        // User-facing names return themselves (family resolution via AestheticContext)
+        assert_eq!(primary_aesthetic("x"), "x");
+        assert_eq!(primary_aesthetic("xmin"), "xmin");
     }
 
     #[test]
     fn test_compute_labels_from_variant_aesthetics() {
-        // Test that variant aesthetics (xmin, xmax) can contribute to primary aesthetic labels
+        // Test that variant aesthetics (pos1min, pos1max) can contribute to primary aesthetic labels
+        // NOTE: After aesthetic transformation, all positional aesthetics use internal names
         let mut spec = Plot::new();
         let layer = Layer::new(Geom::ribbon())
             .with_aesthetic(
-                "xmin".to_string(),
+                "pos1min".to_string(),
                 AestheticValue::standard_column("lower_bound"),
             )
             .with_aesthetic(
-                "xmax".to_string(),
+                "pos1max".to_string(),
                 AestheticValue::standard_column("upper_bound"),
             )
             .with_aesthetic(
-                "ymin".to_string(),
+                "pos2min".to_string(),
                 AestheticValue::standard_column("y_lower"),
             )
             .with_aesthetic(
-                "ymax".to_string(),
+                "pos2max".to_string(),
                 AestheticValue::standard_column("y_upper"),
             );
         spec.layers.push(layer);
@@ -478,78 +575,83 @@ mod tests {
 
         let labels = spec.labels.as_ref().unwrap();
         // First variant encountered sets the label for the primary aesthetic
-        // Note: HashMap iteration order may vary, so we just check both x and y have labels
+        // Note: HashMap iteration order may vary, so we just check both pos1 and pos2 have labels
         assert!(
-            labels.labels.contains_key("x"),
-            "x label should be set from xmin or xmax"
+            labels.labels.contains_key("pos1"),
+            "pos1 label should be set from pos1min or pos1max"
         );
         assert!(
-            labels.labels.contains_key("y"),
-            "y label should be set from ymin or ymax"
+            labels.labels.contains_key("pos2"),
+            "pos2 label should be set from pos2min or pos2max"
         );
     }
 
     #[test]
     fn test_user_label_overrides_computed() {
         // Test that user-specified labels take precedence over computed labels
+        // NOTE: After aesthetic transformation, all positional aesthetics use internal names
         let mut spec = Plot::new();
         let layer = Layer::new(Geom::ribbon())
             .with_aesthetic(
-                "xmin".to_string(),
+                "pos1min".to_string(),
                 AestheticValue::standard_column("lower_bound"),
             )
             .with_aesthetic(
-                "xmax".to_string(),
+                "pos1max".to_string(),
                 AestheticValue::standard_column("upper_bound"),
             )
             .with_aesthetic(
-                "ymin".to_string(),
+                "pos2min".to_string(),
                 AestheticValue::standard_column("y_lower"),
             )
             .with_aesthetic(
-                "ymax".to_string(),
+                "pos2max".to_string(),
                 AestheticValue::standard_column("y_upper"),
             );
         spec.layers.push(layer);
 
-        // Pre-set a user label for x
+        // Pre-set a user label for pos1
         let mut labels = Labels {
             labels: HashMap::new(),
         };
         labels
             .labels
-            .insert("x".to_string(), "Custom X Label".to_string());
+            .insert("pos1".to_string(), "Custom X Label".to_string());
         spec.labels = Some(labels);
 
         spec.compute_aesthetic_labels();
 
         let labels = spec.labels.as_ref().unwrap();
         // User-specified label should be preserved
-        assert_eq!(labels.labels.get("x"), Some(&"Custom X Label".to_string()));
-        // y should still be computed from variants
-        assert!(labels.labels.contains_key("y"));
+        assert_eq!(
+            labels.labels.get("pos1"),
+            Some(&"Custom X Label".to_string())
+        );
+        // pos2 should still be computed from variants
+        assert!(labels.labels.contains_key("pos2"));
     }
 
     #[test]
     fn test_primary_aesthetic_sets_label_before_variants() {
         // Test that if both primary and variant are mapped, primary takes precedence
+        // NOTE: After aesthetic transformation, all positional aesthetics use internal names
         let mut spec = Plot::new();
         let layer = Layer::new(Geom::point())
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
-            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value"));
+            .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("date"))
+            .with_aesthetic("pos2".to_string(), AestheticValue::standard_column("value"));
         spec.layers.push(layer);
 
-        // Add a second layer with xmin
+        // Add a second layer with pos1min
         let layer2 = Layer::new(Geom::ribbon())
-            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
-            .with_aesthetic("xmin".to_string(), AestheticValue::standard_column("lower"))
-            .with_aesthetic("xmax".to_string(), AestheticValue::standard_column("upper"))
+            .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("date"))
+            .with_aesthetic("pos1min".to_string(), AestheticValue::standard_column("lower"))
+            .with_aesthetic("pos1max".to_string(), AestheticValue::standard_column("upper"))
             .with_aesthetic(
-                "ymin".to_string(),
+                "pos2min".to_string(),
                 AestheticValue::standard_column("y_lower"),
             )
             .with_aesthetic(
-                "ymax".to_string(),
+                "pos2max".to_string(),
                 AestheticValue::standard_column("y_upper"),
             );
         spec.layers.push(layer2);
@@ -557,8 +659,8 @@ mod tests {
         spec.compute_aesthetic_labels();
 
         let labels = spec.labels.as_ref().unwrap();
-        // First layer's x mapping should win
-        assert_eq!(labels.labels.get("x"), Some(&"date".to_string()));
+        // First layer's pos1 mapping should win
+        assert_eq!(labels.labels.get("pos1"), Some(&"date".to_string()));
     }
 
     #[test]

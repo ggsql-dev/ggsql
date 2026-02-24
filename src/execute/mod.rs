@@ -23,7 +23,7 @@ pub use schema::TypeInfo;
 
 use crate::naming;
 use crate::parser;
-use crate::plot::aesthetic::{primary_aesthetic, ALL_POSITIONAL};
+use crate::plot::aesthetic::{is_positional_aesthetic, primary_aesthetic};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
 use crate::{DataFrame, GgsqlError, Plot, Result};
@@ -684,7 +684,7 @@ fn add_discrete_columns_to_partition_by(
             // Skip positional aesthetics - these should not trigger auto-grouping.
             // Stats that need to group by positional aesthetics (like bar/histogram)
             // already handle this themselves via stat_consumed_aesthetics().
-            if ALL_POSITIONAL.iter().any(|s| s == aesthetic) {
+            if is_positional_aesthetic(aesthetic) {
                 continue;
             }
 
@@ -955,6 +955,8 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Merge global mappings into layer aesthetics and expand wildcards
     // Smart wildcard expansion only creates mappings for columns that exist in schema
+    // NOTE: Both global and layer aesthetics are already in internal format (pos1, pos2)
+    // because transformation happens in builder.rs right after parsing
     merge_global_mappings_into_layers(&mut specs, &layer_schemas);
 
     // Split 'color' aesthetic to 'fill' and 'stroke' early in the pipeline
@@ -1353,14 +1355,14 @@ mod tests {
         assert!(result.data.contains_key(&naming::layer_key(0)));
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
-        // Should have prefixed aesthetic-named columns
+        // Should have prefixed aesthetic-named columns (using internal names)
         let col_names: Vec<String> = layer_df
             .get_column_names_str()
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let x_col = naming::aesthetic_column("x");
-        let y_col = naming::aesthetic_column("y");
+        let x_col = naming::aesthetic_column("pos1");
+        let y_col = naming::aesthetic_column("pos2");
         assert!(
             col_names.contains(&x_col),
             "Should have '{}' column: {:?}",
@@ -1408,14 +1410,14 @@ mod tests {
         // Should have 3 rows (3 unique categories: A, B, C)
         assert_eq!(layer_df.height(), 3);
 
-        // With new approach, columns are renamed to prefixed aesthetic names
+        // With new approach, columns are renamed to prefixed aesthetic names (using internal names)
         let col_names: Vec<String> = layer_df
             .get_column_names_str()
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let x_col = naming::aesthetic_column("x");
-        let y_col = naming::aesthetic_column("y");
+        let x_col = naming::aesthetic_column("pos1");
+        let y_col = naming::aesthetic_column("pos2");
         assert!(
             col_names.contains(&x_col),
             "Expected '{}' in {:?}",
@@ -1483,16 +1485,16 @@ mod tests {
         let result = prepare_data_with_reader(query, &reader).unwrap();
         let layer = &result.specs[0].layers[0];
 
-        // Layer should have yend in mappings (added by default for bar)
+        // Layer should have pos2end in mappings (yend is transformed to pos2end)
         assert!(
-            layer.mappings.aesthetics.contains_key("yend"),
-            "Bar should have yend mapping for baseline: {:?}",
+            layer.mappings.aesthetics.contains_key("pos2end"),
+            "Bar should have pos2end mapping for baseline: {:?}",
             layer.mappings.aesthetics.keys().collect::<Vec<_>>()
         );
 
-        // The DataFrame should have the yend column with 0 values
+        // The DataFrame should have the pos2end column with 0 values
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
-        let yend_col = naming::aesthetic_column("yend");
+        let yend_col = naming::aesthetic_column("pos2end");
         assert!(
             layer_df.column(&yend_col).is_ok(),
             "DataFrame should have '{}' column: {:?}",
@@ -1518,8 +1520,8 @@ mod tests {
         let result = prepare_data_with_reader(query, &reader).unwrap();
         let spec = &result.specs[0];
 
-        // Find the x scale
-        let x_scale = spec.find_scale("x").expect("x scale should exist");
+        // Find the pos1 scale (x is transformed to pos1)
+        let x_scale = spec.find_scale("pos1").expect("pos1 scale should exist");
 
         // Should be inferred as Continuous from numeric column
         assert_eq!(
@@ -1546,8 +1548,8 @@ mod tests {
         let result = prepare_data_with_reader(query, &reader).unwrap();
         let spec = &result.specs[0];
 
-        // Find the x scale
-        let x_scale = spec.find_scale("x").expect("x scale should exist");
+        // Find the pos1 scale (x is transformed to pos1)
+        let x_scale = spec.find_scale("pos1").expect("pos1 scale should exist");
 
         // Should be inferred as Discrete from String column
         assert_eq!(
@@ -1640,8 +1642,9 @@ mod tests {
             .map(|s| s.to_string())
             .collect();
 
-        let x_col = naming::aesthetic_column("x");
-        let y_col = naming::aesthetic_column("y");
+        // Use internal aesthetic names
+        let x_col = naming::aesthetic_column("pos1");
+        let y_col = naming::aesthetic_column("pos2");
         let stroke_col = naming::aesthetic_column("stroke");
 
         assert!(

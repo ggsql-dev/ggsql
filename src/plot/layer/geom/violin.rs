@@ -22,8 +22,8 @@ impl GeomTrait for Violin {
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
             supported: &[
-                "x",
-                "y",
+                "pos1",
+                "pos2",
                 "weight",
                 "fill",
                 "stroke",
@@ -31,7 +31,7 @@ impl GeomTrait for Violin {
                 "linewidth",
                 "linetype",
             ],
-            required: &["x", "y"],
+            required: &["pos1", "pos2"],
             hidden: &["offset"],
         }
     }
@@ -59,17 +59,17 @@ impl GeomTrait for Violin {
 
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
         &[
-            ("y", DefaultAestheticValue::Column("y")),
+            ("pos2", DefaultAestheticValue::Column("pos2")),
             ("offset", DefaultAestheticValue::Column("density")),
         ]
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
-        &["y", "density", "intensity"]
+        &["pos2", "density", "intensity"]
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
-        &["y", "weight"]
+        &["pos2", "weight"]
     }
 
     fn apply_stat_transform(
@@ -99,14 +99,14 @@ fn stat_violin(
     execute: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
 ) -> Result<StatResult> {
     // Verify y exists
-    if get_column_name(aesthetics, "y").is_none() {
+    if get_column_name(aesthetics, "pos2").is_none() {
         return Err(GgsqlError::ValidationError(
             "Violin requires 'y' aesthetic mapping (continuous)".to_string(),
         ));
     }
 
     let mut group_by = group_by.to_vec();
-    if let Some(x_col) = get_column_name(aesthetics, "x") {
+    if let Some(x_col) = get_column_name(aesthetics, "pos1") {
         // We want to ensure x is included as a grouping
         if !group_by.contains(&x_col) {
             group_by.push(x_col);
@@ -120,7 +120,7 @@ fn stat_violin(
     super::density::stat_density(
         query,
         aesthetics,
-        "y",
+        "pos2",
         group_by.as_slice(),
         parameters,
         execute,
@@ -139,11 +139,11 @@ mod tests {
     fn create_basic_aesthetics() -> Mappings {
         let mut aesthetics = Mappings::new();
         aesthetics.insert(
-            "x".to_string(),
+            "pos1".to_string(),
             AestheticValue::standard_column("species".to_string()),
         );
         aesthetics.insert(
-            "y".to_string(),
+            "pos2".to_string(),
             AestheticValue::standard_column("flipper_length".to_string()),
         );
         aesthetics
@@ -197,18 +197,18 @@ mod tests {
                 ..
             } => {
                 // Verify stat columns (includes intensity from density stat)
-                assert_eq!(stat_columns, vec!["y", "intensity", "density"]);
+                assert_eq!(stat_columns, vec!["pos2", "intensity", "density"]);
 
                 // Verify consumed aesthetics
-                assert_eq!(consumed_aesthetics, vec!["y"]);
+                assert_eq!(consumed_aesthetics, vec!["pos2"]);
 
                 // Execute the generated SQL and verify it works
                 let df = execute(&stat_query).expect("Generated SQL should execute");
 
-                // Should have columns: y, density, and species (the x grouping)
+                // Should have columns: pos2 (y), density, and species (the x grouping)
                 let col_names: Vec<&str> =
                     df.get_column_names().iter().map(|s| s.as_str()).collect();
-                assert!(col_names.contains(&"__ggsql_stat_y"));
+                assert!(col_names.contains(&"__ggsql_stat_pos2"));
                 assert!(col_names.contains(&"__ggsql_stat_density"));
                 assert!(col_names.contains(&"species"));
 
@@ -262,18 +262,18 @@ mod tests {
                 ..
             } => {
                 // Verify stat columns (includes intensity from density stat)
-                assert_eq!(stat_columns, vec!["y", "intensity", "density"]);
+                assert_eq!(stat_columns, vec!["pos2", "intensity", "density"]);
 
                 // Verify consumed aesthetics
-                assert_eq!(consumed_aesthetics, vec!["y"]);
+                assert_eq!(consumed_aesthetics, vec!["pos2"]);
 
                 // Execute the generated SQL and verify it works
                 let df = execute(&stat_query).expect("Generated SQL should execute");
 
-                // Should have columns: y, density, species (x), and island (color group)
+                // Should have columns: pos2 (y), density, species (x), and island (color group)
                 let col_names: Vec<&str> =
                     df.get_column_names().iter().map(|s| s.as_str()).collect();
-                assert!(col_names.contains(&"__ggsql_stat_y"));
+                assert!(col_names.contains(&"__ggsql_stat_pos2"));
                 assert!(col_names.contains(&"__ggsql_stat_density"));
                 assert!(col_names.contains(&"species"));
                 assert!(col_names.contains(&"island"));

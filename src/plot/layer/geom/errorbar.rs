@@ -14,12 +14,12 @@ impl GeomTrait for ErrorBar {
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
             supported: &[
-                "x",
-                "y",
-                "ymin",
-                "ymax",
-                "xmin",
-                "xmax",
+                "pos1",
+                "pos2",
+                "pos2min",
+                "pos2max",
+                "pos1min",
+                "pos1max",
                 "stroke",
                 "linewidth",
                 "opacity",

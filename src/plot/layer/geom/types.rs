@@ -47,12 +47,12 @@ pub enum StatResult {
     Transformed {
         /// The transformed SQL query that produces the stat-computed columns
         query: String,
-        /// Names of stat-computed columns (e.g., ["count", "bin", "x"])
+        /// Names of stat-computed columns (e.g., ["count", "bin", "pos1"])
         /// These are semantic names that will be prefixed with __ggsql_stat__
         /// and mapped to aesthetics via default_remappings or REMAPPING clause
         stat_columns: Vec<String>,
         /// Names of stat columns that are dummy/placeholder values
-        /// (e.g., "x" when bar chart has no x mapped - produces a constant value)
+        /// (e.g., "pos1" when bar chart has no x mapped - produces a constant value)
         dummy_columns: Vec<String>,
         /// Names of aesthetics consumed by this stat transform
         /// These aesthetics were used as input to the stat and should be removed

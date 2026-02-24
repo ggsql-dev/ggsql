@@ -28,12 +28,10 @@ use crate::plot::ParameterValue;
 
 // Coord type implementations
 mod cartesian;
-mod flip;
 mod polar;
 
 // Re-export coord type structs
 pub use cartesian::Cartesian;
-pub use flip::Flip;
 pub use polar::Polar;
 
 // =============================================================================
@@ -46,8 +44,6 @@ pub use polar::Polar;
 pub enum CoordKind {
     /// Standard x/y Cartesian coordinates (default)
     Cartesian,
-    /// Flipped Cartesian (swaps x and y axes)
-    Flip,
     /// Polar coordinates (for pie charts, rose plots)
     Polar,
 }
@@ -57,7 +53,6 @@ impl CoordKind {
     pub fn name(&self) -> &'static str {
         match self {
             CoordKind::Cartesian => "cartesian",
-            CoordKind::Flip => "flip",
             CoordKind::Polar => "polar",
         }
     }
@@ -77,6 +72,15 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
     /// Canonical name for parsing and display
     fn name(&self) -> &'static str;
+
+    /// Primary positional aesthetic names for this coord.
+    ///
+    /// Returns the user-facing positional aesthetic names.
+    /// e.g., ["x", "y"] for cartesian, ["theta", "radius"] for polar.
+    ///
+    /// These names are transformed to internal names (pos1, pos2, etc.)
+    /// early in the pipeline and transformed back for output.
+    fn positional_aesthetic_names(&self) -> &'static [&'static str];
 
     /// Returns list of allowed property names for SETTING clause.
     /// Default: empty (no properties allowed).
@@ -145,11 +149,6 @@ impl Coord {
         Self(Arc::new(Cartesian))
     }
 
-    /// Create a Flip coord type
-    pub fn flip() -> Self {
-        Self(Arc::new(Flip))
-    }
-
     /// Create a Polar coord type
     pub fn polar() -> Self {
         Self(Arc::new(Polar))
@@ -159,7 +158,6 @@ impl Coord {
     pub fn from_kind(kind: CoordKind) -> Self {
         match kind {
             CoordKind::Cartesian => Self::cartesian(),
-            CoordKind::Flip => Self::flip(),
             CoordKind::Polar => Self::polar(),
         }
     }
@@ -172,6 +170,12 @@ impl Coord {
     /// Get the canonical name
     pub fn name(&self) -> &'static str {
         self.0.name()
+    }
+
+    /// Primary positional aesthetic names for this coord.
+    /// e.g., ["x", "y"] for cartesian, ["theta", "radius"] for polar.
+    pub fn positional_aesthetic_names(&self) -> &'static [&'static str] {
+        self.0.positional_aesthetic_names()
     }
 
     /// Returns list of allowed property names for SETTING clause.
@@ -247,7 +251,6 @@ mod tests {
     #[test]
     fn test_coord_kind_name() {
         assert_eq!(CoordKind::Cartesian.name(), "cartesian");
-        assert_eq!(CoordKind::Flip.name(), "flip");
         assert_eq!(CoordKind::Polar.name(), "polar");
     }
 
@@ -256,10 +259,6 @@ mod tests {
         let cartesian = Coord::cartesian();
         assert_eq!(cartesian.coord_kind(), CoordKind::Cartesian);
         assert_eq!(cartesian.name(), "cartesian");
-
-        let flip = Coord::flip();
-        assert_eq!(flip.coord_kind(), CoordKind::Flip);
-        assert_eq!(flip.name(), "flip");
 
         let polar = Coord::polar();
         assert_eq!(polar.coord_kind(), CoordKind::Polar);
@@ -273,10 +272,6 @@ mod tests {
             CoordKind::Cartesian
         );
         assert_eq!(
-            Coord::from_kind(CoordKind::Flip).coord_kind(),
-            CoordKind::Flip
-        );
-        assert_eq!(
             Coord::from_kind(CoordKind::Polar).coord_kind(),
             CoordKind::Polar
         );
@@ -285,11 +280,8 @@ mod tests {
     #[test]
     fn test_coord_equality() {
         assert_eq!(Coord::cartesian(), Coord::cartesian());
-        assert_eq!(Coord::flip(), Coord::flip());
         assert_eq!(Coord::polar(), Coord::polar());
-        assert_ne!(Coord::cartesian(), Coord::flip());
         assert_ne!(Coord::cartesian(), Coord::polar());
-        assert_ne!(Coord::flip(), Coord::polar());
     }
 
     #[test]
@@ -297,10 +289,6 @@ mod tests {
         let cartesian = Coord::cartesian();
         let json = serde_json::to_string(&cartesian).unwrap();
         assert_eq!(json, "\"cartesian\"");
-
-        let flip = Coord::flip();
-        let json = serde_json::to_string(&flip).unwrap();
-        assert_eq!(json, "\"flip\"");
 
         let polar = Coord::polar();
         let json = serde_json::to_string(&polar).unwrap();
@@ -312,10 +300,16 @@ mod tests {
         let cartesian: Coord = serde_json::from_str("\"cartesian\"").unwrap();
         assert_eq!(cartesian.coord_kind(), CoordKind::Cartesian);
 
-        let flip: Coord = serde_json::from_str("\"flip\"").unwrap();
-        assert_eq!(flip.coord_kind(), CoordKind::Flip);
-
         let polar: Coord = serde_json::from_str("\"polar\"").unwrap();
         assert_eq!(polar.coord_kind(), CoordKind::Polar);
+    }
+
+    #[test]
+    fn test_positional_aesthetic_names() {
+        let cartesian = Coord::cartesian();
+        assert_eq!(cartesian.positional_aesthetic_names(), &["x", "y"]);
+
+        let polar = Coord::polar();
+        assert_eq!(polar.positional_aesthetic_names(), &["theta", "radius"]);
     }
 }

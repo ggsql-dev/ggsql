@@ -1,6 +1,6 @@
 //! Projection transformations for Vega-Lite writer
 //!
-//! This module handles projection transformations (cartesian, flip, polar)
+//! This module handles projection transformations (cartesian, polar)
 //! that modify the Vega-Lite spec structure based on the PROJECT clause.
 
 use crate::plot::{CoordKind, ParameterValue, Projection};
@@ -24,13 +24,7 @@ pub(super) fn apply_project_transforms(
                 apply_cartesian_project(project, vl_spec, free_x, free_y)?;
                 None
             }
-            CoordKind::Flip => {
-                apply_flip_project(vl_spec)?;
-                None
-            }
-            CoordKind::Polar => {
-                Some(apply_polar_project(project, spec, data, vl_spec)?)
-            }
+            CoordKind::Polar => Some(apply_polar_project(project, spec, data, vl_spec)?),
         };
 
         // Apply clip setting (applies to all projection types)
@@ -71,26 +65,6 @@ fn apply_cartesian_project(
     _free_y: bool,
 ) -> Result<()> {
     // ratio - not yet implemented
-    Ok(())
-}
-
-/// Apply Flip projection transformation (swap x and y)
-fn apply_flip_project(vl_spec: &mut Value) -> Result<()> {
-    if let Some(layers) = vl_spec.get_mut("layer") {
-        if let Some(layers_arr) = layers.as_array_mut() {
-            for layer in layers_arr {
-                if let Some(encoding) = layer.get_mut("encoding") {
-                    if let Some(enc_obj) = encoding.as_object_mut() {
-                        if let (Some(x), Some(y)) = (enc_obj.remove("x"), enc_obj.remove("y")) {
-                            enc_obj.insert("x".to_string(), y);
-                            enc_obj.insert("y".to_string(), x);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     Ok(())
 }
 

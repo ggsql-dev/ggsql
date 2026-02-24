@@ -421,7 +421,9 @@ fn build_scale_properties(
     // Check if we should skip domain due to facet free scales
     // When using free scales, Vega-Lite computes independent domains per facet panel.
     // Setting an explicit domain would override this behavior.
-    let skip_domain = (ctx.aesthetic == "x" && ctx.free_x) || (ctx.aesthetic == "y" && ctx.free_y);
+    // Note: aesthetics are in internal format (pos1, pos2) at this stage
+    let skip_domain =
+        (ctx.aesthetic == "pos1" && ctx.free_x) || (ctx.aesthetic == "pos2" && ctx.free_y);
 
     // Apply domain from input_range (FROM clause)
     // Skip for threshold scales - they use internal breaks as domain instead
@@ -892,22 +894,45 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
     Ok(json!({"value": val}))
 }
 
-/// Map ggsql aesthetic name to Vega-Lite encoding channel name
-pub(super) fn map_aesthetic_name(aesthetic: &str) -> String {
-    match aesthetic {
+/// Map ggsql aesthetic name to Vega-Lite encoding channel name.
+///
+/// Handles both internal positional aesthetics (pos1, pos2, etc.) and user-facing aesthetics.
+/// For internal positional names, uses the AestheticContext to transform to user-facing names,
+/// then applies Vega-Lite specific mappings (e.g., xend -> x2).
+pub(super) fn map_aesthetic_name(
+    aesthetic: &str,
+    ctx: &crate::plot::AestheticContext,
+) -> String {
+    // First, transform internal positional to user-facing using context
+    let user_name = ctx
+        .map_internal_to_user(aesthetic)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| aesthetic.to_string());
+
+    // Then apply Vega-Lite specific mappings
+    match user_name.as_str() {
         // Position end aesthetics (ggplot2 style -> Vega-Lite style)
-        "xend" => "x2",
-        "yend" => "y2",
+        // Handle both cartesian (xend/yend) and polar (thetaend/radiusend)
+        name if name.ends_with("end") => {
+            // Convert xend -> x2, yend -> y2, thetaend -> theta2, etc.
+            let base = &name[..name.len() - 3];
+            format!("{}2", base)
+        }
+        // Position intercept aesthetics for reference lines
+        name if name.ends_with("intercept") => {
+            // Keep as-is for now (Vega-Lite uses xintercept, yintercept style)
+            // Actually in Vega-Lite we need special handling for reference lines
+            name.to_string()
+        }
         // Line aesthetics
-        "linetype" => "strokeDash",
-        "linewidth" => "strokeWidth",
+        "linetype" => "strokeDash".to_string(),
+        "linewidth" => "strokeWidth".to_string(),
         // Text aesthetics
-        "label" => "text",
+        "label" => "text".to_string(),
         // All other aesthetics pass through directly
         // (fill and stroke map to Vega-Lite's separate fill/stroke channels)
-        _ => aesthetic,
+        _ => user_name,
     }
-    .to_string()
 }
 
 /// Build detail encoding from partition_by columns

@@ -16,6 +16,10 @@ impl CoordTrait for Polar {
         "polar"
     }
 
+    fn positional_aesthetic_names(&self) -> &'static [&'static str] {
+        &["theta", "radius"]
+    }
+
     fn allowed_properties(&self) -> &'static [&'static str] {
         &["theta", "clip"]
     }

@@ -14,10 +14,10 @@ impl GeomTrait for Label {
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
             supported: &[
-                "x", "y", "label", "fill", "stroke", "size", "opacity", "family", "fontface",
+                "pos1", "pos2", "label", "fill", "stroke", "size", "opacity", "family", "fontface",
                 "hjust", "vjust",
             ],
-            required: &["x", "y"],
+            required: &["pos1", "pos2"],
             hidden: &[],
         }
     }

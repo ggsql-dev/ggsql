@@ -270,6 +270,15 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
         }
     }
 
+    // Initialize aesthetic context based on coord and facet
+    // This must happen after all clauses are processed (especially PROJECT and FACET)
+    spec.initialize_aesthetic_context();
+
+    // Transform all aesthetic keys from user-facing (x/y or theta/radius) to internal (pos1/pos2)
+    // This enables generic handling throughout the pipeline and must happen before merge
+    // since geom definitions use internal names for their supported/required aesthetics
+    spec.transform_aesthetics_to_internal();
+
     Ok(spec)
 }
 
@@ -967,7 +976,6 @@ fn parse_coord(node: &Node, source: &SourceTree) -> Result<Coord> {
     match text.to_lowercase().as_str() {
         "cartesian" => Ok(Coord::cartesian()),
         "polar" => Ok(Coord::polar()),
-        "flip" => Ok(Coord::flip()),
         _ => Err(GgsqlError::ParseError(format!(
             "Unknown coord type: {}",
             text
@@ -1146,22 +1154,6 @@ mod tests {
         assert!(err
             .to_string()
             .contains("Property 'theta' not valid for cartesian"));
-    }
-
-    #[test]
-    fn test_project_flip_invalid_property_theta() {
-        let query = r#"
-            VISUALISE
-            DRAW bar MAPPING category AS x, value AS y
-            PROJECT flip SETTING theta => y
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Property 'theta' not valid for flip"));
     }
 
     #[test]
@@ -1956,10 +1948,10 @@ mod tests {
         let specs = result.unwrap();
         let layer = &specs[0].layers[0];
 
-        // Check aesthetics
+        // Check aesthetics (x and y are transformed to pos1 and pos2)
         assert_eq!(layer.mappings.len(), 3);
-        assert!(layer.mappings.contains_key("x"));
-        assert!(layer.mappings.contains_key("y"));
+        assert!(layer.mappings.contains_key("pos1"));
+        assert!(layer.mappings.contains_key("pos2"));
         assert!(layer.mappings.contains_key("color"));
 
         // Check parameters
@@ -2365,10 +2357,10 @@ mod tests {
 
         let specs = parse_test_query(query).unwrap();
 
-        // Global mapping should have x and y
+        // Global mapping should have pos1 and pos2 (transformed from x and y)
         assert_eq!(specs[0].global_mappings.aesthetics.len(), 2);
-        assert!(specs[0].global_mappings.aesthetics.contains_key("x"));
-        assert!(specs[0].global_mappings.aesthetics.contains_key("y"));
+        assert!(specs[0].global_mappings.aesthetics.contains_key("pos1"));
+        assert!(specs[0].global_mappings.aesthetics.contains_key("pos2"));
         assert!(!specs[0].global_mappings.wildcard);
 
         // Line layer should have no layer-specific aesthetics
@@ -2389,15 +2381,15 @@ mod tests {
 
         let specs = parse_test_query(query).unwrap();
 
-        // Implicit x, y become explicit mappings at parse time
+        // Implicit x, y become explicit mappings at parse time, transformed to internal names
         assert_eq!(specs[0].global_mappings.aesthetics.len(), 2);
-        assert!(specs[0].global_mappings.aesthetics.contains_key("x"));
-        assert!(specs[0].global_mappings.aesthetics.contains_key("y"));
+        assert!(specs[0].global_mappings.aesthetics.contains_key("pos1"));
+        assert!(specs[0].global_mappings.aesthetics.contains_key("pos2"));
 
-        // Verify they map to columns of the same name
-        let x_val = specs[0].global_mappings.aesthetics.get("x").unwrap();
+        // Verify they map to columns of the same name (column names are not transformed)
+        let x_val = specs[0].global_mappings.aesthetics.get("pos1").unwrap();
         assert_eq!(x_val.column_name(), Some("x"));
-        let y_val = specs[0].global_mappings.aesthetics.get("y").unwrap();
+        let y_val = specs[0].global_mappings.aesthetics.get("pos2").unwrap();
         assert_eq!(y_val.column_name(), Some("y"));
     }
 
@@ -2631,7 +2623,8 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
         assert_eq!(scales.len(), 1);
-        assert_eq!(scales[0].aesthetic, "x");
+        // Scale aesthetic x is transformed to pos1
+        assert_eq!(scales[0].aesthetic, "pos1");
 
         let input_range = scales[0].input_range.as_ref().unwrap();
         assert_eq!(input_range.len(), 2);
@@ -2725,7 +2718,8 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
         assert_eq!(scales.len(), 1);
-        assert_eq!(scales[0].aesthetic, "x");
+        // Scale aesthetic x is transformed to pos1
+        assert_eq!(scales[0].aesthetic, "pos1");
         assert!(scales[0].transform.is_some());
         assert_eq!(scales[0].transform.as_ref().unwrap().name(), "date");
     }
@@ -2742,7 +2736,8 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
         assert_eq!(scales.len(), 1);
-        assert_eq!(scales[0].aesthetic, "x");
+        // Scale aesthetic x is transformed to pos1
+        assert_eq!(scales[0].aesthetic, "pos1");
         assert!(scales[0].transform.is_some());
         assert_eq!(scales[0].transform.as_ref().unwrap().name(), "integer");
     }
@@ -2795,7 +2790,8 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
         assert_eq!(scales.len(), 1);
-        assert_eq!(scales[0].aesthetic, "x");
+        // Scale aesthetic is transformed to internal name
+        assert_eq!(scales[0].aesthetic, "pos1");
 
         let label_mapping = scales[0].label_mapping.as_ref().unwrap();
         assert_eq!(label_mapping.len(), 2);

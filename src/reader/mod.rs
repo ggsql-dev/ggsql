@@ -341,8 +341,9 @@ mod tests {
         let metadata = spec.metadata();
         assert_eq!(metadata.rows, 3);
         assert_eq!(metadata.columns.len(), 2);
-        assert!(metadata.columns.contains(&"x".to_string()));
-        assert!(metadata.columns.contains(&"y".to_string()));
+        // Aesthetics are transformed to internal names (x -> pos1, y -> pos2)
+        assert!(metadata.columns.contains(&"pos1".to_string()));
+        assert!(metadata.columns.contains(&"pos2".to_string()));
         assert_eq!(metadata.layer_count, 1);
     }
 
@@ -400,7 +401,8 @@ mod tests {
         let spec = reader.execute(query).unwrap();
 
         assert_eq!(spec.metadata().rows, 3);
-        assert!(spec.metadata().columns.contains(&"x".to_string()));
+        // Aesthetics are transformed to internal names (x -> pos1)
+        assert!(spec.metadata().columns.contains(&"pos1".to_string()));
 
         let writer = VegaLiteWriter::new();
         let result = writer.render(&spec).unwrap();

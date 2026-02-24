@@ -638,8 +638,13 @@ module.exports = grammar({
     ),
 
     aesthetic_name: $ => choice(
-      // Position aesthetics
+      // Position aesthetics (cartesian)
       'x', 'y', 'xmin', 'xmax', 'ymin', 'ymax', 'xend', 'yend',
+      // Position aesthetics (polar)
+      'theta', 'radius', 'thetamin', 'thetamax', 'radiusmin', 'radiusmax',
+      'thetaend', 'radiusend',
+      // Reference line intercepts
+      'xintercept', 'yintercept',
       // Aggregation aesthetic (for bar charts)
       'weight',
       // Color aesthetics
@@ -761,7 +766,7 @@ module.exports = grammar({
     ),
 
     project_type: $ => choice(
-      'cartesian', 'polar', 'flip'
+      'cartesian', 'polar'
     ),
 
     project_properties: $ => seq(

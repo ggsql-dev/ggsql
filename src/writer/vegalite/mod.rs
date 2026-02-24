@@ -29,8 +29,7 @@ use crate::plot::ArrayElement;
 use crate::plot::{ParameterValue, Scale, ScaleTypeKind};
 use crate::writer::Writer;
 use crate::{
-    is_primary_positional, naming, primary_aesthetic, AestheticValue, DataFrame, GgsqlError, Plot,
-    Result,
+    naming, primary_aesthetic, AestheticValue, DataFrame, GgsqlError, Plot, Result,
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -241,6 +240,9 @@ fn build_layer_encoding(
         free_y,
     };
 
+    // Get aesthetic context for name transformation
+    let aesthetic_ctx = spec.get_aesthetic_context();
+
     // Build encoding channels for each aesthetic mapping
     for (aesthetic, value) in &layer.mappings.aesthetics {
         // Skip facet aesthetics - they are handled via top-level facet structure,
@@ -250,17 +252,17 @@ fn build_layer_encoding(
             continue;
         }
 
-        let channel_name = map_aesthetic_name(aesthetic);
+        let channel_name = map_aesthetic_name(aesthetic, &aesthetic_ctx);
         let channel_encoding = build_encoding_channel(aesthetic, value, &mut enc_ctx)?;
         encoding.insert(channel_name, channel_encoding);
 
-        // For binned positional aesthetics (x, y), add xend/yend channel with bin_end column
+        // For binned positional aesthetics (pos1, pos2), add end channel with bin_end column
         // This enables proper bin width rendering in Vega-Lite (maps to x2/y2 channels)
-        if is_primary_positional(aesthetic) && is_binned_aesthetic(aesthetic, spec) {
+        if aesthetic_ctx.is_primary_internal(aesthetic) && is_binned_aesthetic(aesthetic, spec) {
             if let AestheticValue::Column { name: col, .. } = value {
                 let end_col = naming::bin_end_column(col);
-                let end_aesthetic = format!("{}end", aesthetic); // "xend" or "yend"
-                let end_channel = map_aesthetic_name(&end_aesthetic); // maps to "x2" or "y2"
+                let end_aesthetic = format!("{}end", aesthetic); // "pos1end" or "pos2end"
+                let end_channel = map_aesthetic_name(&end_aesthetic, &aesthetic_ctx); // maps to "x2" or "y2"
                 encoding.insert(end_channel, json!({"field": end_col}));
             }
         }
@@ -272,7 +274,7 @@ fn build_layer_encoding(
     let supported_aesthetics = layer.geom.aesthetics().supported;
     for (param_name, param_value) in &layer.parameters {
         if supported_aesthetics.contains(&param_name.as_str()) {
-            let channel_name = map_aesthetic_name(param_name);
+            let channel_name = map_aesthetic_name(param_name, &aesthetic_ctx);
             // Only add if not already set by MAPPING (MAPPING takes precedence)
             if !encoding.contains_key(&channel_name) {
                 // Convert size and linewidth from points to Vega-Lite units
@@ -1084,6 +1086,12 @@ mod tests {
         data_map
     }
 
+    /// Helper to transform a spec's aesthetics to internal names (simulates what parser does)
+    fn transform_spec(spec: &mut Plot) {
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
+    }
+
     #[test]
     fn test_geom_to_mark_mapping() {
         // All marks should be objects with type and clip: true
@@ -1111,22 +1119,42 @@ mod tests {
 
     #[test]
     fn test_aesthetic_name_mapping() {
-        // Pass-through aesthetics (including fill and stroke for separate color control)
-        assert_eq!(map_aesthetic_name("x"), "x");
-        assert_eq!(map_aesthetic_name("y"), "y");
-        assert_eq!(map_aesthetic_name("color"), "color");
-        assert_eq!(map_aesthetic_name("fill"), "fill");
-        assert_eq!(map_aesthetic_name("stroke"), "stroke");
-        assert_eq!(map_aesthetic_name("opacity"), "opacity");
-        assert_eq!(map_aesthetic_name("size"), "size");
-        assert_eq!(map_aesthetic_name("shape"), "shape");
-        // Position end aesthetics (ggsql -> Vega-Lite)
-        assert_eq!(map_aesthetic_name("xend"), "x2");
-        assert_eq!(map_aesthetic_name("yend"), "y2");
+        use crate::plot::AestheticContext;
+
+        // Test with cartesian context
+        let ctx = AestheticContext::new(&["x", "y"], &[]);
+
+        // Internal positional names should map to user-facing names
+        assert_eq!(map_aesthetic_name("pos1", &ctx), "x");
+        assert_eq!(map_aesthetic_name("pos2", &ctx), "y");
+        assert_eq!(map_aesthetic_name("pos1end", &ctx), "x2");
+        assert_eq!(map_aesthetic_name("pos2end", &ctx), "y2");
+
+        // User-facing names should pass through unchanged
+        assert_eq!(map_aesthetic_name("x", &ctx), "x");
+        assert_eq!(map_aesthetic_name("y", &ctx), "y");
+        assert_eq!(map_aesthetic_name("xend", &ctx), "x2");
+        assert_eq!(map_aesthetic_name("yend", &ctx), "y2");
+
+        // Non-positional aesthetics pass through directly
+        assert_eq!(map_aesthetic_name("color", &ctx), "color");
+        assert_eq!(map_aesthetic_name("fill", &ctx), "fill");
+        assert_eq!(map_aesthetic_name("stroke", &ctx), "stroke");
+        assert_eq!(map_aesthetic_name("opacity", &ctx), "opacity");
+        assert_eq!(map_aesthetic_name("size", &ctx), "size");
+        assert_eq!(map_aesthetic_name("shape", &ctx), "shape");
+
         // Other mapped aesthetics
-        assert_eq!(map_aesthetic_name("linetype"), "strokeDash");
-        assert_eq!(map_aesthetic_name("linewidth"), "strokeWidth");
-        assert_eq!(map_aesthetic_name("label"), "text");
+        assert_eq!(map_aesthetic_name("linetype", &ctx), "strokeDash");
+        assert_eq!(map_aesthetic_name("linewidth", &ctx), "strokeWidth");
+        assert_eq!(map_aesthetic_name("label", &ctx), "text");
+
+        // Test with polar context
+        let polar_ctx = AestheticContext::new(&["theta", "radius"], &[]);
+        assert_eq!(map_aesthetic_name("pos1", &polar_ctx), "theta");
+        assert_eq!(map_aesthetic_name("pos2", &polar_ctx), "radius");
+        assert_eq!(map_aesthetic_name("pos1end", &polar_ctx), "theta2");
+        assert_eq!(map_aesthetic_name("pos2end", &polar_ctx), "radius2");
     }
 
     #[test]
@@ -1140,7 +1168,7 @@ mod tests {
     fn test_simple_point_spec() {
         let writer = VegaLiteWriter::new();
 
-        // Create a simple spec
+        // Create a simple spec with user-facing aesthetic names
         let mut spec = Plot::new();
         let layer = Layer::new(Geom::point())
             .with_aesthetic(
@@ -1161,6 +1189,7 @@ mod tests {
         .unwrap();
 
         // Generate Vega-Lite JSON
+        transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -1205,6 +1234,7 @@ mod tests {
         }
         .unwrap();
 
+        transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -1239,6 +1269,7 @@ mod tests {
         }
         .unwrap();
 
+        transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -1260,6 +1291,7 @@ mod tests {
                 AestheticValue::standard_column("nonexistent".to_string()),
             );
         spec.layers.push(layer);
+        transform_spec(&mut spec);
 
         let df = df! {
             "x" => &[1, 2, 3],
@@ -1367,6 +1399,7 @@ mod tests {
         }
         .unwrap();
 
+        transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data_for_layers(df, 2)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -1475,6 +1508,7 @@ mod tests {
         }
         .unwrap();
 
+        transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -1858,6 +1892,7 @@ mod tests {
         }
         .unwrap();
 
+        transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -1933,6 +1968,7 @@ mod tests {
         }
         .unwrap();
 
+        transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -2012,6 +2048,7 @@ mod tests {
         }
         .unwrap();
 
+        transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 

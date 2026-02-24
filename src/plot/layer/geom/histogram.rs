@@ -21,19 +21,19 @@ impl GeomTrait for Histogram {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["x", "weight", "fill", "stroke", "opacity"],
-            required: &["x"],
+            supported: &["pos1", "weight", "fill", "stroke", "opacity"],
+            required: &["pos1"],
             // y and xend are produced by stat_histogram but not valid for manual MAPPING
-            hidden: &["y", "xend"],
+            hidden: &["pos2", "pos1end"],
         }
     }
 
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
         &[
-            ("x", DefaultAestheticValue::Column("bin")),
-            ("xend", DefaultAestheticValue::Column("bin_end")),
-            ("y", DefaultAestheticValue::Column("count")),
-            ("yend", DefaultAestheticValue::Number(0.0)),
+            ("pos1", DefaultAestheticValue::Column("bin")),
+            ("pos1end", DefaultAestheticValue::Column("bin_end")),
+            ("pos2", DefaultAestheticValue::Column("count")),
+            ("pos2end", DefaultAestheticValue::Number(0.0)),
         ]
     }
 
@@ -59,7 +59,7 @@ impl GeomTrait for Histogram {
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
-        &["x"]
+        &["pos1"]
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
@@ -94,7 +94,7 @@ fn stat_histogram(
     execute_query: &dyn Fn(&str) -> Result<DataFrame>,
 ) -> Result<StatResult> {
     // Get x column name from aesthetics
-    let x_col = get_column_name(aesthetics, "x").ok_or_else(|| {
+    let x_col = get_column_name(aesthetics, "pos1").ok_or_else(|| {
         GgsqlError::ValidationError("Histogram requires 'x' aesthetic mapping".to_string())
     })?;
 
@@ -244,7 +244,7 @@ fn stat_histogram(
             "density".to_string(),
         ],
         dummy_columns: vec![],
-        consumed_aesthetics: vec!["x".to_string(), "weight".to_string()],
+        consumed_aesthetics: vec!["pos1".to_string(), "weight".to_string()],
     })
 }
 

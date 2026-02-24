@@ -14,15 +14,15 @@ impl GeomTrait for Polygon {
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
             supported: &[
-                "x",
-                "y",
+                "pos1",
+                "pos2",
                 "fill",
                 "stroke",
                 "opacity",
                 "linewidth",
                 "linetype",
             ],
-            required: &["x", "y"],
+            required: &["pos1", "pos2"],
             hidden: &[],
         }
     }

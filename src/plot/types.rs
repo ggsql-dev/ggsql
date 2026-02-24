@@ -108,6 +108,38 @@ impl Mappings {
     pub fn len(&self) -> usize {
         self.aesthetics.len()
     }
+
+    /// Transform aesthetic keys from user-facing to internal names.
+    ///
+    /// Uses the provided AestheticContext to map user-facing positional aesthetic names
+    /// (e.g., "x", "y", "theta", "radius") to internal names (e.g., "pos1", "pos2").
+    /// Non-positional aesthetics (e.g., "color", "size") are left unchanged.
+    pub fn transform_to_internal(&mut self, ctx: &super::AestheticContext) {
+        let original_aesthetics = std::mem::take(&mut self.aesthetics);
+        for (aesthetic, value) in original_aesthetics {
+            let internal_name = ctx
+                .map_user_to_internal(&aesthetic)
+                .map(|s| s.to_string())
+                .unwrap_or(aesthetic);
+            self.aesthetics.insert(internal_name, value);
+        }
+    }
+
+    /// Transform aesthetic keys from internal to user-facing names.
+    ///
+    /// Uses the provided AestheticContext to map internal positional aesthetic names
+    /// (e.g., "pos1", "pos2") to user-facing names (e.g., "x", "y", "theta", "radius").
+    /// Non-positional aesthetics (e.g., "color", "size") are left unchanged.
+    pub fn transform_to_user(&mut self, ctx: &super::AestheticContext) {
+        let original_aesthetics = std::mem::take(&mut self.aesthetics);
+        for (aesthetic, value) in original_aesthetics {
+            let user_name = ctx
+                .map_internal_to_user(&aesthetic)
+                .map(|s| s.to_string())
+                .unwrap_or(aesthetic);
+            self.aesthetics.insert(user_name, value);
+        }
+    }
 }
 
 // =============================================================================

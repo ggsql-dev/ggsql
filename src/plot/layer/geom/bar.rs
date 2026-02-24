@@ -26,7 +26,7 @@ impl GeomTrait for Bar {
             // If x is missing: single bar showing total
             // If y is missing: stat computes COUNT or SUM(weight)
             // weight: optional, if mapped uses SUM(weight) instead of COUNT(*)
-            supported: &["x", "y", "weight", "fill", "stroke", "width", "opacity"],
+            supported: &["pos1", "pos2", "weight", "fill", "stroke", "width", "opacity"],
             required: &[],
             hidden: &[],
         }
@@ -34,14 +34,14 @@ impl GeomTrait for Bar {
 
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
         &[
-            ("y", DefaultAestheticValue::Column("count")),
-            ("x", DefaultAestheticValue::Column("x")),
-            ("yend", DefaultAestheticValue::Number(0.0)),
+            ("pos2", DefaultAestheticValue::Column("count")),
+            ("pos1", DefaultAestheticValue::Column("pos1")),
+            ("pos2end", DefaultAestheticValue::Number(0.0)),
         ]
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
-        &["count", "x", "proportion"]
+        &["count", "pos1", "proportion"]
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
@@ -52,7 +52,7 @@ impl GeomTrait for Bar {
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
-        &["x", "y", "weight"]
+        &["pos1", "pos2", "weight"]
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
@@ -105,7 +105,7 @@ fn stat_bar_count(
     group_by: &[String],
 ) -> Result<StatResult> {
     // x is now optional - if not mapped, we'll use a dummy constant
-    let x_col = get_column_name(aesthetics, "x");
+    let x_col = get_column_name(aesthetics, "pos1");
     let use_dummy_x = x_col.is_none();
 
     // Build column lookup set from pre-fetched schema
@@ -113,7 +113,7 @@ fn stat_bar_count(
 
     // Check if y is mapped
     // Note: With upfront validation, if y is mapped to a column, that column must exist
-    if let Some(y_value) = aesthetics.get("y") {
+    if let Some(y_value) = aesthetics.get("pos2") {
         // y is a literal value - use identity (no transformation)
         if y_value.is_literal() {
             return Ok(StatResult::Identity);
@@ -139,7 +139,7 @@ fn stat_bar_count(
     // Define stat column names
     let stat_count = naming::stat_column("count");
     let stat_proportion = naming::stat_column("proportion");
-    let stat_x = naming::stat_column("x");
+    let stat_x = naming::stat_column("pos1");
     let stat_dummy_value = naming::stat_column("dummy"); // Value used for dummy x
 
     let agg_expr = if let Some(weight_value) = aesthetics.get("weight") {
@@ -230,11 +230,11 @@ fn stat_bar_count(
         (
             query_str,
             vec![
-                "x".to_string(),
+                "pos1".to_string(),
                 "count".to_string(),
                 "proportion".to_string(),
             ],
-            vec!["x".to_string()],
+            vec!["pos1".to_string()],
             vec!["weight".to_string()],
         )
     } else {

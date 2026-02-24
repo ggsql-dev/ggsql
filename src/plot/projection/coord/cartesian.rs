@@ -15,6 +15,10 @@ impl CoordTrait for Cartesian {
         "cartesian"
     }
 
+    fn positional_aesthetic_names(&self) -> &'static [&'static str] {
+        &["x", "y"]
+    }
+
     fn allowed_properties(&self) -> &'static [&'static str] {
         &["ratio", "clip"]
     }

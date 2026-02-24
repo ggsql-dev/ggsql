@@ -13,8 +13,8 @@ impl GeomTrait for Path {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["x", "y", "stroke", "linetype", "linewidth", "opacity"],
-            required: &["x", "y"],
+            supported: &["pos1", "pos2", "stroke", "linetype", "linewidth", "opacity"],
+            required: &["pos1", "pos2"],
             hidden: &[],
         }
     }

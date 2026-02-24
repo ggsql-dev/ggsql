@@ -14,16 +14,16 @@ impl GeomTrait for Segment {
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
             supported: &[
-                "x",
-                "y",
-                "xend",
-                "yend",
+                "pos1",
+                "pos2",
+                "pos1end",
+                "pos2end",
                 "stroke",
                 "linetype",
                 "linewidth",
                 "opacity",
             ],
-            required: &["x", "y", "xend", "yend"],
+            required: &["pos1", "pos2", "pos1end", "pos2end"],
             hidden: &[],
         }
     }
