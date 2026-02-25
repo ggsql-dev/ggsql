@@ -40,6 +40,8 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Text => "text",
         GeomType::Label => "text",
         GeomType::Segment => "rule",
+        GeomType::HLine => "rule",
+        GeomType::VLine => "rule",
         _ => "point", // Default fallback
     };
     json!({
