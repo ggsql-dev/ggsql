@@ -1115,7 +1115,7 @@ mod tests {
         use crate::plot::AestheticContext;
 
         // Test with cartesian context
-        let ctx = AestheticContext::new(&["x", "y"], &[]);
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
         // Internal positional names should map to user-facing names
         assert_eq!(map_aesthetic_name("pos1", &ctx), "x");
@@ -1143,7 +1143,7 @@ mod tests {
         assert_eq!(map_aesthetic_name("label", &ctx), "text");
 
         // Test with polar context
-        let polar_ctx = AestheticContext::new(&["theta", "radius"], &[]);
+        let polar_ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
         assert_eq!(map_aesthetic_name("pos1", &polar_ctx), "theta");
         assert_eq!(map_aesthetic_name("pos2", &polar_ctx), "radius");
         assert_eq!(map_aesthetic_name("pos1end", &polar_ctx), "theta2");

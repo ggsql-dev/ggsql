@@ -1180,7 +1180,7 @@ Where `<global_mapping>` can be:
 | `DRAW`      | ✅ Yes     | Define layers     | `DRAW line MAPPING date AS x, value AS y` |
 | `SCALE`     | ✅ Yes     | Configure scales  | `SCALE x VIA date`                        |
 | `FACET`     | ❌ No      | Small multiples   | `FACET region`                            |
-| `PROJECT`   | ❌ No      | Coordinate system | `PROJECT flip` |
+| `PROJECT`   | ❌ No      | Coordinate system | `PROJECT TO cartesian` |
 | `LABEL`     | ❌ No      | Text labels       | `LABEL title => 'My Chart', x => 'Date'`  |
 | `THEME`     | ❌ No      | Visual styling    | `THEME minimal`                           |
 
@@ -1425,22 +1425,31 @@ FACET region BY category
 **Syntax**:
 
 ```sql
--- With projectinate type
-PROJECT <type> [SETTING <properties>]
-
--- With properties only (defaults to cartesian)
-PROJECT SETTING <properties>
+PROJECT [<aesthetic>, ...] TO <coord_type> [SETTING <properties>]
 ```
 
-**Projectinate Types**:
+**Components**:
 
-- **`cartesian`** - Standard x/y Cartesian projectinates (default)
-- **`flip`** - Flipped Cartesian (swaps x and y axes)
-- **`polar`** - Polar projectinates (for pie charts, rose plots)
-- **`fixed`** - Fixed aspect ratio
-- **`trans`** - Transformed projectinates
-- **`map`** - Map projections
-- **`quickmap`** - Quick approximation for maps
+- **Aesthetics** (optional): Comma-separated list of positional aesthetic names. If omitted, uses coord defaults.
+- **TO**: Required keyword separating aesthetics from coord type.
+- **coord_type**: Either `cartesian` or `polar`.
+- **SETTING** (optional): Additional properties.
+
+**Coordinate Types**:
+
+| Coord Type | Default Aesthetics | Description |
+|------------|-------------------|-------------|
+| `cartesian` | `x`, `y` | Standard x/y Cartesian coordinates |
+| `polar` | `theta`, `radius` | Polar coordinates (for pie charts, rose plots) |
+
+**Flipping Axes**:
+
+To flip axes (for horizontal bar charts), swap the aesthetic names:
+
+```sql
+-- Horizontal bar chart: swap x and y in PROJECT
+PROJECT y, x TO cartesian
+```
 
 **Common Properties** (all projection types):
 
@@ -1454,10 +1463,6 @@ PROJECT SETTING <properties>
 
 Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]`.
 
-**Flip**:
-
-- No additional properties
-
 **Polar**:
 
 - `theta => <aesthetic>` - Which aesthetic maps to angle (defaults to `y`)
@@ -1466,36 +1471,46 @@ Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]
 
 1. **Axis limits**: Use `SCALE x/y FROM [min, max]` to set axis limits
 2. **Aesthetic domains**: Use `SCALE <aesthetic> FROM [...]` to set aesthetic domains
-3. **ggplot2 compatibility**: `project_flip` preserves axis label names (labels stay with aesthetic names, not visual position)
+3. **Custom aesthetics**: User can define custom positional names (e.g., `PROJECT a, b TO cartesian`)
 4. **Multi-layer support**: All projection transforms apply to all layers
 
 **Status**:
 
 - ✅ **Cartesian**: Fully implemented and tested
-- ✅ **Flip**: Fully implemented and tested
 - ✅ **Polar**: Fully implemented and tested
-- ❌ **Other types**: Not yet implemented
 
 **Examples**:
 
 ```sql
--- Flip projection for horizontal bar chart
-PROJECT flip
+-- Default aesthetics (x, y for cartesian)
+PROJECT TO cartesian
 
--- Polar for pie chart (theta defaults to y)
-PROJECT polar
+-- Explicit aesthetics (same as defaults)
+PROJECT x, y TO cartesian
 
--- Polar with explicit theta mapping
-PROJECT polar SETTING theta => x
+-- Flip projection for horizontal bar chart (swap x and y)
+PROJECT y, x TO cartesian
+
+-- Custom aesthetic names
+PROJECT myX, myY TO cartesian
+
+-- Polar for pie chart (using default theta/radius aesthetics)
+PROJECT TO polar
+
+-- Polar with y/x aesthetics (y becomes theta, x becomes radius)
+PROJECT y, x TO polar
+
+-- Polar with start angle offset (3 o'clock position)
+PROJECT y, x TO polar SETTING start => 90
 
 -- Clip marks to plot area
-PROJECT cartesian SETTING clip => true
+PROJECT TO cartesian SETTING clip => true
 
 -- Combined with other clauses
 DRAW bar MAPPING category AS x, value AS y
 SCALE x FROM [0, 100]
 SCALE y FROM [0, 200]
-PROJECT flip SETTING clip => true
+PROJECT y, x TO cartesian SETTING clip => true
 LABEL x => 'Category', y => 'Count'
 ```
 

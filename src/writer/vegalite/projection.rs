@@ -85,19 +85,33 @@ fn apply_polar_project(
         })
         .unwrap_or_else(|| "y".to_string());
 
+    // Get start angle in degrees (defaults to 0 = 12 o'clock)
+    let start_degrees = project
+        .properties
+        .get("start")
+        .and_then(|v| match v {
+            ParameterValue::Number(n) => Some(*n),
+            _ => None,
+        })
+        .unwrap_or(0.0);
+
+    // Convert degrees to radians for Vega-Lite
+    let start_radians = start_degrees * std::f64::consts::PI / 180.0;
+
     // Convert geoms to polar equivalents
-    convert_geoms_to_polar(spec, vl_spec, &theta_field)?;
+    convert_geoms_to_polar(spec, vl_spec, &theta_field, start_radians)?;
 
     // No DataFrame transformation needed - Vega-Lite handles polar math
     Ok(data.clone())
 }
 
 /// Convert geoms to polar equivalents (bar->arc, point->arc with radius)
-fn convert_geoms_to_polar(spec: &Plot, vl_spec: &mut Value, theta_field: &str) -> Result<()> {
-    // Determine which aesthetic (x or y) maps to theta
-    // Default: y maps to theta (pie chart style)
-    let theta_aesthetic = theta_field;
-
+fn convert_geoms_to_polar(
+    spec: &Plot,
+    vl_spec: &mut Value,
+    theta_field: &str,
+    start_radians: f64,
+) -> Result<()> {
     if let Some(layers) = vl_spec.get_mut("layer") {
         if let Some(layers_arr) = layers.as_array_mut() {
             for layer in layers_arr {
@@ -105,7 +119,7 @@ fn convert_geoms_to_polar(spec: &Plot, vl_spec: &mut Value, theta_field: &str) -
                     *mark = convert_mark_to_polar(mark, spec)?;
 
                     if let Some(encoding) = layer.get_mut("encoding") {
-                        update_encoding_for_polar(encoding, theta_aesthetic)?;
+                        update_encoding_for_polar(encoding, theta_field, start_radians)?;
                     }
                 }
             }
@@ -154,14 +168,22 @@ fn convert_mark_to_polar(mark: &Value, _spec: &Plot) -> Result<Value> {
 }
 
 /// Update encoding channels for polar projection
-fn update_encoding_for_polar(encoding: &mut Value, theta_aesthetic: &str) -> Result<()> {
+///
+/// Uses theta_field to determine which aesthetic maps to theta:
+/// - If theta_field is "y" (default): y → theta, x → color (standard pie chart)
+/// - If theta_field is "x": x → theta, y → radius
+fn update_encoding_for_polar(
+    encoding: &mut Value,
+    theta_field: &str,
+    start_radians: f64,
+) -> Result<()> {
     let enc_obj = encoding
         .as_object_mut()
         .ok_or_else(|| GgsqlError::WriterError("Encoding is not an object".to_string()))?;
 
-    // Map the theta aesthetic to theta channel
-    if theta_aesthetic == "y" {
-        // Standard pie chart: y -> theta, x -> color/category
+    // Map the theta field to theta channel based on theta property
+    if theta_field == "y" {
+        // Standard pie chart: y → theta, x → color/category
         if let Some(y_enc) = enc_obj.remove("y") {
             enc_obj.insert("theta".to_string(), y_enc);
         }
@@ -174,13 +196,30 @@ fn update_encoding_for_polar(encoding: &mut Value, theta_aesthetic: &str) -> Res
             // If color is already mapped, just remove x from positional encoding
             enc_obj.remove("x");
         }
-    } else if theta_aesthetic == "x" {
-        // Reversed: x -> theta, y -> radius
+    } else if theta_field == "x" {
+        // Reversed: x → theta, y → radius
         if let Some(x_enc) = enc_obj.remove("x") {
             enc_obj.insert("theta".to_string(), x_enc);
         }
         if let Some(y_enc) = enc_obj.remove("y") {
             enc_obj.insert("radius".to_string(), y_enc);
+        }
+    }
+
+    // Apply start angle offset to theta encoding if non-zero
+    if start_radians.abs() > f64::EPSILON {
+        if let Some(theta_enc) = enc_obj.get_mut("theta") {
+            if let Some(theta_obj) = theta_enc.as_object_mut() {
+                // Set the scale range to offset by the start angle
+                // Vega-Lite theta scale default is [0, 2π], we offset it
+                let end_radians = start_radians + 2.0 * std::f64::consts::PI;
+                theta_obj.insert(
+                    "scale".to_string(),
+                    json!({
+                        "range": [start_radians, end_radians]
+                    }),
+                );
+            }
         }
     }
 

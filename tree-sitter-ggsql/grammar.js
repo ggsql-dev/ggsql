@@ -754,15 +754,26 @@ module.exports = grammar({
       repeat(seq(',', $.identifier))
     ),
 
-    // PROJECT clause - PROJECT [type] [SETTING prop => value, ...]
+    // PROJECT clause - PROJECT [aesthetics] TO coord_type [SETTING prop => value, ...]
+    // Examples:
+    //   PROJECT TO cartesian (defaults to x, y)
+    //   PROJECT x, y TO cartesian (explicit aesthetics)
+    //   PROJECT a, b TO cartesian (custom aesthetic names)
+    //   PROJECT TO polar (defaults to theta, radius)
+    //   PROJECT theta, radius TO polar (explicit aesthetics)
+    //   PROJECT TO cartesian SETTING clip => true
     project_clause: $ => seq(
       caseInsensitive('PROJECT'),
-      choice(
-        // Type with optional SETTING: PROJECT polar SETTING theta => y
-        seq($.project_type, optional(seq(caseInsensitive('SETTING'), $.project_properties))),
-        // Just SETTING: PROJECT SETTING xlim => [0, 100] (defaults to cartesian)
-        seq(caseInsensitive('SETTING'), $.project_properties)
-      )
+      optional($.project_aesthetics),
+      caseInsensitive('TO'),
+      $.project_type,
+      optional(seq(caseInsensitive('SETTING'), $.project_properties))
+    ),
+
+    // Optional list of positional aesthetic names for PROJECT clause
+    project_aesthetics: $ => seq(
+      $.identifier,
+      repeat(seq(',', $.identifier))
     ),
 
     project_type: $ => choice(
@@ -781,7 +792,7 @@ module.exports = grammar({
     ),
 
     project_property_name: $ => choice(
-      'ratio', 'theta', 'clip'
+      'ratio', 'theta', 'clip', 'start'
     ),
 
     // LABEL clause (repeatable)

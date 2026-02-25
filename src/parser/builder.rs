@@ -897,14 +897,25 @@ fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
 // ============================================================================
 
 /// Build a Projection from a project_clause node
+///
+/// Parses the new PROJECT syntax:
+/// ```text
+/// PROJECT [aesthetic, ...] TO coord_type [SETTING prop => value, ...]
+/// ```
+///
+/// Aesthetics are optional and default to the coord's standard names.
 fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
     let mut coord = Coord::cartesian();
     let mut properties = HashMap::new();
+    let mut user_aesthetics: Option<Vec<String>> = None;
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "PROJECT" | "SETTING" | "=>" | "," => continue,
+            "PROJECT" | "SETTING" | "TO" | "=>" | "," => continue,
+            "project_aesthetics" => {
+                user_aesthetics = Some(parse_project_aesthetics(&child, source)?);
+            }
             "project_type" => {
                 coord = parse_coord(&child, source)?;
             }
@@ -923,10 +934,71 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
         }
     }
 
+    // Resolve aesthetics: use provided or fall back to coord defaults
+    let aesthetics = if let Some(aes) = user_aesthetics {
+        // Validate aesthetic count matches coord requirements
+        let expected = coord.positional_aesthetic_names().len();
+        if aes.len() != expected {
+            return Err(GgsqlError::ParseError(format!(
+                "PROJECT {} requires {} aesthetics, got {}",
+                coord.name(),
+                expected,
+                aes.len()
+            )));
+        }
+
+        // Validate no conflicts with non-positional or facet aesthetics
+        validate_positional_aesthetic_names(&aes)?;
+
+        aes
+    } else {
+        // Use coord defaults - resolved immediately at build time
+        coord
+            .positional_aesthetic_names()
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    };
+
     // Validate properties for this coord type
     validate_project_properties(&coord, &properties)?;
 
-    Ok(Projection { coord, properties })
+    Ok(Projection {
+        coord,
+        aesthetics,
+        properties,
+    })
+}
+
+/// Parse project aesthetics from a project_aesthetics node
+fn parse_project_aesthetics(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
+    let query = "(identifier) @aes";
+    Ok(source.find_texts(node, query))
+}
+
+/// Validate that positional aesthetic names don't conflict with reserved names
+fn validate_positional_aesthetic_names(names: &[String]) -> Result<()> {
+    use crate::plot::aesthetic::{NON_POSITIONAL, USER_FACET_AESTHETICS};
+
+    for name in names {
+        // Check against non-positional aesthetics
+        if NON_POSITIONAL.contains(&name.as_str()) {
+            return Err(GgsqlError::ParseError(format!(
+                "PROJECT aesthetic '{}' conflicts with non-positional aesthetic. \
+                 Choose a different name.",
+                name
+            )));
+        }
+        // Check against facet aesthetics
+        if USER_FACET_AESTHETICS.contains(&name.as_str()) {
+            return Err(GgsqlError::ParseError(format!(
+                "PROJECT aesthetic '{}' conflicts with facet aesthetic. \
+                 Choose a different name.",
+                name
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Parse a single project_property node into (name, value)
@@ -1146,7 +1218,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            PROJECT cartesian SETTING theta => y
+            PROJECT TO cartesian SETTING theta => y
         "#;
 
         let result = parse_test_query(query);
@@ -1162,7 +1234,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y
-            PROJECT polar SETTING theta => y
+            PROJECT TO polar SETTING theta => y
         "#;
 
         let result = parse_test_query(query);
@@ -1174,6 +1246,123 @@ mod tests {
         assert!(project.properties.contains_key("theta"));
     }
 
+    #[test]
+    fn test_project_polar_with_start() {
+        let query = r#"
+            VISUALISE
+            DRAW bar MAPPING category AS x, value AS y
+            PROJECT TO polar SETTING start => 90
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Polar);
+        assert!(project.properties.contains_key("start"));
+        assert_eq!(
+            project.properties.get("start"),
+            Some(&ParameterValue::Number(90.0))
+        );
+    }
+
+    #[test]
+    fn test_project_explicit_aesthetics() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            PROJECT x, y TO cartesian
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Cartesian);
+        assert_eq!(project.aesthetics, vec!["x".to_string(), "y".to_string()]);
+    }
+
+    #[test]
+    fn test_project_custom_aesthetics() {
+        // Use identifiers as custom positional aesthetics in PROJECT
+        // Note: Custom aesthetics in PROJECT don't need to match grammar's aesthetic_name
+        // since project_aesthetics uses identifier nodes, not aesthetic_name
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            PROJECT myX, myY TO cartesian
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.aesthetics, vec!["myX".to_string(), "myY".to_string()]);
+    }
+
+    #[test]
+    fn test_project_default_aesthetics_cartesian() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            PROJECT TO cartesian
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.aesthetics, vec!["x".to_string(), "y".to_string()]);
+    }
+
+    #[test]
+    fn test_project_default_aesthetics_polar() {
+        let query = r#"
+            VISUALISE
+            DRAW bar MAPPING category AS theta, value AS radius
+            PROJECT TO polar
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.aesthetics, vec!["theta".to_string(), "radius".to_string()]);
+    }
+
+    #[test]
+    fn test_project_wrong_aesthetic_count() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x
+            PROJECT x TO cartesian
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("requires 2 aesthetics, got 1"));
+    }
+
+    #[test]
+    fn test_project_conflicting_aesthetic_name() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            PROJECT color, fill TO cartesian
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("conflicts with non-positional aesthetic"));
+    }
+
     // ========================================
     // Case Insensitive Keywords Tests
     // ========================================
@@ -1183,7 +1372,7 @@ mod tests {
         let query = r#"
             visualise
             draw point MAPPING x AS x, y AS y
-            project cartesian
+            project to cartesian
             label title => 'Test Chart'
         "#;
 

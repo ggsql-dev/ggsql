@@ -92,30 +92,30 @@ pub const NON_POSITIONAL: &[&str] = &[
 /// use ggsql::plot::AestheticContext;
 ///
 /// // For cartesian coords
-/// let ctx = AestheticContext::new(&["x", "y"], &[]);
+/// let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 /// assert_eq!(ctx.map_user_to_internal("x"), Some("pos1"));
 /// assert_eq!(ctx.map_user_to_internal("ymin"), Some("pos2min"));
 /// assert_eq!(ctx.map_internal_to_user("pos1"), Some("x"));
 ///
 /// // For polar coords
-/// let ctx = AestheticContext::new(&["theta", "radius"], &[]);
+/// let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
 /// assert_eq!(ctx.map_user_to_internal("theta"), Some("pos1"));
 /// assert_eq!(ctx.map_user_to_internal("radius"), Some("pos2"));
 /// assert_eq!(ctx.map_internal_to_user("pos1"), Some("theta"));
 ///
 /// // With facets
-/// let ctx = AestheticContext::new(&["x", "y"], &["panel"]);
+/// let ctx = AestheticContext::from_static(&["x", "y"], &["panel"]);
 /// assert_eq!(ctx.map_user_to_internal("panel"), Some("facet1"));
 /// assert_eq!(ctx.map_internal_to_user("facet1"), Some("panel"));
 ///
-/// let ctx = AestheticContext::new(&["x", "y"], &["row", "column"]);
+/// let ctx = AestheticContext::from_static(&["x", "y"], &["row", "column"]);
 /// assert_eq!(ctx.map_user_to_internal("row"), Some("facet1"));
 /// assert_eq!(ctx.map_user_to_internal("column"), Some("facet2"));
 /// ```
 #[derive(Debug, Clone)]
 pub struct AestheticContext {
-    /// User-facing positional names: ["x", "y"] or ["theta", "radius"]
-    user_positional: Vec<&'static str>,
+    /// User-facing positional names: ["x", "y"] or ["theta", "radius"] or custom names
+    user_positional: Vec<String>,
     /// All user positional (with suffixes): ["x", "xmin", "xmax", "xend", "y", ...]
     all_user_positional: Vec<String>,
     /// Primary internal positional: ["pos1", "pos2", ...]
@@ -137,10 +137,10 @@ impl AestheticContext {
     ///
     /// # Arguments
     ///
-    /// * `positional_names` - Primary positional aesthetic names from coord (e.g., ["x", "y"])
+    /// * `positional_names` - Primary positional aesthetic names (e.g., ["x", "y"] or custom names)
     /// * `facet_names` - User-facing facet aesthetic names from facet layout
     ///   (e.g., ["panel"] for wrap, ["row", "column"] for grid)
-    pub fn new(positional_names: &[&'static str], facet_names: &[&'static str]) -> Self {
+    pub fn new(positional_names: &[String], facet_names: &[&'static str]) -> Self {
         // Build positional mappings
         let mut all_user = Vec::new();
         let mut primary_internal = Vec::new();
@@ -152,7 +152,7 @@ impl AestheticContext {
             primary_internal.push(internal_base.clone());
 
             // Add primary first (e.g., "x", "pos1")
-            all_user.push((*primary_name).to_string());
+            all_user.push(primary_name.clone());
             all_internal.push(internal_base.clone());
 
             // Then add suffixed variants (e.g., "xmin", "pos1min")
@@ -183,6 +183,14 @@ impl AestheticContext {
             all_internal_facet,
             non_positional: NON_POSITIONAL,
         }
+    }
+
+    /// Create context from static positional names and facet names.
+    ///
+    /// Convenience method for creating context from static string slices (e.g., from coord defaults).
+    pub fn from_static(positional_names: &[&'static str], facet_names: &[&'static str]) -> Self {
+        let owned_positional: Vec<String> = positional_names.iter().map(|s| s.to_string()).collect();
+        Self::new(&owned_positional, facet_names)
     }
 
     // === Mapping: User → Internal ===
@@ -376,8 +384,8 @@ impl AestheticContext {
         &self.primary_internal
     }
 
-    /// Get user positional aesthetics (x, y or theta, radius)
-    pub fn user_positional(&self) -> &[&'static str] {
+    /// Get user positional aesthetics (x, y or theta, radius or custom names)
+    pub fn user_positional(&self) -> &[String] {
         &self.user_positional
     }
 
@@ -779,7 +787,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_cartesian() {
-        let ctx = AestheticContext::new(&["x", "y"], &[]);
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
         // User positional names
         assert_eq!(ctx.user_positional(), &["x", "y"]);
@@ -804,7 +812,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_polar() {
-        let ctx = AestheticContext::new(&["theta", "radius"], &[]);
+        let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
 
         // User positional names
         assert_eq!(ctx.user_positional(), &["theta", "radius"]);
@@ -825,7 +833,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_user_to_internal() {
-        let ctx = AestheticContext::new(&["x", "y"], &[]);
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
         // Primary aesthetics
         assert_eq!(ctx.map_user_to_internal("x"), Some("pos1"));
@@ -846,7 +854,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_internal_to_user() {
-        let ctx = AestheticContext::new(&["x", "y"], &[]);
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
         // Primary aesthetics
         assert_eq!(ctx.map_internal_to_user("pos1"), Some("x"));
@@ -867,7 +875,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_polar_mapping() {
-        let ctx = AestheticContext::new(&["theta", "radius"], &[]);
+        let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
 
         // User to internal
         assert_eq!(ctx.map_user_to_internal("theta"), Some("pos1"));
@@ -884,7 +892,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_is_checks() {
-        let ctx = AestheticContext::new(&["x", "y"], &[]);
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
         // User positional
         assert!(ctx.is_user_positional("x"));
@@ -912,7 +920,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_with_facets() {
-        let ctx = AestheticContext::new(&["x", "y"], &["panel"]);
+        let ctx = AestheticContext::from_static(&["x", "y"], &["panel"]);
 
         // Check user facet
         assert!(ctx.is_user_facet("panel"));
@@ -934,7 +942,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_with_grid_facets() {
-        let ctx = AestheticContext::new(&["x", "y"], &["row", "column"]);
+        let ctx = AestheticContext::from_static(&["x", "y"], &["row", "column"]);
 
         // Check user facet
         assert!(ctx.is_user_facet("row"));
@@ -955,7 +963,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_families() {
-        let ctx = AestheticContext::new(&["x", "y"], &[]);
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
         // Get internal family
         let pos1_family = ctx.get_internal_family("pos1").unwrap();
@@ -981,7 +989,7 @@ mod tests {
     #[test]
     fn test_aesthetic_context_user_family_resolution() {
         // Cartesian: user-facing families are x/y based
-        let cartesian = AestheticContext::new(&["x", "y"], &[]);
+        let cartesian = AestheticContext::from_static(&["x", "y"], &[]);
         assert_eq!(cartesian.primary_user_aesthetic("x"), Some("x"));
         assert_eq!(cartesian.primary_user_aesthetic("xmin"), Some("x"));
         assert_eq!(cartesian.primary_user_aesthetic("xmax"), Some("x"));
@@ -993,7 +1001,7 @@ mod tests {
         assert_eq!(cartesian.primary_user_aesthetic("color"), Some("color"));
 
         // Polar: user-facing families are theta/radius based
-        let polar = AestheticContext::new(&["theta", "radius"], &[]);
+        let polar = AestheticContext::from_static(&["theta", "radius"], &[]);
         assert_eq!(polar.primary_user_aesthetic("theta"), Some("theta"));
         assert_eq!(polar.primary_user_aesthetic("thetamin"), Some("theta"));
         assert_eq!(polar.primary_user_aesthetic("thetamax"), Some("theta"));
@@ -1011,7 +1019,7 @@ mod tests {
     #[test]
     fn test_aesthetic_context_polar_user_families() {
         // Verify polar coords have correct user families
-        let ctx = AestheticContext::new(&["theta", "radius"], &[]);
+        let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
 
         // Get user family for theta
         let theta_family = ctx.get_user_family("theta").unwrap();

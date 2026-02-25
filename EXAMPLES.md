@@ -144,7 +144,7 @@ SELECT category, value FROM data
 ORDER BY value DESC
 VISUALISE category AS x, value AS y
 DRAW bar
-PROJECT flip
+PROJECT y, x TO cartesian
 ```
 
 ### Polar Projection (Pie Chart)
@@ -152,18 +152,18 @@ PROJECT flip
 ```sql
 SELECT category, SUM(value) as total FROM data
 GROUP BY category
-VISUALISE category AS x, total AS y
+VISUALISE total AS y, category AS fill
 DRAW bar
-PROJECT polar
+PROJECT y, x TO polar
 ```
 
-### Polar with Theta Specification
+### Polar with Start Angle
 
 ```sql
 SELECT category, value FROM data
-VISUALISE category AS x, value AS y
+VISUALISE value AS y, category AS fill
 DRAW bar
-PROJECT polar SETTING theta => y
+PROJECT y, x TO polar SETTING start => 90
 ```
 
 ---
@@ -308,7 +308,7 @@ regional_totals AS (
 )
 VISUALISE region AS x, total AS y, region AS fill FROM regional_totals
 DRAW bar
-PROJECT flip
+PROJECT y, x TO cartesian
 LABEL title => 'Total Revenue by Region',
       x => 'Region',
       y => 'Total Revenue ($)'
@@ -375,7 +375,7 @@ SELECT * FROM ranked_products WHERE rank <= 5
 VISUALISE product_name AS x, revenue AS y, category AS color
 DRAW bar
 FACET category SETTING free => 'x'
-PROJECT flip
+PROJECT y, x TO cartesian
 LABEL title => 'Top 5 Products per Category',
       x => 'Product',
       y => 'Revenue ($)'
@@ -489,7 +489,7 @@ ORDER BY total_revenue DESC
 LIMIT 10
 VISUALISE product_name AS x, total_revenue AS y, product_name AS fill
 DRAW bar
-PROJECT flip
+PROJECT y, x TO cartesian
 SCALE fill TO ['red', 'orange', 'yellow', 'green', 'blue',
                'indigo', 'violet', 'pink', 'brown', 'gray']
 LABEL title => 'Top 10 Products by Revenue',

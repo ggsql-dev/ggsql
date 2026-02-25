@@ -1157,8 +1157,10 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     for spec in &mut specs {
         // Get positional aesthetic names from the aesthetic context (coord-specific)
         // This must be done before mutably borrowing facet
-        let positional_names: Vec<&'static str> =
+        let positional_names: Vec<String> =
             spec.get_aesthetic_context().user_positional().to_vec();
+        // Convert to &str slice for resolve_facet_properties
+        let positional_refs: Vec<&str> = positional_names.iter().map(|s| s.as_str()).collect();
 
         if let Some(ref mut facet) = spec.facet {
             // Get the first layer's data for computing facet defaults
@@ -1174,7 +1176,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                 .map(|aes| naming::aesthetic_column(aes))
                 .collect();
             let context = FacetDataContext::from_dataframe(facet_df, &aesthetic_cols);
-            resolve_facet_properties(facet, &context, &positional_names)
+            resolve_facet_properties(facet, &context, &positional_refs)
                 .map_err(|e| GgsqlError::ValidationError(format!("Facet: {}", e)))?;
         }
     }

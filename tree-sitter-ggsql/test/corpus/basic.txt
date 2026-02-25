@@ -531,12 +531,77 @@ LABEL title => 'My Plot', x => 'X Axis', y => 'Y Axis'
           (string))))))
 
 ================================================================================
-PROJECT cartesian with ratio
+PROJECT TO cartesian (default aesthetics)
 ================================================================================
 
 VISUALISE x, y
 DRAW point
-PROJECT cartesian SETTING ratio => 1
+PROJECT TO cartesian
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (project_clause
+        (project_type)))))
+
+================================================================================
+PROJECT x, y TO cartesian (explicit aesthetics)
+================================================================================
+
+VISUALISE x, y
+DRAW point
+PROJECT x, y TO cartesian
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (project_clause
+        (project_aesthetics
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))
+        (project_type)))))
+
+================================================================================
+PROJECT TO cartesian with SETTING
+================================================================================
+
+VISUALISE x, y
+DRAW point
+PROJECT TO cartesian SETTING ratio => 1
 
 --------------------------------------------------------------------------------
 
@@ -565,12 +630,12 @@ PROJECT cartesian SETTING ratio => 1
             (number)))))))
 
 ================================================================================
-PROJECT flip
+PROJECT TO polar (default aesthetics)
 ================================================================================
 
-VISUALISE category AS x, value AS y
-DRAW bar
-PROJECT flip
+VISUALISE theta, radius
+DRAW point
+PROJECT TO polar
 
 --------------------------------------------------------------------------------
 
@@ -580,24 +645,87 @@ PROJECT flip
     (global_mapping
       (mapping_list
         (mapping_element
-          (explicit_mapping
-            value: (mapping_value
-              (column_reference
-                (identifier
-                  (bare_identifier))))
-            name: (aesthetic_name)))
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
         (mapping_element
-          (explicit_mapping
-            value: (mapping_value
-              (column_reference
-                (identifier
-                  (bare_identifier))))
-            name: (aesthetic_name)))))
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
         (geom_type)))
     (viz_clause
       (project_clause
+        (project_type)))))
+
+================================================================================
+PROJECT TO polar with SETTING start
+================================================================================
+
+VISUALISE theta, radius
+DRAW bar
+PROJECT TO polar SETTING start => 90
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (project_clause
+        (project_type)
+        (project_properties
+          (project_property
+            (project_property_name)
+            (number)))))))
+
+================================================================================
+PROJECT custom aesthetics TO cartesian
+================================================================================
+
+VISUALISE a, b
+DRAW point
+PROJECT a, b TO cartesian
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (project_clause
+        (project_aesthetics
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))
         (project_type)))))
 
 ================================================================================

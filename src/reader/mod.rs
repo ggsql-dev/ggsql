@@ -384,6 +384,83 @@ mod tests {
     }
 
     #[test]
+    fn test_polar_project_with_start() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20), ('C', 30)) AS t(category, value)
+            VISUALISE value AS y, category AS fill
+            DRAW bar
+            PROJECT y, x TO polar SETTING start => 90
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        // Parse the JSON to verify the theta scale range is set correctly
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+
+        // The encoding should have a theta channel with a scale range offset by 90 degrees
+        // 90 degrees = π/2 radians
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let theta = &layer["encoding"]["theta"];
+        assert!(theta.is_object(), "theta encoding should exist");
+
+        // Check that the scale has a range with the start offset
+        let scale = &theta["scale"];
+        let range = scale["range"].as_array().unwrap();
+        assert_eq!(range.len(), 2);
+
+        // π/2 ≈ 1.5707963
+        let start = range[0].as_f64().unwrap();
+        assert!(
+            (start - std::f64::consts::FRAC_PI_2).abs() < 0.001,
+            "start should be π/2 (90 degrees), got {}",
+            start
+        );
+
+        // π/2 + 2π ≈ 7.8539816
+        let end = range[1].as_f64().unwrap();
+        let expected_end = std::f64::consts::FRAC_PI_2 + 2.0 * std::f64::consts::PI;
+        assert!(
+            (end - expected_end).abs() < 0.001,
+            "end should be π/2 + 2π, got {}",
+            end
+        );
+    }
+
+    #[test]
+    fn test_polar_project_default_start() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20), ('C', 30)) AS t(category, value)
+            VISUALISE value AS y, category AS fill
+            DRAW bar
+            PROJECT y, x TO polar
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        // Parse the JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+
+        // The theta encoding should NOT have a scale with range when start is 0 (default)
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let theta = &layer["encoding"]["theta"];
+        assert!(theta.is_object(), "theta encoding should exist");
+
+        // Either no scale, or no range in scale (since default is 0)
+        if let Some(scale) = theta.get("scale") {
+            assert!(
+                scale.get("range").is_none(),
+                "theta scale should not have range when start is 0"
+            );
+        }
+    }
+
+    #[test]
     fn test_register_and_query() {
         use polars::prelude::*;
 

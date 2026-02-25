@@ -47,7 +47,7 @@ ORDER BY total DESC
 LIMIT 10
 VISUALISE category AS x, total AS y, category AS fill
 DRAW bar
-PROJECT flip
+PROJECT y, x TO cartesian
 LABEL title => 'Top 10 Product Categories',
       x => 'Category',
       y => 'Total Sales'
@@ -61,7 +61,7 @@ FROM customers
 GROUP BY region
 VISUALISE region AS x, count AS y, region AS fill
 DRAW bar
-PROJECT polar SETTING theta => y
+PROJECT TO polar
 LABEL title => 'Customer Distribution by Region'
 
 -- ============================================================================
@@ -212,7 +212,7 @@ LABEL title => 'Sales by Region'
 -- Second visualization: by category
 VISUALISE category AS x, total AS y, category AS fill FROM sales_summary
 DRAW bar
-PROJECT flip
+PROJECT y, x TO cartesian
 LABEL title => 'Sales by Category'
 
 -- ============================================================================

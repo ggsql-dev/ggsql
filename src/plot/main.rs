@@ -140,12 +140,15 @@ impl Plot {
         if let Some(ref ctx) = self.aesthetic_context {
             ctx.clone()
         } else {
-            // Create default based on coord (Cartesian if no project specified)
-            let positional_names = self
+            // Create default based on project (use aesthetics if set, else defaults)
+            // If no project clause, use default cartesian names ["x", "y"]
+            let default_positional: Vec<String> =
+                vec!["x".to_string(), "y".to_string()];
+            let positional_names: &[String] = self
                 .project
                 .as_ref()
-                .map(|p| p.coord.positional_aesthetic_names())
-                .unwrap_or(&["x", "y"]);
+                .map(|p| p.aesthetics.as_slice())
+                .unwrap_or(&default_positional);
             let facet_names: &[&'static str] = self
                 .facet
                 .as_ref()
@@ -157,11 +160,15 @@ impl Plot {
 
     /// Set the aesthetic context based on the current coord and facet
     pub fn initialize_aesthetic_context(&mut self) {
-        let positional_names = self
+        // Get positional names from project (already resolved at build time)
+        // If no project clause, use default ["x", "y"]
+        let default_positional: Vec<String> =
+            vec!["x".to_string(), "y".to_string()];
+        let positional_names: &[String] = self
             .project
             .as_ref()
-            .map(|p| p.coord.positional_aesthetic_names())
-            .unwrap_or(&["x", "y"]);
+            .map(|p| p.aesthetics.as_slice())
+            .unwrap_or(&default_positional);
         let facet_names: &[&'static str] = self
             .facet
             .as_ref()
