@@ -1113,7 +1113,7 @@ impl ScaleType {
     /// - Numeric/temporal → Continuous
     /// - String/boolean → Discrete
     ///
-    /// For facet aesthetics (panel, row, column):
+    /// For facet aesthetics (facet1, facet2):
     /// - Numeric/temporal → Binned (not Continuous, since facets need discrete categories)
     /// - String/boolean → Discrete
     pub fn infer_for_aesthetic(dtype: &DataType, aesthetic: &str) -> Self {

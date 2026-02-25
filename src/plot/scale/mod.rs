@@ -12,7 +12,9 @@ pub mod transform;
 mod types;
 
 pub use crate::format::apply_label_template;
-pub use crate::plot::aesthetic::{is_facet_aesthetic, is_positional_aesthetic};
+pub use crate::plot::aesthetic::{
+    is_facet_aesthetic, is_positional_aesthetic, is_user_facet_aesthetic,
+};
 pub use crate::plot::types::{CastTargetType, SqlTypeNames};
 pub use colour::{color_to_hex, gradient, interpolate_colors, is_color_aesthetic, ColorSpace};
 pub use linetype::linetype_to_stroke_dash;
@@ -47,7 +49,7 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
         return true;
     }
 
-    // Facet aesthetics (panel, row, column) - checked dynamically
+    // Facet aesthetics (facet1, facet2, etc.) - checked dynamically
     if is_facet_aesthetic(aesthetic) {
         return true;
     }

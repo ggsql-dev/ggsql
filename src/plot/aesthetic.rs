@@ -37,13 +37,17 @@ const FAMILY_SIZE: usize = 1 + POSITIONAL_SUFFIXES.len();
 // Static Constants (for backward compatibility with existing code)
 // =============================================================================
 
-/// Facet aesthetics (for creating small multiples)
+/// User-facing facet aesthetics (for creating small multiples)
 ///
 /// These aesthetics control faceting layout:
 /// - `panel`: Single variable faceting (wrap layout)
 /// - `row`: Row variable for grid faceting
 /// - `column`: Column variable for grid faceting
-pub const FACET_AESTHETICS: &[&str] = &["panel", "row", "column"];
+///
+/// After aesthetic transformation, these become internal names:
+/// - `panel` → `facet1`
+/// - `row` → `facet1`, `column` → `facet2`
+pub const USER_FACET_AESTHETICS: &[&str] = &["panel", "row", "column"];
 
 /// Non-positional aesthetics (visual properties shown in legends or applied to marks)
 ///
@@ -79,7 +83,8 @@ pub const NON_POSITIONAL: &[&str] = &[
 ///
 /// Pre-computes all mappings at creation time for efficient lookups.
 /// Used to transform between user-facing aesthetic names (x/y or theta/radius)
-/// and internal names (pos1/pos2).
+/// and internal names (pos1/pos2), as well as facet aesthetics (panel/row/column)
+/// to internal facet names (facet1/facet2).
 ///
 /// # Example
 ///
@@ -97,6 +102,15 @@ pub const NON_POSITIONAL: &[&str] = &[
 /// assert_eq!(ctx.map_user_to_internal("theta"), Some("pos1"));
 /// assert_eq!(ctx.map_user_to_internal("radius"), Some("pos2"));
 /// assert_eq!(ctx.map_internal_to_user("pos1"), Some("theta"));
+///
+/// // With facets
+/// let ctx = AestheticContext::new(&["x", "y"], &["panel"]);
+/// assert_eq!(ctx.map_user_to_internal("panel"), Some("facet1"));
+/// assert_eq!(ctx.map_internal_to_user("facet1"), Some("panel"));
+///
+/// let ctx = AestheticContext::new(&["x", "y"], &["row", "column"]);
+/// assert_eq!(ctx.map_user_to_internal("row"), Some("facet1"));
+/// assert_eq!(ctx.map_user_to_internal("column"), Some("facet2"));
 /// ```
 #[derive(Debug, Clone)]
 pub struct AestheticContext {
@@ -109,7 +123,11 @@ pub struct AestheticContext {
     /// All internal positional: ["pos1", "pos1min", ..., "pos2", ...]
     all_internal_positional: Vec<String>,
     /// User-facing facet names: ["panel"] or ["row", "column"]
-    facet: Vec<&'static str>,
+    user_facet: Vec<&'static str>,
+    /// All user facet names: ["panel"] or ["row", "column"]
+    all_user_facet: Vec<String>,
+    /// All internal facet names: ["facet1"] or ["facet1", "facet2"]
+    all_internal_facet: Vec<String>,
     /// Non-positional aesthetics (static list)
     non_positional: &'static [&'static str],
 }
@@ -120,8 +138,10 @@ impl AestheticContext {
     /// # Arguments
     ///
     /// * `positional_names` - Primary positional aesthetic names from coord (e.g., ["x", "y"])
-    /// * `facet_names` - Aesthetic names from facet (e.g., ["panel"] or ["row", "column"])
+    /// * `facet_names` - User-facing facet aesthetic names from facet layout
+    ///   (e.g., ["panel"] for wrap, ["row", "column"] for grid)
     pub fn new(positional_names: &[&'static str], facet_names: &[&'static str]) -> Self {
+        // Build positional mappings
         let mut all_user = Vec::new();
         let mut primary_internal = Vec::new();
         let mut all_internal = Vec::new();
@@ -142,38 +162,93 @@ impl AestheticContext {
             }
         }
 
+        // Build facet mappings for active facets (from FACET clause or layer mappings)
+        // These are used for internal→user mapping (to know which user name to show)
+        let mut all_user_facet = Vec::new();
+        let mut all_internal_facet = Vec::new();
+
+        for (i, facet_name) in facet_names.iter().enumerate() {
+            let facet_num = i + 1;
+            all_user_facet.push((*facet_name).to_string());
+            all_internal_facet.push(format!("facet{}", facet_num));
+        }
+
         Self {
             user_positional: positional_names.to_vec(),
             all_user_positional: all_user,
             primary_internal,
             all_internal_positional: all_internal,
-            facet: facet_names.to_vec(),
+            user_facet: facet_names.to_vec(),
+            all_user_facet,
+            all_internal_facet,
             non_positional: NON_POSITIONAL,
         }
     }
 
     // === Mapping: User → Internal ===
 
-    /// Map user positional aesthetic to internal name.
+    /// Map user aesthetic (positional or facet) to internal name.
     ///
-    /// e.g., "x" → "pos1", "ymin" → "pos2min", "theta" → "pos1"
+    /// Positional: "x" → "pos1", "ymin" → "pos2min", "theta" → "pos1"
+    /// Facet: "panel" → "facet1", "row" → "facet1", "column" → "facet2"
+    ///
+    /// Note: Facet mappings work regardless of whether a FACET clause exists,
+    /// allowing layer-declared facet aesthetics to be transformed.
     pub fn map_user_to_internal(&self, user_aesthetic: &str) -> Option<&str> {
-        self.all_user_positional
+        // Check positional first
+        if let Some(idx) = self
+            .all_user_positional
             .iter()
             .position(|u| u == user_aesthetic)
-            .map(|idx| self.all_internal_positional[idx].as_str())
+        {
+            return Some(self.all_internal_positional[idx].as_str());
+        }
+
+        // Check active facet (from FACET clause)
+        if let Some(idx) = self
+            .all_user_facet
+            .iter()
+            .position(|u| u == user_aesthetic)
+        {
+            return Some(self.all_internal_facet[idx].as_str());
+        }
+
+        // Always map user-facing facet names to internal names,
+        // even when no FACET clause exists (allows layer-declared facets)
+        // panel → facet1 (wrap layout)
+        // row → facet1, column → facet2 (grid layout)
+        match user_aesthetic {
+            "panel" => Some("facet1"),
+            "row" => Some("facet1"),
+            "column" => Some("facet2"),
+            _ => None,
+        }
     }
 
     // === Mapping: Internal → User ===
 
-    /// Map internal positional to user-facing name.
+    /// Map internal aesthetic (positional or facet) to user-facing name.
     ///
-    /// e.g., "pos1" → "x", "pos2min" → "ymin"
+    /// Positional: "pos1" → "x", "pos2min" → "ymin"
+    /// Facet: "facet1" → "panel" (or "row"), "facet2" → "column"
     pub fn map_internal_to_user(&self, internal_aesthetic: &str) -> Option<&str> {
-        self.all_internal_positional
+        // Check positional first
+        if let Some(idx) = self
+            .all_internal_positional
             .iter()
             .position(|i| i == internal_aesthetic)
-            .map(|idx| self.all_user_positional[idx].as_str())
+        {
+            return Some(self.all_user_positional[idx].as_str());
+        }
+        // Check facet
+        if let Some(idx) = self
+            .all_internal_facet
+            .iter()
+            .position(|i| i == internal_aesthetic)
+        {
+            return Some(self.all_user_facet[idx].as_str());
+        }
+        None
     }
 
     // === Checking (simple lookups in pre-computed lists) ===
@@ -198,9 +273,19 @@ impl AestheticContext {
         self.non_positional.contains(&name)
     }
 
-    /// Check if name is a facet aesthetic
+    /// Check if name is a user-facing facet aesthetic (panel, row, column)
+    pub fn is_user_facet(&self, name: &str) -> bool {
+        self.all_user_facet.iter().any(|f| f == name)
+    }
+
+    /// Check if name is an internal facet aesthetic (facet1, facet2)
+    pub fn is_internal_facet(&self, name: &str) -> bool {
+        self.all_internal_facet.iter().any(|f| f == name)
+    }
+
+    /// Check if name is a facet aesthetic (user or internal)
     pub fn is_facet(&self, name: &str) -> bool {
-        self.facet.contains(&name)
+        self.is_user_facet(name) || self.is_internal_facet(name)
     }
 
     // === Aesthetic Families ===
@@ -301,9 +386,19 @@ impl AestheticContext {
         &self.all_user_positional
     }
 
-    /// Get facet aesthetics
-    pub fn facet(&self) -> &[&'static str] {
-        &self.facet
+    /// Get user-facing facet aesthetics (panel, row, column)
+    pub fn user_facet(&self) -> &[&'static str] {
+        &self.user_facet
+    }
+
+    /// Get all user facet aesthetics as Strings
+    pub fn all_user_facet(&self) -> &[String] {
+        &self.all_user_facet
+    }
+
+    /// Get all internal facet aesthetics (facet1, facet2)
+    pub fn all_internal_facet(&self) -> &[String] {
+        &self.all_internal_facet
     }
 
     /// Get non-positional aesthetics
@@ -325,13 +420,29 @@ pub fn is_primary_positional(aesthetic: &str) -> bool {
     false
 }
 
-/// Check if aesthetic is a facet aesthetic (panel, row, column)
+/// Check if aesthetic is a user-facing facet aesthetic (panel, row, column)
+///
+/// Use this function for checks BEFORE aesthetic transformation.
+/// For checks after transformation, use `is_facet_aesthetic`.
+#[inline]
+pub fn is_user_facet_aesthetic(aesthetic: &str) -> bool {
+    USER_FACET_AESTHETICS.contains(&aesthetic)
+}
+
+/// Check if aesthetic is an internal facet aesthetic (facet1, facet2, etc.)
 ///
 /// Facet aesthetics control the creation of small multiples (faceted plots).
 /// They only support Discrete and Binned scale types, and cannot have output ranges (TO clause).
+///
+/// This function works with **internal** aesthetic names after transformation.
+/// For user-facing checks before transformation, use `is_user_facet_aesthetic`.
 #[inline]
 pub fn is_facet_aesthetic(aesthetic: &str) -> bool {
-    FACET_AESTHETICS.contains(&aesthetic)
+    // Check pattern: facet followed by digits only (facet1, facet2, etc.)
+    if aesthetic.starts_with("facet") && aesthetic.len() > 5 {
+        return aesthetic[5..].chars().all(|c| c.is_ascii_digit());
+    }
+    false
 }
 
 /// Check if aesthetic is an internal positional (pos1, pos1min, pos2max, etc.)
@@ -369,12 +480,15 @@ pub fn is_positional_aesthetic(name: &str) -> bool {
 
 /// Check if name is a recognized aesthetic (internal or non-positional)
 ///
-/// This function works with **internal** aesthetic names (pos1, pos2, etc.) and non-positional
+/// This function works with **internal** aesthetic names (pos1, pos2, facet1, etc.) and non-positional
 /// aesthetics. For validating user-facing aesthetic names before transformation, use
 /// `AestheticContext::is_user_positional()` or check against the grammar's aesthetic_name rule.
 #[inline]
 pub fn is_aesthetic_name(name: &str) -> bool {
-    is_positional_aesthetic(name) || NON_POSITIONAL.contains(&name) || FACET_AESTHETICS.contains(&name)
+    is_positional_aesthetic(name)
+        || is_facet_aesthetic(name)
+        || NON_POSITIONAL.contains(&name)
+        || USER_FACET_AESTHETICS.contains(&name)
 }
 
 /// Get the primary aesthetic for a given aesthetic name.
@@ -476,11 +590,38 @@ mod tests {
 
     #[test]
     fn test_facet_aesthetic() {
-        assert!(is_facet_aesthetic("panel"));
-        assert!(is_facet_aesthetic("row"));
-        assert!(is_facet_aesthetic("column"));
+        // Internal facet aesthetics (after transformation)
+        assert!(is_facet_aesthetic("facet1"));
+        assert!(is_facet_aesthetic("facet2"));
+        assert!(is_facet_aesthetic("facet10")); // supports any number
+        assert!(!is_facet_aesthetic("facet")); // too short
+        assert!(!is_facet_aesthetic("facetx")); // not a number
+
+        // User-facing names are NOT internal facet aesthetics
+        assert!(!is_facet_aesthetic("panel"));
+        assert!(!is_facet_aesthetic("row"));
+        assert!(!is_facet_aesthetic("column"));
+
+        // Other aesthetics
         assert!(!is_facet_aesthetic("x"));
         assert!(!is_facet_aesthetic("color"));
+        assert!(!is_facet_aesthetic("pos1"));
+    }
+
+    #[test]
+    fn test_user_facet_aesthetic() {
+        // User-facing facet aesthetics (before transformation)
+        assert!(is_user_facet_aesthetic("panel"));
+        assert!(is_user_facet_aesthetic("row"));
+        assert!(is_user_facet_aesthetic("column"));
+
+        // Internal names are NOT user-facing
+        assert!(!is_user_facet_aesthetic("facet1"));
+        assert!(!is_user_facet_aesthetic("facet2"));
+
+        // Other aesthetics
+        assert!(!is_user_facet_aesthetic("x"));
+        assert!(!is_user_facet_aesthetic("color"));
     }
 
     #[test]
@@ -548,12 +689,14 @@ mod tests {
         assert!(is_aesthetic_name("hjust"));
         assert!(is_aesthetic_name("vjust"));
 
-        // Facet
+        // Facet (both user-facing and internal)
         assert!(is_aesthetic_name("panel"));
         assert!(is_aesthetic_name("row"));
         assert!(is_aesthetic_name("column"));
+        assert!(is_aesthetic_name("facet1"));
+        assert!(is_aesthetic_name("facet2"));
 
-        // Not aesthetics (user-facing names are not recognized by this function)
+        // Not aesthetics (user-facing positional names are not recognized by this function)
         assert!(!is_aesthetic_name("x"));
         assert!(!is_aesthetic_name("y"));
         assert!(!is_aesthetic_name("theta"));
@@ -771,9 +914,43 @@ mod tests {
     fn test_aesthetic_context_with_facets() {
         let ctx = AestheticContext::new(&["x", "y"], &["panel"]);
 
-        assert!(ctx.is_facet("panel"));
-        assert!(!ctx.is_facet("row"));
-        assert_eq!(ctx.facet(), &["panel"]);
+        // Check user facet
+        assert!(ctx.is_user_facet("panel"));
+        assert!(!ctx.is_user_facet("row"));
+        assert_eq!(ctx.user_facet(), &["panel"]);
+
+        // Check internal facet
+        assert!(ctx.is_internal_facet("facet1"));
+        assert!(!ctx.is_internal_facet("panel"));
+
+        // Check mapping
+        assert_eq!(ctx.map_user_to_internal("panel"), Some("facet1"));
+        assert_eq!(ctx.map_internal_to_user("facet1"), Some("panel"));
+
+        // Check combined is_facet
+        assert!(ctx.is_facet("panel")); // user
+        assert!(ctx.is_facet("facet1")); // internal
+    }
+
+    #[test]
+    fn test_aesthetic_context_with_grid_facets() {
+        let ctx = AestheticContext::new(&["x", "y"], &["row", "column"]);
+
+        // Check user facet
+        assert!(ctx.is_user_facet("row"));
+        assert!(ctx.is_user_facet("column"));
+        assert!(!ctx.is_user_facet("panel"));
+        assert_eq!(ctx.user_facet(), &["row", "column"]);
+
+        // Check internal facet
+        assert!(ctx.is_internal_facet("facet1"));
+        assert!(ctx.is_internal_facet("facet2"));
+
+        // Check mappings
+        assert_eq!(ctx.map_user_to_internal("row"), Some("facet1"));
+        assert_eq!(ctx.map_user_to_internal("column"), Some("facet2"));
+        assert_eq!(ctx.map_internal_to_user("facet1"), Some("row"));
+        assert_eq!(ctx.map_internal_to_user("facet2"), Some("column"));
     }
 
     #[test]

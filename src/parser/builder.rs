@@ -4,7 +4,7 @@
 //! handling all the node types defined in the grammar.
 
 use crate::plot::layer::geom::Geom;
-use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_facet_aesthetic, Transform};
+use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
 use crate::{GgsqlError, Result};
 use std::collections::HashMap;
@@ -679,7 +679,8 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
     }
 
     // Validate facet aesthetics cannot have output ranges (TO clause)
-    if is_facet_aesthetic(&aesthetic) && output_range.is_some() {
+    // Note: This check uses user-facing names since we're in the parser, before transformation
+    if is_user_facet_aesthetic(&aesthetic) && output_range.is_some() {
         return Err(GgsqlError::ValidationError(format!(
             "SCALE {}: facet variables cannot have output ranges (TO clause)",
             aesthetic

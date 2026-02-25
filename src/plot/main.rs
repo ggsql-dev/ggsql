@@ -146,12 +146,12 @@ impl Plot {
                 .as_ref()
                 .map(|p| p.coord.positional_aesthetic_names())
                 .unwrap_or(&["x", "y"]);
-            let facet_names = self
+            let facet_names: &[&'static str] = self
                 .facet
                 .as_ref()
-                .map(|f| f.layout.get_aesthetics())
-                .unwrap_or_default();
-            AestheticContext::new(positional_names, &facet_names)
+                .map(|f| f.layout.user_facet_names())
+                .unwrap_or(&[]);
+            AestheticContext::new(positional_names, facet_names)
         }
     }
 
@@ -162,12 +162,12 @@ impl Plot {
             .as_ref()
             .map(|p| p.coord.positional_aesthetic_names())
             .unwrap_or(&["x", "y"]);
-        let facet_names = self
+        let facet_names: &[&'static str] = self
             .facet
             .as_ref()
-            .map(|f| f.layout.get_aesthetics())
-            .unwrap_or_default();
-        self.aesthetic_context = Some(AestheticContext::new(positional_names, &facet_names));
+            .map(|f| f.layout.user_facet_names())
+            .unwrap_or(&[]);
+        self.aesthetic_context = Some(AestheticContext::new(positional_names, facet_names));
     }
 
     /// Transform all aesthetic keys from user-facing to internal names.

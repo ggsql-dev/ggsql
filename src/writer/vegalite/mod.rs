@@ -248,7 +248,8 @@ fn build_layer_encoding(
         // Skip facet aesthetics - they are handled via top-level facet structure,
         // not as encoding channels. Adding them to encoding would create row-based
         // faceting instead of the intended wrap/grid layout.
-        if matches!(aesthetic.as_str(), "panel" | "row" | "column") {
+        // Check for internal facet names (facet1, facet2) since transformation has occurred.
+        if aesthetic_ctx.is_internal_facet(aesthetic) {
             continue;
         }
 
@@ -309,7 +310,7 @@ fn build_layer_encoding(
 /// - FACET vars (wrap layout)
 /// - FACET rows BY columns (grid layout)
 /// - Moves layers into nested `spec` object
-/// - Uses aesthetic column names (e.g., __ggsql_aes_panel__)
+/// - Uses aesthetic column names (e.g., __ggsql_aes_facet1__)
 /// - Respects scale types (Binned facets use bin: "binned")
 /// - Scale resolution (scales property)
 /// - Label renaming (RENAMING clause)
@@ -324,11 +325,11 @@ fn apply_faceting(
 
     match &facet.layout {
         FacetLayout::Wrap { variables: _ } => {
-            // Use the aesthetic column name for panel
-            let aes_col = naming::aesthetic_column("panel");
+            // Use internal aesthetic column name (facet1)
+            let aes_col = naming::aesthetic_column("facet1");
 
-            // Look up scale for "panel" aesthetic
-            let scale = scales.iter().find(|s| s.aesthetic == "panel");
+            // Look up scale for internal "facet1" aesthetic
+            let scale = scales.iter().find(|s| s.aesthetic == "facet1");
 
             // Build facet field definition with proper binned support
             let mut facet_def = build_facet_field_def(facet_df, &aes_col, scale);
@@ -362,10 +363,11 @@ fn apply_faceting(
         FacetLayout::Grid { row: _, column: _ } => {
             let mut facet_spec = serde_json::Map::new();
 
-            // Row facet: use aesthetic column "row"
-            let row_aes_col = naming::aesthetic_column("row");
+            // Row facet: use internal aesthetic column "facet1"
+            // Vega-Lite requires "row" key in the facet object
+            let row_aes_col = naming::aesthetic_column("facet1");
             if facet_df.column(&row_aes_col).is_ok() {
-                let row_scale = scales.iter().find(|s| s.aesthetic == "row");
+                let row_scale = scales.iter().find(|s| s.aesthetic == "facet1");
                 let mut row_def = build_facet_field_def(facet_df, &row_aes_col, row_scale);
 
                 let row_label_mapping = row_scale.and_then(|s| s.label_mapping.as_ref());
@@ -375,10 +377,11 @@ fn apply_faceting(
                 facet_spec.insert("row".to_string(), row_def);
             }
 
-            // Column facet: use aesthetic column "column"
-            let col_aes_col = naming::aesthetic_column("column");
+            // Column facet: use internal aesthetic column "facet2"
+            // Vega-Lite requires "column" key in the facet object
+            let col_aes_col = naming::aesthetic_column("facet2");
             if facet_df.column(&col_aes_col).is_ok() {
-                let col_scale = scales.iter().find(|s| s.aesthetic == "column");
+                let col_scale = scales.iter().find(|s| s.aesthetic == "facet2");
                 let mut col_def = build_facet_field_def(facet_df, &col_aes_col, col_scale);
 
                 let col_label_mapping = col_scale.and_then(|s| s.label_mapping.as_ref());
@@ -1590,10 +1593,10 @@ mod tests {
         // Test that apply_facet_ordering uses input_range (FROM clause) for discrete scales
         use crate::plot::scale::Scale;
 
-        let mut facet_def = json!({"field": "__ggsql_aes_panel__", "type": "nominal"});
+        let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
 
         // Create a scale with input_range (simulating SCALE panel FROM ['A', 'B', 'C'])
-        let mut scale = Scale::new("panel");
+        let mut scale = Scale::new("facet1");
         scale.input_range = Some(vec![
             ArrayElement::String("A".to_string()),
             ArrayElement::String("B".to_string()),
@@ -1616,11 +1619,11 @@ mod tests {
         // This is the fix for the bug where null panels appear first
         use crate::plot::scale::Scale;
 
-        let mut facet_def = json!({"field": "__ggsql_aes_panel__", "type": "nominal"});
+        let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
 
         // Create a scale with input_range including null at the end
         // (simulating SCALE panel FROM ['Adelie', 'Gentoo', null])
-        let mut scale = Scale::new("panel");
+        let mut scale = Scale::new("facet1");
         scale.input_range = Some(vec![
             ArrayElement::String("Adelie".to_string()),
             ArrayElement::String("Gentoo".to_string()),
@@ -1642,10 +1645,10 @@ mod tests {
         // Test that null at the beginning of input_range produces null first in sort
         use crate::plot::scale::Scale;
 
-        let mut facet_def = json!({"field": "__ggsql_aes_panel__", "type": "nominal"});
+        let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
 
         // Create a scale with null at the beginning
-        let mut scale = Scale::new("panel");
+        let mut scale = Scale::new("facet1");
         scale.input_range = Some(vec![
             ArrayElement::Null,
             ArrayElement::String("Adelie".to_string()),
@@ -1699,7 +1702,7 @@ mod tests {
         use crate::plot::{ParameterValue, ScaleType};
 
         // Create a binned scale with breaks [0, 20, 40, 60]
-        let mut scale = Scale::new("panel");
+        let mut scale = Scale::new("facet1");
         scale.scale_type = Some(ScaleType::binned());
         scale.properties.insert(
             "breaks".to_string(),
@@ -1764,7 +1767,7 @@ mod tests {
         use crate::plot::scale::Scale;
         use crate::plot::{ParameterValue, ScaleType};
 
-        let mut scale = Scale::new("panel");
+        let mut scale = Scale::new("facet1");
         scale.scale_type = Some(ScaleType::binned());
         scale.properties.insert(
             "breaks".to_string(),
@@ -1804,7 +1807,7 @@ mod tests {
         use crate::plot::scale::Scale;
         use crate::plot::{ParameterValue, ScaleType};
 
-        let mut scale = Scale::new("panel");
+        let mut scale = Scale::new("facet1");
         scale.scale_type = Some(ScaleType::binned());
         scale.properties.insert(
             "breaks".to_string(),
@@ -1879,7 +1882,7 @@ mod tests {
             "x" => &[1, 2, 3],
             "y" => &[4, 5, 6],
             "category" => &["A", "A", "B"],
-            "__ggsql_aes_panel__" => &["A", "A", "B"],
+            "__ggsql_aes_facet1__" => &["A", "A", "B"],
         }
         .unwrap();
 
@@ -1962,7 +1965,7 @@ mod tests {
             "x" => &[1, 2, 3],
             "y" => &[4, 5, 6],
             "category" => &["A", "A", "B"],
-            "__ggsql_aes_panel__" => &["A", "A", "B"],
+            "__ggsql_aes_facet1__" => &["A", "A", "B"],
         }
         .unwrap();
 
@@ -2042,7 +2045,7 @@ mod tests {
             "x" => &[1, 2, 3],
             "y" => &[4, 5, 6],
             "category" => &["A", "A", "B"],
-            "__ggsql_aes_panel__" => &["A", "A", "B"],
+            "__ggsql_aes_facet1__" => &["A", "A", "B"],
         }
         .unwrap();
 

@@ -727,21 +727,22 @@ mod integration_tests {
                 stroke_col,
                 col_names
             );
-            // Facet aesthetic columns should be included (row and column for grid facet)
-            let row_col = naming::aesthetic_column("row");
-            let column_col = naming::aesthetic_column("column");
+            // Facet aesthetic columns should be included (facet1 and facet2 for grid facet)
+            // Note: row→facet1, column→facet2 after internal naming transformation
+            let facet1_col = naming::aesthetic_column("facet1");
+            let facet2_col = naming::aesthetic_column("facet2");
             assert!(
-                col_names.iter().any(|c| c.as_str() == row_col),
+                col_names.iter().any(|c| c.as_str() == facet1_col),
                 "Layer {} should have '{}' facet column: {:?}",
                 layer_idx,
-                row_col,
+                facet1_col,
                 col_names
             );
             assert!(
-                col_names.iter().any(|c| c.as_str() == column_col),
+                col_names.iter().any(|c| c.as_str() == facet2_col),
                 "Layer {} should have '{}' facet column: {:?}",
                 layer_idx,
-                column_col,
+                facet2_col,
                 col_names
             );
         }
