@@ -73,16 +73,4 @@ mod tests {
         assert!(err.contains("not valid"));
     }
 
-    #[test]
-    fn test_cartesian_rejects_theta() {
-        let cartesian = Cartesian;
-        let mut props = HashMap::new();
-        props.insert("theta".to_string(), ParameterValue::String("y".to_string()));
-
-        let resolved = cartesian.resolve_properties(&props);
-        assert!(resolved.is_err());
-        let err = resolved.unwrap_err();
-        assert!(err.contains("theta"));
-        assert!(err.contains("not valid"));
-    }
 }

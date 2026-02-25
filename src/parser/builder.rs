@@ -1214,39 +1214,6 @@ mod tests {
     // ========================================
 
     #[test]
-    fn test_project_cartesian_invalid_property_theta() {
-        let query = r#"
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y
-            PROJECT TO cartesian SETTING theta => y
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Property 'theta' not valid for cartesian"));
-    }
-
-    #[test]
-    fn test_project_polar_valid_theta() {
-        let query = r#"
-            VISUALISE
-            DRAW bar MAPPING category AS x, value AS y
-            PROJECT TO polar SETTING theta => y
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-        let specs = result.unwrap();
-
-        let project = specs[0].project.as_ref().unwrap();
-        assert_eq!(project.coord.coord_kind(), CoordKind::Polar);
-        assert!(project.properties.contains_key("theta"));
-    }
-
-    #[test]
     fn test_project_polar_with_start() {
         let query = r#"
             VISUALISE

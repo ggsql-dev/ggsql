@@ -94,7 +94,7 @@ fn apply_polar_project(
     let start_radians = start_degrees * std::f64::consts::PI / 180.0;
 
     // Convert geoms to polar equivalents and apply start angle offset
-    convert_geoms_to_polar(spec, vl_spec, "", start_radians)?;
+    convert_geoms_to_polar(spec, vl_spec, start_radians)?;
 
     // No DataFrame transformation needed - Vega-Lite handles polar math
     Ok(data.clone())
@@ -109,7 +109,6 @@ fn apply_polar_project(
 fn convert_geoms_to_polar(
     spec: &Plot,
     vl_spec: &mut Value,
-    _theta_field: &str,
     start_radians: f64,
 ) -> Result<()> {
     if let Some(layers) = vl_spec.get_mut("layer") {

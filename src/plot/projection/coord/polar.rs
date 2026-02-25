@@ -21,12 +21,11 @@ impl CoordTrait for Polar {
     }
 
     fn allowed_properties(&self) -> &'static [&'static str] {
-        &["theta", "clip", "start"]
+        &["clip", "start"]
     }
 
     fn get_property_default(&self, name: &str) -> Option<ParameterValue> {
         match name {
-            "theta" => Some(ParameterValue::String("y".to_string())),
             "start" => Some(ParameterValue::Number(0.0)), // 0 degrees = 12 o'clock
             _ => None,
         }
@@ -55,18 +54,9 @@ mod tests {
     fn test_polar_allowed_properties() {
         let polar = Polar;
         let allowed = polar.allowed_properties();
-        assert!(allowed.contains(&"theta"));
         assert!(allowed.contains(&"clip"));
         assert!(allowed.contains(&"start"));
-        assert_eq!(allowed.len(), 3);
-    }
-
-    #[test]
-    fn test_polar_theta_default() {
-        let polar = Polar;
-        let default = polar.get_property_default("theta");
-        assert!(default.is_some());
-        assert_eq!(default.unwrap(), ParameterValue::String("y".to_string()));
+        assert_eq!(allowed.len(), 2);
     }
 
     #[test]
@@ -75,36 +65,6 @@ mod tests {
         let default = polar.get_property_default("start");
         assert!(default.is_some());
         assert_eq!(default.unwrap(), ParameterValue::Number(0.0));
-    }
-
-    #[test]
-    fn test_polar_resolve_adds_theta_default() {
-        let polar = Polar;
-        let props = HashMap::new();
-
-        let resolved = polar.resolve_properties(&props);
-        assert!(resolved.is_ok());
-        let resolved = resolved.unwrap();
-        assert!(resolved.contains_key("theta"));
-        assert_eq!(
-            resolved.get("theta").unwrap(),
-            &ParameterValue::String("y".to_string())
-        );
-    }
-
-    #[test]
-    fn test_polar_resolve_with_explicit_theta() {
-        let polar = Polar;
-        let mut props = HashMap::new();
-        props.insert("theta".to_string(), ParameterValue::String("x".to_string()));
-
-        let resolved = polar.resolve_properties(&props);
-        assert!(resolved.is_ok());
-        let resolved = resolved.unwrap();
-        assert_eq!(
-            resolved.get("theta").unwrap(),
-            &ParameterValue::String("x".to_string())
-        );
     }
 
     #[test]
