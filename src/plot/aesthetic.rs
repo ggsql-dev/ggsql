@@ -66,6 +66,7 @@ pub const NON_POSITIONAL: &[&str] = &[
     "label",
     "family",
     "fontface",
+    "fontsize",
     "hjust",
     "vjust",
 ];

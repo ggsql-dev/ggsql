@@ -2,6 +2,7 @@
 
 use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
+use crate::plot::{DefaultParam, DefaultParamValue};
 
 /// Text geom - text labels at positions
 #[derive(Debug, Clone, Copy)]
@@ -17,16 +18,35 @@ impl GeomTrait for Text {
             defaults: &[
                 ("x", DefaultAestheticValue::Required),
                 ("y", DefaultAestheticValue::Required),
-                ("label", DefaultAestheticValue::Null),
+                ("label", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::Null),
-                ("size", DefaultAestheticValue::Number(11.0)),
+                ("fill", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
                 ("family", DefaultAestheticValue::Null),
-                ("fontface", DefaultAestheticValue::Null),
-                ("hjust", DefaultAestheticValue::Null),
-                ("vjust", DefaultAestheticValue::Null),
+                ("fontsize", DefaultAestheticValue::Number(11.0)),
+                ("fontface", DefaultAestheticValue::String("normal")),
+                ("hjust", DefaultAestheticValue::Number(0.5)),
+                ("vjust", DefaultAestheticValue::Number(0.5)),
+                ("angle", DefaultAestheticValue::Number(0.0)),
             ],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[
+            DefaultParam {
+                name: "nudge_x",
+                default: DefaultParamValue::Null,
+            },
+            DefaultParam {
+                name: "nudge_y",
+                default: DefaultParamValue::Null,
+            },
+            DefaultParam {
+                name: "format",
+                default: DefaultParamValue::Null,
+            },
+        ]
     }
 }
 
