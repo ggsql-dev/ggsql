@@ -26,7 +26,7 @@ mod layer;
 mod projection;
 
 use crate::plot::ArrayElement;
-use crate::plot::{ParameterValue, Scale, ScaleTypeKind};
+use crate::plot::{CoordKind, ParameterValue, Scale, ScaleTypeKind};
 use crate::writer::Writer;
 use crate::{
     naming, primary_aesthetic, AestheticValue, DataFrame, GgsqlError, Plot, Result,
@@ -141,6 +141,9 @@ fn prepare_layer_data(
 ///
 /// The `free_x` and `free_y` flags indicate whether facet free scales are enabled.
 /// When true, explicit domains should not be set for that axis.
+///
+/// The `coord_kind` determines how internal positional aesthetics are mapped to
+/// Vega-Lite encoding channel names.
 fn build_layers(
     spec: &Plot,
     data: &HashMap<String, DataFrame>,
@@ -149,6 +152,7 @@ fn build_layers(
     prepared_data: &[PreparedData],
     free_x: bool,
     free_y: bool,
+    coord_kind: CoordKind,
 ) -> Result<Vec<Value>> {
     let mut layers = Vec::new();
 
@@ -181,8 +185,8 @@ fn build_layers(
         // Set transform array on layer spec
         layer_spec["transform"] = json!(transforms);
 
-        // Build encoding for this layer (pass free scale flags)
-        let encoding = build_layer_encoding(layer, df, spec, free_x, free_y)?;
+        // Build encoding for this layer (pass free scale flags and coord kind)
+        let encoding = build_layer_encoding(layer, df, spec, free_x, free_y, coord_kind)?;
         layer_spec["encoding"] = Value::Object(encoding);
 
         // Apply geom-specific spec modifications via renderer
@@ -208,12 +212,16 @@ fn build_layers(
 ///
 /// The `free_x` and `free_y` flags indicate whether facet free scales are enabled.
 /// When true, explicit domains should not be set for that axis.
+///
+/// The `coord_kind` determines how internal positional aesthetics (pos1, pos2) are
+/// mapped to Vega-Lite encoding channel names (x/y for cartesian, theta/radius for polar).
 fn build_layer_encoding(
     layer: &crate::plot::Layer,
     df: &DataFrame,
     spec: &Plot,
     free_x: bool,
     free_y: bool,
+    coord_kind: CoordKind,
 ) -> Result<serde_json::Map<String, Value>> {
     let mut encoding = serde_json::Map::new();
 
@@ -253,7 +261,7 @@ fn build_layer_encoding(
             continue;
         }
 
-        let channel_name = map_aesthetic_name(aesthetic, &aesthetic_ctx);
+        let channel_name = map_aesthetic_name(aesthetic, &aesthetic_ctx, coord_kind);
         let channel_encoding = build_encoding_channel(aesthetic, value, &mut enc_ctx)?;
         encoding.insert(channel_name, channel_encoding);
 
@@ -263,7 +271,7 @@ fn build_layer_encoding(
             if let AestheticValue::Column { name: col, .. } = value {
                 let end_col = naming::bin_end_column(col);
                 let end_aesthetic = format!("{}end", aesthetic); // "pos1end" or "pos2end"
-                let end_channel = map_aesthetic_name(&end_aesthetic, &aesthetic_ctx); // maps to "x2" or "y2"
+                let end_channel = map_aesthetic_name(&end_aesthetic, &aesthetic_ctx, coord_kind); // maps to "x2" or "y2" (or theta2/radius2 for polar)
                 encoding.insert(end_channel, json!({"field": end_col}));
             }
         }
@@ -275,7 +283,7 @@ fn build_layer_encoding(
     let supported_aesthetics = layer.geom.aesthetics().supported;
     for (param_name, param_value) in &layer.parameters {
         if supported_aesthetics.contains(&param_name.as_str()) {
-            let channel_name = map_aesthetic_name(param_name, &aesthetic_ctx);
+            let channel_name = map_aesthetic_name(param_name, &aesthetic_ctx, coord_kind);
             // Only add if not already set by MAPPING (MAPPING takes precedence)
             if !encoding.contains_key(&channel_name) {
                 // Convert size and linewidth from points to Vega-Lite units
@@ -996,7 +1004,14 @@ impl Writer for VegaLiteWriter {
         let unified_data = unify_datasets(&prep.datasets)?;
         vl_spec["data"] = json!({"values": unified_data});
 
-        // 9. Build layers (pass free scale flags for domain handling)
+        // 9. Get coord kind (default to Cartesian if no project)
+        let coord_kind = spec
+            .project
+            .as_ref()
+            .map(|p| p.coord.coord_kind())
+            .unwrap_or(CoordKind::Cartesian);
+
+        // 10. Build layers (pass free scale flags and coord kind for domain handling)
         let layers = build_layers(
             spec,
             data,
@@ -1005,6 +1020,7 @@ impl Writer for VegaLiteWriter {
             &prep.prepared,
             free_x,
             free_y,
+            coord_kind,
         )?;
         vl_spec["layer"] = json!(layers);
 
@@ -1114,40 +1130,41 @@ mod tests {
     fn test_aesthetic_name_mapping() {
         use crate::plot::AestheticContext;
 
-        // Test with cartesian context
+        // Test with cartesian coord kind
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
-        // Internal positional names should map to user-facing names
-        assert_eq!(map_aesthetic_name("pos1", &ctx), "x");
-        assert_eq!(map_aesthetic_name("pos2", &ctx), "y");
-        assert_eq!(map_aesthetic_name("pos1end", &ctx), "x2");
-        assert_eq!(map_aesthetic_name("pos2end", &ctx), "y2");
-
-        // User-facing names should pass through unchanged
-        assert_eq!(map_aesthetic_name("x", &ctx), "x");
-        assert_eq!(map_aesthetic_name("y", &ctx), "y");
-        assert_eq!(map_aesthetic_name("xend", &ctx), "x2");
-        assert_eq!(map_aesthetic_name("yend", &ctx), "y2");
+        // Internal positional names should map to Vega-Lite channel names based on coord kind
+        assert_eq!(map_aesthetic_name("pos1", &ctx, CoordKind::Cartesian), "x");
+        assert_eq!(map_aesthetic_name("pos2", &ctx, CoordKind::Cartesian), "y");
+        assert_eq!(map_aesthetic_name("pos1end", &ctx, CoordKind::Cartesian), "x2");
+        assert_eq!(map_aesthetic_name("pos2end", &ctx, CoordKind::Cartesian), "y2");
 
         // Non-positional aesthetics pass through directly
-        assert_eq!(map_aesthetic_name("color", &ctx), "color");
-        assert_eq!(map_aesthetic_name("fill", &ctx), "fill");
-        assert_eq!(map_aesthetic_name("stroke", &ctx), "stroke");
-        assert_eq!(map_aesthetic_name("opacity", &ctx), "opacity");
-        assert_eq!(map_aesthetic_name("size", &ctx), "size");
-        assert_eq!(map_aesthetic_name("shape", &ctx), "shape");
+        assert_eq!(map_aesthetic_name("color", &ctx, CoordKind::Cartesian), "color");
+        assert_eq!(map_aesthetic_name("fill", &ctx, CoordKind::Cartesian), "fill");
+        assert_eq!(map_aesthetic_name("stroke", &ctx, CoordKind::Cartesian), "stroke");
+        assert_eq!(map_aesthetic_name("opacity", &ctx, CoordKind::Cartesian), "opacity");
+        assert_eq!(map_aesthetic_name("size", &ctx, CoordKind::Cartesian), "size");
+        assert_eq!(map_aesthetic_name("shape", &ctx, CoordKind::Cartesian), "shape");
 
         // Other mapped aesthetics
-        assert_eq!(map_aesthetic_name("linetype", &ctx), "strokeDash");
-        assert_eq!(map_aesthetic_name("linewidth", &ctx), "strokeWidth");
-        assert_eq!(map_aesthetic_name("label", &ctx), "text");
+        assert_eq!(map_aesthetic_name("linetype", &ctx, CoordKind::Cartesian), "strokeDash");
+        assert_eq!(map_aesthetic_name("linewidth", &ctx, CoordKind::Cartesian), "strokeWidth");
+        assert_eq!(map_aesthetic_name("label", &ctx, CoordKind::Cartesian), "text");
 
-        // Test with polar context
+        // Test with polar coord kind - internal positional maps to theta/radius
+        // regardless of the context's user-facing names
         let polar_ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
-        assert_eq!(map_aesthetic_name("pos1", &polar_ctx), "theta");
-        assert_eq!(map_aesthetic_name("pos2", &polar_ctx), "radius");
-        assert_eq!(map_aesthetic_name("pos1end", &polar_ctx), "theta2");
-        assert_eq!(map_aesthetic_name("pos2end", &polar_ctx), "radius2");
+        assert_eq!(map_aesthetic_name("pos1", &polar_ctx, CoordKind::Polar), "theta");
+        assert_eq!(map_aesthetic_name("pos2", &polar_ctx, CoordKind::Polar), "radius");
+        assert_eq!(map_aesthetic_name("pos1end", &polar_ctx, CoordKind::Polar), "theta2");
+        assert_eq!(map_aesthetic_name("pos2end", &polar_ctx, CoordKind::Polar), "radius2");
+
+        // Even with custom positional names (e.g., PROJECT y, x TO polar),
+        // internal pos1/pos2 should still map to theta/radius for Vega-Lite
+        let custom_ctx = AestheticContext::from_static(&["y", "x"], &[]);
+        assert_eq!(map_aesthetic_name("pos1", &custom_ctx, CoordKind::Polar), "theta");
+        assert_eq!(map_aesthetic_name("pos2", &custom_ctx, CoordKind::Polar), "radius");
     }
 
     #[test]

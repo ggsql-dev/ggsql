@@ -461,6 +461,121 @@ mod tests {
     }
 
     #[test]
+    fn test_polar_encoding_keys_independent_of_user_names() {
+        // This test verifies that polar projections always produce theta/radius encoding keys
+        // in Vega-Lite output, regardless of what positional names the user specified in PROJECT.
+        // This is critical because Vega-Lite expects specific channel names for polar marks.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Helper to check encoding keys
+        fn check_encoding_keys(json: &serde_json::Value, test_name: &str) {
+            let layer = json["layer"].as_array().unwrap().first().unwrap();
+            assert!(
+                layer["encoding"].get("theta").is_some(),
+                "{} should produce theta encoding, got keys: {:?}",
+                test_name,
+                layer["encoding"].as_object().map(|o| o.keys().collect::<Vec<_>>())
+            );
+            // Also verify no x or y keys exist (they should be mapped to theta/radius)
+            assert!(
+                layer["encoding"].get("x").is_none(),
+                "{} should NOT have x encoding in polar mode",
+                test_name
+            );
+            assert!(
+                layer["encoding"].get("y").is_none(),
+                "{} should NOT have y encoding in polar mode",
+                test_name
+            );
+        }
+
+        // Test case 1: PROJECT y, x TO polar (y as pos1→theta, x as pos2→radius)
+        let query1 = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS y, category AS fill
+            DRAW bar
+            PROJECT y, x TO polar
+        "#;
+        let spec1 = reader.execute(query1).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result1 = writer.render(&spec1).unwrap();
+        let json1: serde_json::Value = serde_json::from_str(&result1).unwrap();
+        check_encoding_keys(&json1, "PROJECT y, x TO polar");
+
+        // Test case 2: PROJECT x, y TO polar (x as pos1→theta, y as pos2→radius)
+        let query2 = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS x, category AS fill
+            DRAW bar
+            PROJECT x, y TO polar
+        "#;
+        let spec2 = reader.execute(query2).unwrap();
+        let result2 = writer.render(&spec2).unwrap();
+        let json2: serde_json::Value = serde_json::from_str(&result2).unwrap();
+        check_encoding_keys(&json2, "PROJECT x, y TO polar");
+
+        // Test case 3: PROJECT TO polar (default theta/radius names)
+        let query3 = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS theta, category AS fill
+            DRAW bar
+            PROJECT TO polar
+        "#;
+        let spec3 = reader.execute(query3).unwrap();
+        let result3 = writer.render(&spec3).unwrap();
+        let json3: serde_json::Value = serde_json::from_str(&result3).unwrap();
+        check_encoding_keys(&json3, "PROJECT TO polar");
+
+        // Test case 4: PROJECT a, b TO polar (custom aesthetic names)
+        let query4 = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS a, category AS fill
+            DRAW bar
+            PROJECT a, b TO polar
+        "#;
+        let spec4 = reader.execute(query4).unwrap();
+        let result4 = writer.render(&spec4).unwrap();
+        let json4: serde_json::Value = serde_json::from_str(&result4).unwrap();
+        check_encoding_keys(&json4, "PROJECT a, b TO polar (custom names)");
+    }
+
+    #[test]
+    fn test_cartesian_encoding_keys_with_custom_names() {
+        // This test verifies that cartesian projections produce x/y encoding keys
+        // even when custom positional names are used in PROJECT.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        fn check_cartesian_keys(json: &serde_json::Value, test_name: &str) {
+            let layer = json["layer"].as_array().unwrap().first().unwrap();
+            assert!(
+                layer["encoding"].get("x").is_some(),
+                "{} should produce x encoding, got keys: {:?}",
+                test_name,
+                layer["encoding"].as_object().map(|o| o.keys().collect::<Vec<_>>())
+            );
+            // Verify no theta/radius keys exist
+            assert!(
+                layer["encoding"].get("theta").is_none(),
+                "{} should NOT have theta encoding in cartesian mode",
+                test_name
+            );
+        }
+
+        // Test case: PROJECT a, b TO cartesian (custom aesthetic names)
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE category AS a, value AS b
+            DRAW bar
+            PROJECT a, b TO cartesian
+        "#;
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        check_cartesian_keys(&json, "PROJECT a, b TO cartesian (custom names)");
+    }
+
+    #[test]
     fn test_register_and_query() {
         use polars::prelude::*;
 

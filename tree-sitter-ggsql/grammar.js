@@ -637,6 +637,8 @@ module.exports = grammar({
       ')'
     ),
 
+    // Aesthetic name: either a known aesthetic or any identifier (for custom PROJECT aesthetics)
+    // Known aesthetics are listed first for syntax highlighting priority
     aesthetic_name: $ => choice(
       // Position aesthetics (cartesian)
       'x', 'y', 'xmin', 'xmax', 'ymin', 'ymax', 'xend', 'yend',
@@ -656,7 +658,9 @@ module.exports = grammar({
       // Facet aesthetics
       'panel', 'row', 'column',
       // Computed variables
-      'offset'
+      'offset',
+      // Allow any identifier for custom PROJECT aesthetics (e.g., PROJECT a, b TO polar)
+      $.identifier
     ),
 
     column_reference: $ => $.identifier,

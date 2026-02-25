@@ -69,22 +69,17 @@ fn apply_cartesian_project(
 }
 
 /// Apply Polar projection transformation (bar->arc, point->arc with radius)
+///
+/// Encoding channel names (theta/radius) are already set correctly by `map_aesthetic_name()`
+/// based on coord kind. This function only:
+/// 1. Converts mark types to polar equivalents (bar → arc)
+/// 2. Applies start angle offset from PROJECT clause
 fn apply_polar_project(
     project: &Projection,
     spec: &Plot,
     data: &DataFrame,
     vl_spec: &mut Value,
 ) -> Result<DataFrame> {
-    // Get theta field (defaults to 'y')
-    let theta_field = project
-        .properties
-        .get("theta")
-        .and_then(|v| match v {
-            ParameterValue::String(s) => Some(s.clone()),
-            _ => None,
-        })
-        .unwrap_or_else(|| "y".to_string());
-
     // Get start angle in degrees (defaults to 0 = 12 o'clock)
     let start_degrees = project
         .properties
@@ -98,18 +93,23 @@ fn apply_polar_project(
     // Convert degrees to radians for Vega-Lite
     let start_radians = start_degrees * std::f64::consts::PI / 180.0;
 
-    // Convert geoms to polar equivalents
-    convert_geoms_to_polar(spec, vl_spec, &theta_field, start_radians)?;
+    // Convert geoms to polar equivalents and apply start angle offset
+    convert_geoms_to_polar(spec, vl_spec, "", start_radians)?;
 
     // No DataFrame transformation needed - Vega-Lite handles polar math
     Ok(data.clone())
 }
 
-/// Convert geoms to polar equivalents (bar->arc, point->arc with radius)
+/// Convert geoms to polar equivalents (bar->arc) and apply start angle offset
+///
+/// Note: Encoding channel names (theta/radius) are already set correctly by
+/// `map_aesthetic_name()` based on coord kind. This function only:
+/// 1. Converts mark types to polar equivalents (bar → arc)
+/// 2. Applies start angle offset from PROJECT clause
 fn convert_geoms_to_polar(
     spec: &Plot,
     vl_spec: &mut Value,
-    theta_field: &str,
+    _theta_field: &str,
     start_radians: f64,
 ) -> Result<()> {
     if let Some(layers) = vl_spec.get_mut("layer") {
@@ -118,8 +118,9 @@ fn convert_geoms_to_polar(
                 if let Some(mark) = layer.get_mut("mark") {
                     *mark = convert_mark_to_polar(mark, spec)?;
 
+                    // Apply start angle offset if present
                     if let Some(encoding) = layer.get_mut("encoding") {
-                        update_encoding_for_polar(encoding, theta_field, start_radians)?;
+                        apply_polar_start_angle(encoding, start_radians)?;
                     }
                 }
             }
@@ -167,59 +168,33 @@ fn convert_mark_to_polar(mark: &Value, _spec: &Plot) -> Result<Value> {
     Ok(json!(polar_mark))
 }
 
-/// Update encoding channels for polar projection
+/// Apply start angle offset to theta encoding for polar projection
 ///
-/// Uses theta_field to determine which aesthetic maps to theta:
-/// - If theta_field is "y" (default): y → theta, x → color (standard pie chart)
-/// - If theta_field is "x": x → theta, y → radius
-fn update_encoding_for_polar(
-    encoding: &mut Value,
-    theta_field: &str,
-    start_radians: f64,
-) -> Result<()> {
+/// The encoding channels are already correctly named (theta/radius) by
+/// `map_aesthetic_name()` based on coord kind. This function only applies
+/// the optional start angle offset from the PROJECT clause.
+fn apply_polar_start_angle(encoding: &mut Value, start_radians: f64) -> Result<()> {
+    // Skip if no start angle offset
+    if start_radians.abs() <= f64::EPSILON {
+        return Ok(());
+    }
+
     let enc_obj = encoding
         .as_object_mut()
         .ok_or_else(|| GgsqlError::WriterError("Encoding is not an object".to_string()))?;
 
-    // Map the theta field to theta channel based on theta property
-    if theta_field == "y" {
-        // Standard pie chart: y → theta, x → color/category
-        if let Some(y_enc) = enc_obj.remove("y") {
-            enc_obj.insert("theta".to_string(), y_enc);
-        }
-        // Map x to color if not already mapped, and remove x from positional encoding
-        if !enc_obj.contains_key("color") {
-            if let Some(x_enc) = enc_obj.remove("x") {
-                enc_obj.insert("color".to_string(), x_enc);
-            }
-        } else {
-            // If color is already mapped, just remove x from positional encoding
-            enc_obj.remove("x");
-        }
-    } else if theta_field == "x" {
-        // Reversed: x → theta, y → radius
-        if let Some(x_enc) = enc_obj.remove("x") {
-            enc_obj.insert("theta".to_string(), x_enc);
-        }
-        if let Some(y_enc) = enc_obj.remove("y") {
-            enc_obj.insert("radius".to_string(), y_enc);
-        }
-    }
-
-    // Apply start angle offset to theta encoding if non-zero
-    if start_radians.abs() > f64::EPSILON {
-        if let Some(theta_enc) = enc_obj.get_mut("theta") {
-            if let Some(theta_obj) = theta_enc.as_object_mut() {
-                // Set the scale range to offset by the start angle
-                // Vega-Lite theta scale default is [0, 2π], we offset it
-                let end_radians = start_radians + 2.0 * std::f64::consts::PI;
-                theta_obj.insert(
-                    "scale".to_string(),
-                    json!({
-                        "range": [start_radians, end_radians]
-                    }),
-                );
-            }
+    // Apply start angle offset to theta encoding
+    if let Some(theta_enc) = enc_obj.get_mut("theta") {
+        if let Some(theta_obj) = theta_enc.as_object_mut() {
+            // Set the scale range to offset by the start angle
+            // Vega-Lite theta scale default is [0, 2π], we offset it
+            let end_radians = start_radians + 2.0 * std::f64::consts::PI;
+            theta_obj.insert(
+                "scale".to_string(),
+                json!({
+                    "range": [start_radians, end_radians]
+                }),
+            );
         }
     }
 

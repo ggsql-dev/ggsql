@@ -5,7 +5,7 @@
 
 use crate::plot::aesthetic::is_positional_aesthetic;
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
-use crate::plot::ParameterValue;
+use crate::plot::{CoordKind, ParameterValue};
 use crate::{is_primary_positional, primary_aesthetic, AestheticValue, DataFrame, Plot, Result};
 use polars::prelude::*;
 use serde_json::{json, Value};
@@ -896,34 +896,28 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
 
 /// Map ggsql aesthetic name to Vega-Lite encoding channel name.
 ///
-/// Handles both internal positional aesthetics (pos1, pos2, etc.) and user-facing aesthetics.
-/// For internal positional names, uses the AestheticContext to transform to user-facing names,
-/// then applies Vega-Lite specific mappings (e.g., xend -> x2).
+/// For internal positional aesthetics (pos1, pos2, etc.), maps directly to Vega-Lite
+/// channel names based on coord type:
+/// - Cartesian: pos1 → "x", pos2 → "y"
+/// - Polar: pos1 → "theta", pos2 → "radius"
+///
+/// This ensures correct Vega-Lite channel names regardless of what the user originally
+/// called their positional aesthetics in the PROJECT clause.
+///
+/// For non-positional aesthetics, applies Vega-Lite specific mappings (e.g., linetype → strokeDash).
 pub(super) fn map_aesthetic_name(
     aesthetic: &str,
-    ctx: &crate::plot::AestheticContext,
+    _ctx: &crate::plot::AestheticContext,
+    coord_kind: CoordKind,
 ) -> String {
-    // First, transform internal positional to user-facing using context
-    let user_name = ctx
-        .map_internal_to_user(aesthetic)
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| aesthetic.to_string());
+    // For internal positional aesthetics, map directly to Vega-Lite channel names
+    // based on coord type (ignoring user-facing names)
+    if let Some(vl_channel) = map_positional_to_vegalite(aesthetic, coord_kind) {
+        return vl_channel;
+    }
 
-    // Then apply Vega-Lite specific mappings
-    match user_name.as_str() {
-        // Position end aesthetics (ggplot2 style -> Vega-Lite style)
-        // Handle both cartesian (xend/yend) and polar (thetaend/radiusend)
-        name if name.ends_with("end") => {
-            // Convert xend -> x2, yend -> y2, thetaend -> theta2, etc.
-            let base = &name[..name.len() - 3];
-            format!("{}2", base)
-        }
-        // Position intercept aesthetics for reference lines
-        name if name.ends_with("intercept") => {
-            // Keep as-is for now (Vega-Lite uses xintercept, yintercept style)
-            // Actually in Vega-Lite we need special handling for reference lines
-            name.to_string()
-        }
+    // Non-positional aesthetics: apply Vega-Lite specific mappings
+    match aesthetic {
         // Line aesthetics
         "linetype" => "strokeDash".to_string(),
         "linewidth" => "strokeWidth".to_string(),
@@ -931,7 +925,37 @@ pub(super) fn map_aesthetic_name(
         "label" => "text".to_string(),
         // All other aesthetics pass through directly
         // (fill and stroke map to Vega-Lite's separate fill/stroke channels)
-        _ => user_name,
+        _ => aesthetic.to_string(),
+    }
+}
+
+/// Map internal positional aesthetic to Vega-Lite channel name based on coord type.
+///
+/// Returns `Some(channel_name)` for internal positional aesthetics (pos1, pos2, etc.),
+/// or `None` for non-positional aesthetics.
+fn map_positional_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<String> {
+    let (primary, secondary) = match coord_kind {
+        CoordKind::Cartesian => ("x", "y"),
+        CoordKind::Polar => ("theta", "radius"),
+    };
+
+    // Match internal positional aesthetic patterns
+    match aesthetic {
+        // Primary positional
+        "pos1" => Some(primary.to_string()),
+        "pos2" => Some(secondary.to_string()),
+        // End variants (Vega-Lite uses x2/y2/theta2/radius2)
+        "pos1end" => Some(format!("{}2", primary)),
+        "pos2end" => Some(format!("{}2", secondary)),
+        // Min/Max variants
+        "pos1min" => Some(format!("{}min", primary)),
+        "pos1max" => Some(format!("{}max", primary)),
+        "pos2min" => Some(format!("{}min", secondary)),
+        "pos2max" => Some(format!("{}max", secondary)),
+        // Intercept variants (for reference lines)
+        "pos1intercept" => Some(format!("{}intercept", primary)),
+        "pos2intercept" => Some(format!("{}intercept", secondary)),
+        _ => None,
     }
 }
 
