@@ -1267,6 +1267,10 @@ mod tests {
                 AestheticValue::standard_column("y".to_string()),
             )
             .with_aesthetic(
+                "label".to_string(),
+                AestheticValue::standard_column("label".to_string()),
+            )
+            .with_aesthetic(
                 "fontsize".to_string(),
                 AestheticValue::standard_column("value".to_string()),
             );
@@ -1285,6 +1289,7 @@ mod tests {
         let df = df! {
             "x" => &[1, 2, 3],
             "y" => &[1, 2, 3],
+            "label" => &["A", "B", "C"],
             "value" => &[1.0, 2.0, 3.0],
         }
         .unwrap();
