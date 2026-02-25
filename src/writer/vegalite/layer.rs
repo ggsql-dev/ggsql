@@ -413,19 +413,32 @@ impl TextRenderer {
         json!(0.0)
     }
 
-    /// Apply font properties to mark object
+    /// Apply font properties to mark object (only if not already set by Literals)
     fn apply_font_properties(mark_obj: &mut Map<String, Value>, font_key: &FontKey) {
         let (family_val, font_weight_val, font_style_val, hjust_val, vjust_val, angle_val) =
             font_key;
 
+        // Only apply font properties if not already set by Literal aesthetics
         if let Some(family_val) = family_val {
-            mark_obj.insert("font".to_string(), family_val.clone());
+            mark_obj
+                .entry("font".to_string())
+                .or_insert(family_val.clone());
         }
-        mark_obj.insert("fontWeight".to_string(), font_weight_val.clone());
-        mark_obj.insert("fontStyle".to_string(), font_style_val.clone());
-        mark_obj.insert("align".to_string(), hjust_val.clone());
-        mark_obj.insert("baseline".to_string(), vjust_val.clone());
-        mark_obj.insert("angle".to_string(), angle_val.clone());
+        mark_obj
+            .entry("fontWeight".to_string())
+            .or_insert(font_weight_val.clone());
+        mark_obj
+            .entry("fontStyle".to_string())
+            .or_insert(font_style_val.clone());
+        mark_obj
+            .entry("align".to_string())
+            .or_insert(hjust_val.clone());
+        mark_obj
+            .entry("baseline".to_string())
+            .or_insert(vjust_val.clone());
+        mark_obj
+            .entry("angle".to_string())
+            .or_insert(angle_val.clone());
     }
 
     /// Build transform with source filter
@@ -459,7 +472,7 @@ impl TextRenderer {
         // Extract shared encoding from prototype
         let shared_encoding = prototype.get("encoding").cloned();
 
-        // Build base mark object with nudge parameters (prototype for all runs)
+        // Build base mark object with fixed parameters
         let mut base_mark = json!({"type": "text"});
         if let Some(mark_map) = base_mark.as_object_mut() {
             // Extract nudge parameters (nudge_x → xOffset, nudge_y → yOffset)
@@ -468,6 +481,44 @@ impl TextRenderer {
             }
             if let Some(ParameterValue::Number(y_offset)) = layer.parameters.get("nudge_y") {
                 mark_map.insert("yOffset".to_string(), json!(y_offset));
+            }
+
+            // Apply Literal font aesthetics from SETTING (uniform across all rows)
+            if let Some(ParameterValue::String(s)) = layer.get_literal("family") {
+                if !s.is_empty() {
+                    mark_map.insert("font".to_string(), json!(s));
+                }
+            }
+            if let Some(ParameterValue::String(s)) = layer.get_literal("fontface") {
+                let (font_weight, font_style) = Self::convert_fontface(s);
+                mark_map.insert("fontWeight".to_string(), font_weight);
+                mark_map.insert("fontStyle".to_string(), font_style);
+            }
+            if let Some(lit) = layer.get_literal("hjust") {
+                match lit {
+                    ParameterValue::String(s) => {
+                        mark_map.insert("align".to_string(), Self::convert_hjust(s));
+                    }
+                    ParameterValue::Number(n) => {
+                        mark_map.insert("align".to_string(), Self::convert_hjust(&n.to_string()));
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(lit) = layer.get_literal("vjust") {
+                match lit {
+                    ParameterValue::String(s) => {
+                        mark_map.insert("baseline".to_string(), Self::convert_vjust(s));
+                    }
+                    ParameterValue::Number(n) => {
+                        mark_map
+                            .insert("baseline".to_string(), Self::convert_vjust(&n.to_string()));
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(ParameterValue::Number(n)) = layer.get_literal("angle") {
+                mark_map.insert("angle".to_string(), json!(n));
             }
         }
 
@@ -1796,5 +1847,62 @@ mod tests {
         assert!(labels.contains(&"$0.00"));
         assert!(labels.contains(&"$10.50"));
         assert!(labels.contains(&"$21.00"));
+    }
+
+    #[test]
+    fn test_text_setting_fontface() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Integration test: SETTING fontface => 'bold' should add fontWeight to base mark
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Query with fontface in SETTING
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                chr(65 + n::INTEGER) as label
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, label
+            DRAW text SETTING fontface => 'bold'
+        "#;
+
+        // Execute and prepare data
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        assert_eq!(prepared.specs.len(), 1);
+
+        let spec = &prepared.specs[0];
+        assert_eq!(spec.layers.len(), 1);
+
+        // Generate Vega-Lite JSON
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Text renderer creates nested layers structure
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        assert_eq!(top_layers.len(), 1);
+
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        // All nested layers should have fontWeight: "bold" in mark (from SETTING)
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+
+            assert!(
+                mark.contains_key("fontWeight"),
+                "Mark should have fontWeight from SETTING fontface"
+            );
+            assert_eq!(
+                mark["fontWeight"].as_str().unwrap(),
+                "bold",
+                "fontWeight should be bold"
+            );
+        }
     }
 }
