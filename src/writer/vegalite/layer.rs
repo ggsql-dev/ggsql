@@ -296,20 +296,30 @@ impl TextRenderer {
         }
 
         // Calculate run lengths
-        let run_lengths: Vec<usize> = change_indices.iter().enumerate().map(|(i, &start)| {
-            let end = change_indices.get(i + 1).copied().unwrap_or(nrows);
-            end - start
-        }).collect();
+        let run_lengths: Vec<usize> = change_indices
+            .iter()
+            .enumerate()
+            .map(|(i, &start)| {
+                let end = change_indices.get(i + 1).copied().unwrap_or(nrows);
+                end - start
+            })
+            .collect();
 
         // Extract rows at change indices (only font columns)
-        let indices_ca = UInt32Chunked::from_vec("indices".into(), change_indices.iter().map(|&i| i as u32).collect());
+        let indices_ca = UInt32Chunked::from_vec(
+            "indices".into(),
+            change_indices.iter().map(|&i| i as u32).collect(),
+        );
         let font_aesthetics = ["family", "fontface", "hjust", "vjust", "angle"];
 
         let mut result_cols = Vec::new();
         for aesthetic in font_aesthetics {
             if let Some(col) = font_columns.get(aesthetic) {
                 let taken = col.take(&indices_ca).map_err(|e| {
-                    GgsqlError::InternalError(format!("Failed to take indices from {}: {}", aesthetic, e))
+                    GgsqlError::InternalError(format!(
+                        "Failed to take indices from {}: {}",
+                        aesthetic, e
+                    ))
                 })?;
                 result_cols.push(taken);
             }
@@ -426,10 +436,7 @@ impl TextRenderer {
     /// Convert angle to Vega-Lite angle value (degrees)
     /// Prefers literal over column value
     /// Normalizes angles to [0, 360) range
-    fn convert_angle(
-        literal: Option<&ParameterValue>,
-        column_value: Option<f64>,
-    ) -> Option<Value> {
+    fn convert_angle(literal: Option<&ParameterValue>, column_value: Option<f64>) -> Option<Value> {
         // First select which value to use (prefer literal)
         let value = if let Some(ParameterValue::Number(n)) = literal {
             *n
@@ -488,10 +495,9 @@ impl TextRenderer {
         };
 
         // Convert and apply font properties
-        if let Some(family_val) = Self::convert_family(
-            layer.get_literal("family"),
-            get_str("family").as_deref(),
-        ) {
+        if let Some(family_val) =
+            Self::convert_family(layer.get_literal("family"), get_str("family").as_deref())
+        {
             mark_obj.insert("font".to_string(), family_val);
         }
 
@@ -506,24 +512,19 @@ impl TextRenderer {
             mark_obj.insert("fontStyle".to_string(), style);
         }
 
-        if let Some(hjust_val) = Self::convert_hjust(
-            layer.get_literal("hjust"),
-            get_str("hjust").as_deref(),
-        ) {
+        if let Some(hjust_val) =
+            Self::convert_hjust(layer.get_literal("hjust"), get_str("hjust").as_deref())
+        {
             mark_obj.insert("align".to_string(), hjust_val);
         }
 
-        if let Some(vjust_val) = Self::convert_vjust(
-            layer.get_literal("vjust"),
-            get_str("vjust").as_deref(),
-        ) {
+        if let Some(vjust_val) =
+            Self::convert_vjust(layer.get_literal("vjust"), get_str("vjust").as_deref())
+        {
             mark_obj.insert("baseline".to_string(), vjust_val);
         }
 
-        if let Some(angle_val) = Self::convert_angle(
-            layer.get_literal("angle"),
-            get_f64("angle"),
-        ) {
+        if let Some(angle_val) = Self::convert_angle(layer.get_literal("angle"), get_f64("angle")) {
             mark_obj.insert("angle".to_string(), angle_val);
         }
 
@@ -626,7 +627,6 @@ impl GeomRenderer for TextRenderer {
         let mut position = 0;
 
         for (run_idx, &length) in run_lengths.iter().enumerate() {
-
             let suffix = format!("_font_{}", run_idx);
 
             // Slice the contiguous run from the DataFrame (more efficient than boolean masking)
