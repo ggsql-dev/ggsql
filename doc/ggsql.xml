@@ -592,9 +592,6 @@
         <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
 
-        <!-- Facet scales - only highlighted here -->
-        <keyword attribute="Data Type" context="#stay" String="facet_scales"/>
-
         <!-- Facet properties -->
         <WordDetect attribute="Attribute" context="#stay" String="scales" insensitive="true"/>
         <WordDetect attribute="Attribute" context="#stay" String="ncol" insensitive="true"/>
