@@ -796,9 +796,86 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     }
 }
 
+// =============================================================================
+// General Helper Functions
+// =============================================================================
+
+/// Calculate data resolution (minimum spacing between consecutive unique values).
+///
+/// For continuous numeric data: returns the minimum spacing between consecutive unique values.
+/// For a single unique value or empty input: returns 1.0 as a default.
+/// Uses a small tolerance (epsilon) to avoid floating point precision issues.
+///
+/// # Arguments
+/// * `values` - Numeric values from the data (will be sorted internally)
+///
+/// # Returns
+/// The minimum distance between consecutive sorted values, or 1.0 if there are fewer than 2 values.
+///
+/// # Example
+/// ```ignore
+/// let values = vec![1.0, 5.0, 2.0, 6.0];
+/// let resolution = calculate_resolution(&values); // Returns 1.0 (minimum spacing after sorting: 1-2 or 5-6)
+/// ```
+fn calculate_resolution(values: &[f64]) -> f64 {
+    const EPSILON: f64 = 1e-10;
+
+    if values.len() < 2 {
+        return 1.0;
+    }
+
+    // Sort and deduplicate values
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.dedup();
+
+    if sorted.len() < 2 {
+        return 1.0; // All values are identical
+    }
+
+    let mut min_dist = f64::MAX;
+    for i in 1..sorted.len() {
+        let dist = sorted[i] - sorted[i - 1];
+        // Only consider distances above epsilon to avoid floating point noise
+        if dist > EPSILON && dist < min_dist {
+            min_dist = dist;
+        }
+    }
+
+    if min_dist == f64::MAX {
+        1.0 // All values are within epsilon of each other
+    } else {
+        min_dist
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_calculate_resolution() {
+        // Normal case: minimum spacing
+        assert_eq!(calculate_resolution(&[1.0, 2.0, 5.0, 6.0]), 1.0);
+
+        // Unsorted input (should sort internally)
+        assert_eq!(calculate_resolution(&[5.0, 1.0, 6.0, 2.0]), 1.0);
+
+        // Single value
+        assert_eq!(calculate_resolution(&[5.0]), 1.0);
+
+        // Empty
+        assert_eq!(calculate_resolution(&[]), 1.0);
+
+        // All identical values
+        assert_eq!(calculate_resolution(&[5.0, 5.0, 5.0]), 1.0);
+
+        // Larger spacing
+        assert_eq!(calculate_resolution(&[0.0, 10.0, 20.0]), 10.0);
+
+        // Fractional values
+        assert_eq!(calculate_resolution(&[0.0, 0.5, 1.5, 2.0]), 0.5);
+    }
 
     #[test]
     fn test_violin_detail_encoding() {
