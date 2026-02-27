@@ -444,7 +444,7 @@ module.exports = grammar({
       $.draw_clause,
       $.scale_clause,
       $.facet_clause,
-      $.coord_clause,
+      $.project_clause,
       $.label_clause,
       $.theme_clause,
     ),
@@ -637,9 +637,16 @@ module.exports = grammar({
       ')'
     ),
 
+    // Aesthetic name: either a known aesthetic or any identifier (for custom PROJECT aesthetics)
+    // Known aesthetics are listed first for syntax highlighting priority
     aesthetic_name: $ => choice(
-      // Position aesthetics
+      // Position aesthetics (cartesian)
       'x', 'y', 'xmin', 'xmax', 'ymin', 'ymax', 'xend', 'yend',
+      // Position aesthetics (polar)
+      'theta', 'radius', 'thetamin', 'thetamax', 'radiusmin', 'radiusmax',
+      'thetaend', 'radiusend',
+      // Reference line intercepts
+      'xintercept', 'yintercept',
       // Aggregation aesthetic (for bar charts)
       'weight',
       // Color aesthetics
@@ -651,7 +658,9 @@ module.exports = grammar({
       // Facet aesthetics
       'panel', 'row', 'column',
       // Computed variables
-      'offset'
+      'offset',
+      // Allow any identifier for custom PROJECT aesthetics (e.g., PROJECT a, b TO polar)
+      $.identifier
     ),
 
     column_reference: $ => $.identifier,
@@ -749,36 +758,45 @@ module.exports = grammar({
       repeat(seq(',', $.identifier))
     ),
 
-    // COORD clause - COORD [type] [SETTING prop => value, ...]
-    coord_clause: $ => seq(
-      caseInsensitive('COORD'),
-      choice(
-        // Type with optional SETTING: COORD polar SETTING theta => y
-        seq($.coord_type, optional(seq(caseInsensitive('SETTING'), $.coord_properties))),
-        // Just SETTING: COORD SETTING xlim => [0, 100] (defaults to cartesian)
-        seq(caseInsensitive('SETTING'), $.coord_properties)
-      )
+    // PROJECT clause - PROJECT [aesthetics] TO coord_type [SETTING prop => value, ...]
+    // Examples:
+    //   PROJECT TO cartesian (defaults to x, y)
+    //   PROJECT x, y TO cartesian (explicit aesthetics)
+    //   PROJECT a, b TO cartesian (custom aesthetic names)
+    //   PROJECT TO polar (defaults to theta, radius)
+    //   PROJECT theta, radius TO polar (explicit aesthetics)
+    //   PROJECT TO cartesian SETTING clip => true
+    project_clause: $ => seq(
+      caseInsensitive('PROJECT'),
+      optional($.project_aesthetics),
+      caseInsensitive('TO'),
+      $.project_type,
+      optional(seq(caseInsensitive('SETTING'), $.project_properties))
     ),
 
-    coord_type: $ => choice(
-      'cartesian', 'polar', 'flip', 'fixed', 'trans', 'map', 'quickmap'
+    // Optional list of positional aesthetic names for PROJECT clause
+    project_aesthetics: $ => seq(
+      $.identifier,
+      repeat(seq(',', $.identifier))
     ),
 
-    coord_properties: $ => seq(
-      $.coord_property,
-      repeat(seq(',', $.coord_property))
+    project_type: $ => choice(
+      'cartesian', 'polar'
     ),
 
-    coord_property: $ => seq(
-      field('name', $.coord_property_name),
+    project_properties: $ => seq(
+      $.project_property,
+      repeat(seq(',', $.project_property))
+    ),
+
+    project_property: $ => seq(
+      field('name', $.project_property_name),
       '=>',
       field('value', choice($.string, $.number, $.boolean, $.array, $.identifier))
     ),
 
-    coord_property_name: $ => choice(
-      'xlim', 'ylim', 'ratio', 'theta', 'clip',
-      // Also allow aesthetic names as properties (for range specification)
-      $.aesthetic_name
+    project_property_name: $ => choice(
+      'ratio', 'clip', 'start', 'end', 'inner'
     ),
 
     // LABEL clause (repeatable)

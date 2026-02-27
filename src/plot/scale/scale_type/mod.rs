@@ -1113,7 +1113,7 @@ impl ScaleType {
     /// - Numeric/temporal → Continuous
     /// - String/boolean → Discrete
     ///
-    /// For facet aesthetics (panel, row, column):
+    /// For facet aesthetics (facet1, facet2):
     /// - Numeric/temporal → Binned (not Continuous, since facets need discrete categories)
     /// - String/boolean → Discrete
     pub fn infer_for_aesthetic(dtype: &DataType, aesthetic: &str) -> Self {
@@ -2296,7 +2296,7 @@ mod tests {
         // Continuous positional: default expand
         let props = HashMap::new();
         let resolved = ScaleType::continuous()
-            .resolve_properties("x", &props)
+            .resolve_properties("pos1", &props)
             .unwrap();
         assert!(resolved.contains_key("expand"));
         match resolved.get("expand") {
@@ -2312,7 +2312,9 @@ mod tests {
         assert!(resolved.contains_key("oob"));
 
         // Binned: default oob is censor
-        let resolved = ScaleType::binned().resolve_properties("x", &props).unwrap();
+        let resolved = ScaleType::binned()
+            .resolve_properties("pos1", &props)
+            .unwrap();
         match resolved.get("oob") {
             Some(ParameterValue::String(s)) => assert_eq!(s, "censor"),
             _ => panic!("Expected oob to be 'censor'"),
@@ -2331,7 +2333,7 @@ mod tests {
         let mut props = HashMap::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
         let resolved = ScaleType::continuous()
-            .resolve_properties("x", &props)
+            .resolve_properties("pos1", &props)
             .unwrap();
         match resolved.get("expand") {
             Some(ParameterValue::Number(n)) => assert!((n - 0.1).abs() < 1e-10),
@@ -2340,7 +2342,9 @@ mod tests {
 
         // Binned supports expand
         props.insert("expand".to_string(), ParameterValue::Number(0.2));
-        let resolved = ScaleType::binned().resolve_properties("x", &props).unwrap();
+        let resolved = ScaleType::binned()
+            .resolve_properties("pos1", &props)
+            .unwrap();
         match resolved.get("expand") {
             Some(ParameterValue::Number(n)) => assert!((n - 0.2).abs() < 1e-10),
             _ => panic!("Expected Number"),
@@ -2359,13 +2363,25 @@ mod tests {
 
     #[test]
     fn test_expand_positional_vs_non_positional() {
-        use crate::plot::aesthetic::ALL_POSITIONAL;
+        // Internal positional aesthetics (after transformation)
+        let internal_positional = [
+            "pos1",
+            "pos1min",
+            "pos1max",
+            "pos1end",
+            "pos1intercept",
+            "pos2",
+            "pos2min",
+            "pos2max",
+            "pos2end",
+            "pos2intercept",
+        ];
 
         let mut props = HashMap::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
 
         // Positional aesthetics should allow expand
-        for aes in ALL_POSITIONAL.iter() {
+        for aes in internal_positional.iter() {
             assert!(
                 ScaleType::continuous()
                     .resolve_properties(aes, &props)
@@ -2388,12 +2404,24 @@ mod tests {
 
     #[test]
     fn test_oob_defaults_by_aesthetic_type() {
-        use crate::plot::aesthetic::ALL_POSITIONAL;
+        // Internal positional aesthetics (after transformation)
+        let internal_positional = [
+            "pos1",
+            "pos1min",
+            "pos1max",
+            "pos1end",
+            "pos1intercept",
+            "pos2",
+            "pos2min",
+            "pos2max",
+            "pos2end",
+            "pos2intercept",
+        ];
 
         let props = HashMap::new();
 
         // Positional aesthetics default to 'keep'
-        for aesthetic in ALL_POSITIONAL.iter() {
+        for aesthetic in internal_positional.iter() {
             let resolved = ScaleType::continuous()
                 .resolve_properties(aesthetic, &props)
                 .unwrap();

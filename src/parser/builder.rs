@@ -3,9 +3,8 @@
 //! Takes a tree-sitter parse tree and builds a typed Plot,
 //! handling all the node types defined in the grammar.
 
-use crate::plot::aesthetic::is_aesthetic_name;
 use crate::plot::layer::geom::Geom;
-use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_facet_aesthetic, Transform};
+use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
 use crate::{GgsqlError, Result};
 use std::collections::HashMap;
@@ -21,7 +20,7 @@ use super::SourceTree;
 ///
 /// Returns (name_node, value_node) without any interpretation.
 /// Works for both patterns:
-/// - `name => value` (SETTING, COORD, THEME, LABEL, RENAMING)
+/// - `name => value` (SETTING, PROJECT, THEME, LABEL, RENAMING)
 /// - `value AS name` (MAPPING explicit_mapping)
 ///
 /// Caller is responsible for interpreting the nodes based on their context.
@@ -271,8 +270,14 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
         }
     }
 
-    // Validate no conflicts between SCALE and COORD input range specifications
-    validate_scale_coord_conflicts(&spec)?;
+    // Initialize aesthetic context based on coord and facet
+    // This must happen after all clauses are processed (especially PROJECT and FACET)
+    spec.initialize_aesthetic_context();
+
+    // Transform all aesthetic keys from user-facing (x/y or theta/radius) to internal (pos1/pos2)
+    // This enables generic handling throughout the pipeline and must happen before merge
+    // since geom definitions use internal names for their supported/required aesthetics
+    spec.transform_aesthetics_to_internal();
 
     Ok(spec)
 }
@@ -293,8 +298,8 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
             "facet_clause" => {
                 spec.facet = Some(build_facet(&child, source)?);
             }
-            "coord_clause" => {
-                spec.coord = Some(build_coord(&child, source)?);
+            "project_clause" => {
+                spec.project = Some(build_project(&child, source)?);
             }
             "label_clause" => {
                 let new_labels = build_labels(&child, source)?;
@@ -674,7 +679,8 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
     }
 
     // Validate facet aesthetics cannot have output ranges (TO clause)
-    if is_facet_aesthetic(&aesthetic) && output_range.is_some() {
+    // Note: This check uses user-facing names since we're in the parser, before transformation
+    if is_user_facet_aesthetic(&aesthetic) && output_range.is_some() {
         return Err(GgsqlError::ValidationError(format!(
             "SCALE {}: facet variables cannot have output ranges (TO clause)",
             aesthetic
@@ -887,28 +893,40 @@ fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
 }
 
 // ============================================================================
-// Coord Building
+// Project Building
 // ============================================================================
 
-/// Build a Coord from a coord_clause node
-fn build_coord(node: &Node, source: &SourceTree) -> Result<Coord> {
-    let mut coord_type = CoordType::Cartesian;
+/// Build a Projection from a project_clause node
+///
+/// Parses the new PROJECT syntax:
+/// ```text
+/// PROJECT [aesthetic, ...] TO coord_type [SETTING prop => value, ...]
+/// ```
+///
+/// Aesthetics are optional and default to the coord's standard names.
+fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
+    let mut coord = Coord::cartesian();
     let mut properties = HashMap::new();
+    let mut user_aesthetics: Option<Vec<String>> = None;
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "COORD" | "SETTING" | "=>" | "," => continue,
-            "coord_type" => {
-                coord_type = parse_coord_type(&child, source)?;
+            "PROJECT" | "SETTING" | "TO" | "=>" | "," => continue,
+            "project_aesthetics" => {
+                user_aesthetics = Some(parse_project_aesthetics(&child, source)?);
             }
-            "coord_properties" => {
-                // Find all coord_property nodes
-                let query = "(coord_property) @prop";
+            "project_type" => {
+                coord = parse_coord(&child, source)?;
+            }
+            "project_properties" => {
+                // Find all project_property nodes
+                let query = "(project_property) @prop";
                 let prop_nodes = source.find_nodes(&child, query);
 
                 for prop_node in prop_nodes {
-                    let (prop_name, prop_value) = parse_single_coord_property(&prop_node, source)?;
+                    let (prop_name, prop_value) =
+                        parse_single_project_property(&prop_node, source)?;
                     properties.insert(prop_name, prop_value);
                 }
             }
@@ -916,22 +934,80 @@ fn build_coord(node: &Node, source: &SourceTree) -> Result<Coord> {
         }
     }
 
-    // Validate properties for this coord type
-    validate_coord_properties(&coord_type, &properties)?;
+    // Resolve aesthetics: use provided or fall back to coord defaults
+    let aesthetics = if let Some(aes) = user_aesthetics {
+        // Validate aesthetic count matches coord requirements
+        let expected = coord.positional_aesthetic_names().len();
+        if aes.len() != expected {
+            return Err(GgsqlError::ParseError(format!(
+                "PROJECT {} requires {} aesthetics, got {}",
+                coord.name(),
+                expected,
+                aes.len()
+            )));
+        }
 
-    Ok(Coord {
-        coord_type,
+        // Validate no conflicts with non-positional or facet aesthetics
+        validate_positional_aesthetic_names(&aes)?;
+
+        aes
+    } else {
+        // Use coord defaults - resolved immediately at build time
+        coord
+            .positional_aesthetic_names()
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    };
+
+    // Validate properties for this coord type
+    validate_project_properties(&coord, &properties)?;
+
+    Ok(Projection {
+        coord,
+        aesthetics,
         properties,
     })
 }
 
-/// Parse a single coord_property node into (name, value)
-fn parse_single_coord_property(
+/// Parse project aesthetics from a project_aesthetics node
+fn parse_project_aesthetics(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
+    let query = "(identifier) @aes";
+    Ok(source.find_texts(node, query))
+}
+
+/// Validate that positional aesthetic names don't conflict with reserved names
+fn validate_positional_aesthetic_names(names: &[String]) -> Result<()> {
+    use crate::plot::aesthetic::{NON_POSITIONAL, USER_FACET_AESTHETICS};
+
+    for name in names {
+        // Check against non-positional aesthetics
+        if NON_POSITIONAL.contains(&name.as_str()) {
+            return Err(GgsqlError::ParseError(format!(
+                "PROJECT aesthetic '{}' conflicts with non-positional aesthetic. \
+                 Choose a different name.",
+                name
+            )));
+        }
+        // Check against facet aesthetics
+        if USER_FACET_AESTHETICS.contains(&name.as_str()) {
+            return Err(GgsqlError::ParseError(format!(
+                "PROJECT aesthetic '{}' conflicts with facet aesthetic. \
+                 Choose a different name.",
+                name
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Parse a single project_property node into (name, value)
+fn parse_single_project_property(
     node: &Node,
     source: &SourceTree,
 ) -> Result<(String, ParameterValue)> {
     // Extract name and value nodes using field-based queries
-    let (name_node, value_node) = extract_name_value_nodes(node, "coord property")?;
+    let (name_node, value_node) = extract_name_value_nodes(node, "project property")?;
 
     // Parse property name (can be a literal like 'xlim' or an aesthetic_name)
     let prop_name = source.get_text(&name_node);
@@ -939,7 +1015,7 @@ fn parse_single_coord_property(
     // Parse property value based on its type
     let prop_value = match value_node.kind() {
         "string" | "number" | "boolean" | "array" => {
-            parse_value_node(&value_node, source, "coord property")?
+            parse_value_node(&value_node, source, "project property")?
         }
         "identifier" => {
             // identifiers can be property values (e.g., theta => y)
@@ -947,7 +1023,7 @@ fn parse_single_coord_property(
         }
         _ => {
             return Err(GgsqlError::ParseError(format!(
-                "Invalid coord property value type: {}",
+                "Invalid project property value type: {}",
                 value_node.kind()
             )));
         }
@@ -957,61 +1033,22 @@ fn parse_single_coord_property(
 }
 
 /// Validate that properties are valid for the given coord type
-fn validate_coord_properties(
-    coord_type: &CoordType,
+fn validate_project_properties(
+    coord: &Coord,
     properties: &HashMap<String, ParameterValue>,
 ) -> Result<()> {
-    for prop_name in properties.keys() {
-        let valid = match coord_type {
-            CoordType::Cartesian => {
-                // Cartesian allows: xlim, ylim, aesthetic names
-                // Not allowed: theta
-                prop_name == "xlim" || prop_name == "ylim" || is_aesthetic_name(prop_name)
-            }
-            CoordType::Flip => {
-                // Flip allows: aesthetic names only
-                // Not allowed: xlim, ylim, theta
-                is_aesthetic_name(prop_name)
-            }
-            CoordType::Polar => {
-                // Polar allows: theta, aesthetic names
-                // Not allowed: xlim, ylim
-                prop_name == "theta" || is_aesthetic_name(prop_name)
-            }
-            _ => {
-                // Other coord types: allow all for now (future implementation)
-                true
-            }
-        };
-
-        if !valid {
-            let valid_props = match coord_type {
-                CoordType::Cartesian => "xlim, ylim, <aesthetics>",
-                CoordType::Flip => "<aesthetics>",
-                CoordType::Polar => "theta, <aesthetics>",
-                _ => "<varies>",
-            };
-            return Err(GgsqlError::ParseError(format!(
-                "Property '{}' not valid for {:?} coordinates. Valid properties: {}",
-                prop_name, coord_type, valid_props
-            )));
-        }
-    }
-
+    coord
+        .resolve_properties(properties)
+        .map_err(GgsqlError::ParseError)?;
     Ok(())
 }
 
-/// Parse coord type from a coord_type node
-fn parse_coord_type(node: &Node, source: &SourceTree) -> Result<CoordType> {
+/// Parse coord type from a project_type node
+fn parse_coord(node: &Node, source: &SourceTree) -> Result<Coord> {
     let text = source.get_text(node);
     match text.to_lowercase().as_str() {
-        "cartesian" => Ok(CoordType::Cartesian),
-        "polar" => Ok(CoordType::Polar),
-        "flip" => Ok(CoordType::Flip),
-        "fixed" => Ok(CoordType::Fixed),
-        "trans" => Ok(CoordType::Trans),
-        "map" => Ok(CoordType::Map),
-        "quickmap" => Ok(CoordType::QuickMap),
+        "cartesian" => Ok(Coord::cartesian()),
+        "polar" => Ok(Coord::polar()),
         _ => Err(GgsqlError::ParseError(format!(
             "Unknown coord type: {}",
             text
@@ -1105,34 +1142,6 @@ fn build_theme(node: &Node, source: &SourceTree) -> Result<Theme> {
 // Validation & Utilities
 // ============================================================================
 
-/// Check for conflicts between SCALE input range and COORD aesthetic input range specifications
-fn validate_scale_coord_conflicts(spec: &Plot) -> Result<()> {
-    if let Some(ref coord) = spec.coord {
-        // Get all aesthetic names that have input ranges in COORD
-        let coord_aesthetics: Vec<String> = coord
-            .properties
-            .keys()
-            .filter(|k| is_aesthetic_name(k))
-            .cloned()
-            .collect();
-
-        // Check if any of these also have input range in SCALE
-        for aesthetic in coord_aesthetics {
-            for scale in &spec.scales {
-                if scale.aesthetic == aesthetic && scale.input_range.is_some() {
-                    return Err(GgsqlError::ParseError(format!(
-                        "Input range for '{}' specified in both SCALE and COORD clauses. \
-                        Please specify input range in only one location.",
-                        aesthetic
-                    )));
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
 /// Check if the last SQL statement in sql_portion is a SELECT statement
 fn check_last_statement_is_select(sql_portion_node: &Node, source: &SourceTree) -> bool {
     // Find all sql_statement nodes and get the last one (can use query for this)
@@ -1201,216 +1210,124 @@ mod tests {
     }
 
     // ========================================
-    // COORD Property Validation Tests
+    // PROJECT Property Validation Tests
     // ========================================
 
     #[test]
-    fn test_coord_cartesian_valid_xlim() {
+    fn test_project_polar_with_start() {
+        let query = r#"
+            VISUALISE
+            DRAW bar MAPPING category AS x, value AS y
+            PROJECT TO polar SETTING start => 90
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Polar);
+        assert!(project.properties.contains_key("start"));
+        assert_eq!(
+            project.properties.get("start"),
+            Some(&ParameterValue::Number(90.0))
+        );
+    }
+
+    #[test]
+    fn test_project_explicit_aesthetics() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            COORD cartesian SETTING xlim => [0, 100]
+            PROJECT x, y TO cartesian
         "#;
 
         let result = parse_test_query(query);
-        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        assert!(result.is_ok());
         let specs = result.unwrap();
-        assert_eq!(specs.len(), 1);
 
-        let coord = specs[0].coord.as_ref().unwrap();
-        assert_eq!(coord.coord_type, CoordType::Cartesian);
-        assert!(coord.properties.contains_key("xlim"));
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Cartesian);
+        assert_eq!(project.aesthetics, vec!["x".to_string(), "y".to_string()]);
     }
 
     #[test]
-    fn test_coord_cartesian_valid_ylim() {
+    fn test_project_custom_aesthetics() {
+        // Use identifiers as custom positional aesthetics in PROJECT
+        // Note: Custom aesthetics in PROJECT don't need to match grammar's aesthetic_name
+        // since project_aesthetics uses identifier nodes, not aesthetic_name
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            COORD cartesian SETTING ylim => [-10, 50]
+            PROJECT myX, myY TO cartesian
         "#;
 
         let result = parse_test_query(query);
         assert!(result.is_ok());
         let specs = result.unwrap();
 
-        let coord = specs[0].coord.as_ref().unwrap();
-        assert!(coord.properties.contains_key("ylim"));
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(
+            project.aesthetics,
+            vec!["myX".to_string(), "myY".to_string()]
+        );
     }
 
     #[test]
-    fn test_coord_cartesian_valid_aesthetic_input_range() {
-        let query = r#"
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y, category AS color
-            COORD cartesian SETTING color => ['red', 'green', 'blue']
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-        let specs = result.unwrap();
-
-        let coord = specs[0].coord.as_ref().unwrap();
-        assert!(coord.properties.contains_key("color"));
-    }
-
-    #[test]
-    fn test_coord_cartesian_invalid_property_theta() {
+    fn test_project_default_aesthetics_cartesian() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            COORD cartesian SETTING theta => y
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Property 'theta' not valid for Cartesian"));
-    }
-
-    #[test]
-    fn test_coord_flip_valid_aesthetic_input_range() {
-        let query = r#"
-            VISUALISE
-            DRAW bar MAPPING category AS x, value AS y, region AS color
-            COORD flip SETTING color => ['A', 'B', 'C']
+            PROJECT TO cartesian
         "#;
 
         let result = parse_test_query(query);
         assert!(result.is_ok());
         let specs = result.unwrap();
 
-        let coord = specs[0].coord.as_ref().unwrap();
-        assert_eq!(coord.coord_type, CoordType::Flip);
-        assert!(coord.properties.contains_key("color"));
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.aesthetics, vec!["x".to_string(), "y".to_string()]);
     }
 
     #[test]
-    fn test_coord_flip_invalid_property_xlim() {
+    fn test_project_default_aesthetics_polar() {
         let query = r#"
             VISUALISE
-            DRAW bar MAPPING category AS x, value AS y
-            COORD flip SETTING xlim => [0, 100]
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Property 'xlim' not valid for Flip"));
-    }
-
-    #[test]
-    fn test_coord_flip_invalid_property_ylim() {
-        let query = r#"
-            VISUALISE
-            DRAW bar MAPPING category AS x, value AS y
-            COORD flip SETTING ylim => [0, 100]
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Property 'ylim' not valid for Flip"));
-    }
-
-    #[test]
-    fn test_coord_flip_invalid_property_theta() {
-        let query = r#"
-            VISUALISE
-            DRAW bar MAPPING category AS x, value AS y
-            COORD flip SETTING theta => y
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Property 'theta' not valid for Flip"));
-    }
-
-    #[test]
-    fn test_coord_polar_valid_theta() {
-        let query = r#"
-            VISUALISE
-            DRAW bar MAPPING category AS x, value AS y
-            COORD polar SETTING theta => y
+            DRAW bar MAPPING category AS theta, value AS radius
+            PROJECT TO polar
         "#;
 
         let result = parse_test_query(query);
         assert!(result.is_ok());
         let specs = result.unwrap();
 
-        let coord = specs[0].coord.as_ref().unwrap();
-        assert_eq!(coord.coord_type, CoordType::Polar);
-        assert!(coord.properties.contains_key("theta"));
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(
+            project.aesthetics,
+            vec!["theta".to_string(), "radius".to_string()]
+        );
     }
 
     #[test]
-    fn test_coord_polar_valid_aesthetic_input_range() {
+    fn test_project_wrong_aesthetic_count() {
         let query = r#"
             VISUALISE
-            DRAW bar MAPPING category AS x, value AS y, region AS color
-            COORD polar SETTING color => ['North', 'South', 'East', 'West']
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-        let specs = result.unwrap();
-
-        let coord = specs[0].coord.as_ref().unwrap();
-        assert!(coord.properties.contains_key("color"));
-    }
-
-    #[test]
-    fn test_coord_polar_invalid_property_xlim() {
-        let query = r#"
-            VISUALISE
-            DRAW bar MAPPING category AS x, value AS y
-            COORD polar SETTING xlim => [0, 100]
+            DRAW point MAPPING x AS x
+            PROJECT x TO cartesian
         "#;
 
         let result = parse_test_query(query);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Property 'xlim' not valid for Polar"));
+        assert!(err.to_string().contains("requires 2 aesthetics, got 1"));
     }
 
     #[test]
-    fn test_coord_polar_invalid_property_ylim() {
-        let query = r#"
-            VISUALISE
-            DRAW bar MAPPING category AS x, value AS y
-            COORD polar SETTING ylim => [0, 100]
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Property 'ylim' not valid for Polar"));
-    }
-
-    // ========================================
-    // SCALE/COORD Input Range Conflict Tests
-    // ========================================
-
-    #[test]
-    fn test_scale_coord_conflict_x_input_range() {
+    fn test_project_conflicting_aesthetic_name() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            SCALE x FROM [0, 100]
-            COORD cartesian SETTING x => [0, 50]
+            PROJECT color, fill TO cartesian
         "#;
 
         let result = parse_test_query(query);
@@ -1418,89 +1335,7 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err
             .to_string()
-            .contains("Input range for 'x' specified in both SCALE and COORD"));
-    }
-
-    #[test]
-    fn test_scale_coord_conflict_color_input_range() {
-        let query = r#"
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y, category AS color
-            SCALE color FROM ['A', 'B']
-            COORD cartesian SETTING color => ['A', 'B', 'C']
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Input range for 'color' specified in both SCALE and COORD"));
-    }
-
-    #[test]
-    fn test_scale_coord_no_conflict_different_aesthetics() {
-        let query = r#"
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y, category AS color
-            SCALE color FROM ['A', 'B']
-            COORD cartesian SETTING xlim => [0, 100]
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_scale_coord_no_conflict_scale_without_input_range() {
-        let query = r#"
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y
-            SCALE CONTINUOUS x
-            COORD cartesian SETTING x => [0, 100]
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-    }
-
-    // ========================================
-    // Multiple Properties Tests
-    // ========================================
-
-    #[test]
-    fn test_coord_cartesian_multiple_properties() {
-        let query = r#"
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y, category AS color
-            COORD cartesian SETTING xlim => [0, 100], ylim => [-10, 50], color => ['A', 'B']
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-        let specs = result.unwrap();
-
-        let coord = specs[0].coord.as_ref().unwrap();
-        assert!(coord.properties.contains_key("xlim"));
-        assert!(coord.properties.contains_key("ylim"));
-        assert!(coord.properties.contains_key("color"));
-    }
-
-    #[test]
-    fn test_coord_polar_theta_with_aesthetic() {
-        let query = r#"
-            VISUALISE
-            DRAW bar MAPPING category AS x, value AS y, region AS color
-            COORD polar SETTING theta => y, color => ['North', 'South']
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-        let specs = result.unwrap();
-
-        let coord = specs[0].coord.as_ref().unwrap();
-        assert!(coord.properties.contains_key("theta"));
-        assert!(coord.properties.contains_key("color"));
+            .contains("conflicts with non-positional aesthetic"));
     }
 
     // ========================================
@@ -1512,7 +1347,7 @@ mod tests {
         let query = r#"
             visualise
             draw point MAPPING x AS x, y AS y
-            coord cartesian setting xlim => [0, 100]
+            project to cartesian
             label title => 'Test Chart'
         "#;
 
@@ -1525,7 +1360,7 @@ mod tests {
         assert_eq!(specs.len(), 1);
         assert!(specs[0].global_mappings.is_empty());
         assert_eq!(specs[0].layers.len(), 1);
-        assert!(specs[0].coord.is_some());
+        assert!(specs[0].project.is_some());
         assert!(specs[0].labels.is_some());
     }
 
@@ -2278,10 +2113,10 @@ mod tests {
         let specs = result.unwrap();
         let layer = &specs[0].layers[0];
 
-        // Check aesthetics
+        // Check aesthetics (x and y are transformed to pos1 and pos2)
         assert_eq!(layer.mappings.len(), 3);
-        assert!(layer.mappings.contains_key("x"));
-        assert!(layer.mappings.contains_key("y"));
+        assert!(layer.mappings.contains_key("pos1"));
+        assert!(layer.mappings.contains_key("pos2"));
         assert!(layer.mappings.contains_key("color"));
 
         // Check parameters
@@ -2687,10 +2522,10 @@ mod tests {
 
         let specs = parse_test_query(query).unwrap();
 
-        // Global mapping should have x and y
+        // Global mapping should have pos1 and pos2 (transformed from x and y)
         assert_eq!(specs[0].global_mappings.aesthetics.len(), 2);
-        assert!(specs[0].global_mappings.aesthetics.contains_key("x"));
-        assert!(specs[0].global_mappings.aesthetics.contains_key("y"));
+        assert!(specs[0].global_mappings.aesthetics.contains_key("pos1"));
+        assert!(specs[0].global_mappings.aesthetics.contains_key("pos2"));
         assert!(!specs[0].global_mappings.wildcard);
 
         // Line layer should have no layer-specific aesthetics
@@ -2711,15 +2546,15 @@ mod tests {
 
         let specs = parse_test_query(query).unwrap();
 
-        // Implicit x, y become explicit mappings at parse time
+        // Implicit x, y become explicit mappings at parse time, transformed to internal names
         assert_eq!(specs[0].global_mappings.aesthetics.len(), 2);
-        assert!(specs[0].global_mappings.aesthetics.contains_key("x"));
-        assert!(specs[0].global_mappings.aesthetics.contains_key("y"));
+        assert!(specs[0].global_mappings.aesthetics.contains_key("pos1"));
+        assert!(specs[0].global_mappings.aesthetics.contains_key("pos2"));
 
-        // Verify they map to columns of the same name
-        let x_val = specs[0].global_mappings.aesthetics.get("x").unwrap();
+        // Verify they map to columns of the same name (column names are not transformed)
+        let x_val = specs[0].global_mappings.aesthetics.get("pos1").unwrap();
         assert_eq!(x_val.column_name(), Some("x"));
-        let y_val = specs[0].global_mappings.aesthetics.get("y").unwrap();
+        let y_val = specs[0].global_mappings.aesthetics.get("pos2").unwrap();
         assert_eq!(y_val.column_name(), Some("y"));
     }
 
@@ -2953,7 +2788,8 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
         assert_eq!(scales.len(), 1);
-        assert_eq!(scales[0].aesthetic, "x");
+        // Scale aesthetic x is transformed to pos1
+        assert_eq!(scales[0].aesthetic, "pos1");
 
         let input_range = scales[0].input_range.as_ref().unwrap();
         assert_eq!(input_range.len(), 2);
@@ -3047,7 +2883,8 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
         assert_eq!(scales.len(), 1);
-        assert_eq!(scales[0].aesthetic, "x");
+        // Scale aesthetic x is transformed to pos1
+        assert_eq!(scales[0].aesthetic, "pos1");
         assert!(scales[0].transform.is_some());
         assert_eq!(scales[0].transform.as_ref().unwrap().name(), "date");
     }
@@ -3064,7 +2901,8 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
         assert_eq!(scales.len(), 1);
-        assert_eq!(scales[0].aesthetic, "x");
+        // Scale aesthetic x is transformed to pos1
+        assert_eq!(scales[0].aesthetic, "pos1");
         assert!(scales[0].transform.is_some());
         assert_eq!(scales[0].transform.as_ref().unwrap().name(), "integer");
     }
@@ -3117,7 +2955,8 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
         assert_eq!(scales.len(), 1);
-        assert_eq!(scales[0].aesthetic, "x");
+        // Scale aesthetic is transformed to internal name
+        assert_eq!(scales[0].aesthetic, "pos1");
 
         let label_mapping = scales[0].label_mapping.as_ref().unwrap();
         assert_eq!(label_mapping.len(), 2);
@@ -3391,7 +3230,7 @@ mod tests {
     #[test]
     fn test_parse_number_node() {
         // Test integers
-        let source = make_source("VISUALISE DRAW point COORD SETTING xlim => [0, 100]");
+        let source = make_source("VISUALISE DRAW point SCALE x FROM [0, 100]");
         let root = source.root();
 
         let numbers = source.find_nodes(&root, "(number) @n");
@@ -3400,7 +3239,7 @@ mod tests {
         assert_eq!(parse_number_node(&numbers[1], &source).unwrap(), 100.0);
 
         // Test floats
-        let source2 = make_source("VISUALISE DRAW point COORD SETTING ylim => [-10.5, 20.75]");
+        let source2 = make_source("VISUALISE DRAW point SCALE y FROM [-10.5, 20.75]");
         let root2 = source2.root();
 
         let numbers2 = source2.find_nodes(&root2, "(number) @n");
@@ -3423,7 +3262,7 @@ mod tests {
         assert!(matches!(parsed[2], ArrayElement::String(ref s) if s == "c"));
 
         // Test array of numbers
-        let source2 = make_source("VISUALISE DRAW point COORD SETTING xlim => [0, 50, 100]");
+        let source2 = make_source("VISUALISE DRAW point SCALE x FROM [0, 50, 100]");
         let root2 = source2.root();
 
         let array_node2 = source2.find_node(&root2, "(array) @arr").unwrap();

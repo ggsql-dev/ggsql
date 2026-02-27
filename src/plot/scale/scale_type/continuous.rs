@@ -313,8 +313,9 @@ mod tests {
 
     #[test]
     fn test_pre_stat_transform_sql_default_oob_for_positional() {
+        // NOTE: After transformation, positional aesthetics use internal names (pos1, pos2, etc.)
         let continuous = Continuous;
-        let mut scale = Scale::new("x"); // positional aesthetic
+        let mut scale = Scale::new("pos1"); // positional aesthetic (internal name)
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
         // No oob property - should use default (keep for positional)
