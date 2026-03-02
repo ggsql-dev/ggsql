@@ -107,7 +107,9 @@ impl ScaleTypeTrait for Continuous {
             },
             DefaultParam {
                 name: "breaks",
-                default: DefaultParamValue::Number(super::super::breaks::DEFAULT_BREAK_COUNT as f64),
+                default: DefaultParamValue::Number(
+                    super::super::breaks::DEFAULT_BREAK_COUNT as f64,
+                ),
             },
             DefaultParam {
                 name: "pretty",

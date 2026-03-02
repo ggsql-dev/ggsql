@@ -946,7 +946,10 @@ mod tests {
         // Get user family for theta
         let theta_family = ctx.get_user_family("theta").unwrap();
         let theta_strs: Vec<&str> = theta_family.iter().map(|s| s.as_str()).collect();
-        assert_eq!(theta_strs, vec!["theta", "thetamin", "thetamax", "thetaend"]);
+        assert_eq!(
+            theta_strs,
+            vec!["theta", "thetamin", "thetamax", "thetaend"]
+        );
 
         // Get user family for radius
         let radius_family = ctx.get_user_family("radius").unwrap();
