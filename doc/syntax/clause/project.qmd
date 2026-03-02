@@ -16,10 +16,10 @@ The comma-separated list of `aesthetic` names are optional but allows you to def
 
 ### `TO`
 ```ggsql
-TO <coordinate-system>, ...
+TO <coordinate-system>
 ```
 
-The `TO` clause is required and is followed by the name of the coordinate system. The coordinate system provides default names for the positional aesthetics and is responsible for how to translate values mapped to these onto the plane defined by the screen or paper.
+The `TO` clause is required and is followed by the name of the [coordinate system](../index.qmd#coordinate-systems). The coordinate system provides default names for the positional aesthetics and is responsible for how to translate values mapped to these onto the plane defined by the screen or paper.
 
 ### `SETTING`
 ```ggsql

@@ -2,7 +2,7 @@
 title: Polar
 ---
 
-The polar coordinate system interprets its primary aesthetic as the angular position relative to the center, and the secondary aesthetic as the distance from the center. It is most often used for pie-charts, radar plots
+The polar coordinate system interprets its primary aesthetic as the angular position relative to the center, and the secondary aesthetic as the distance from the center. It is most often used for pie-charts and radar plots.
 
 ## Default aesthetics
 The polar coordinate system has the following default positional aesthetics which will be used if no others have been provided:
@@ -38,13 +38,6 @@ This maps `y` to theta (angle) and `x` to radius. This is useful when converting
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
 PROJECT TO polar
-```
-
-### Pie chart using x/y aesthetics
-```{ggsql}
-VISUALISE body_mass AS x, species AS y FROM ggsql:penguins
-DRAW bar
-PROJECT y, x TO polar
 ```
 
 ### Pie chart starting at 3 o'clock

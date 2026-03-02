@@ -2,19 +2,21 @@
 title: Cartesian
 ---
 
-The cartesian coordinate system is the most well-known and the default for ggsql. It maps the primary positional aesthetic along a horizontal axis and the secondary along a perpendicular vertical axis.
+The Cartesian coordinate system is the most well-known and the default for ggsql. It maps the primary positional aesthetic along a horizontal axis and the secondary along a perpendicular vertical axis.
 
 ## Default aesthetics
-The cartesian coordinate system has the following default positional aesthetics which will be used if no others have been provided:
+The Cartesian coordinate system has the following default positional aesthetics which will be used if no others have been provided:
 
-* **Primary**: `x`
-* **Secondary**: `y`
+* **Primary**: `x` (horizontal position)
+* **Secondary**: `y` (vertical position)
 
 Users can provide their own aesthetic names if needed, e.g.
 
 ```ggsql
 PROJECT p, q TO cartesian
 ```
+
+assuming they do not try to use a name that is already being used by any facet or non-positional aesthetics (e.g. `PROJECT fill, panel TO cartesian` is not allowed).
 
 ## Settings
 * `clip`: Should data be removed if it appears outside the bounds of the coordinate system. Defaults to `true`
