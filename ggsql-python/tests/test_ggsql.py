@@ -654,3 +654,40 @@ class TestVegaLiteWriterRenderChart:
         writer = ggsql.VegaLiteWriter()
         chart = writer.render_chart(spec, validate=False)
         assert isinstance(chart, altair.FacetChart)
+
+
+class TestTypeStubs:
+    """Tests for type stub presence and correctness."""
+
+    def test_stub_file_exists(self):
+        """Type stub file exists for the native module."""
+        import pathlib
+
+        assert ggsql.__file__ is not None
+        ggsql_dir = pathlib.Path(ggsql.__file__).parent
+        stub_path = ggsql_dir / "_ggsql.pyi"
+        assert stub_path.exists(), f"Type stub not found at {stub_path}"
+
+    def test_stub_exports_match_module(self):
+        """All public names from _ggsql are in the stub."""
+        import pathlib
+
+        assert ggsql.__file__ is not None
+        ggsql_dir = pathlib.Path(ggsql.__file__).parent
+        stub_path = ggsql_dir / "_ggsql.pyi"
+        stub_text = stub_path.read_text()
+
+        # Core classes and functions should be in the stub
+        for name in [
+            "DuckDBReader",
+            "VegaLiteWriter",
+            "Validated",
+            "Spec",
+            "validate",
+            "execute",
+            "ParseError",
+            "ValidationError",
+            "ReaderError",
+            "WriterError",
+        ]:
+            assert name in stub_text, f"{name} not found in type stub"
