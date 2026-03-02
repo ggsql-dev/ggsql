@@ -780,9 +780,7 @@ module.exports = grammar({
       repeat(seq(',', $.identifier))
     ),
 
-    project_type: $ => choice(
-      'cartesian', 'polar'
-    ),
+    project_type: $ => $.identifier,
 
     project_properties: $ => seq(
       $.project_property,
@@ -795,9 +793,7 @@ module.exports = grammar({
       field('value', choice($.string, $.number, $.boolean, $.array, $.identifier))
     ),
 
-    project_property_name: $ => choice(
-      'ratio', 'clip', 'start', 'end', 'inner'
-    ),
+    project_property_name: $ => $.identifier,
 
     // LABEL clause (repeatable)
     label_clause: $ => seq(
@@ -814,11 +810,7 @@ module.exports = grammar({
       field('value', $.string)
     ),
 
-    label_type: $ => choice(
-      'title', 'subtitle', 'x', 'y', 'caption', 'tag',
-      // Aesthetic names for legend titles
-      'color', 'colour', 'fill', 'size', 'shape', 'linetype'
-    ),
+    label_type: $ => $.identifier,
 
     // THEME clause - THEME [name] [SETTING prop => value, ...]
     theme_clause: $ => choice(
@@ -838,9 +830,7 @@ module.exports = grammar({
       )
     ),
 
-    theme_name: $ => choice(
-      'minimal', 'classic', 'gray', 'grey', 'bw', 'dark', 'light', 'void'
-    ),
+    theme_name: $ => $.identifier,
 
     theme_property: $ => seq(
       field('name', $.theme_property_name),
@@ -848,13 +838,7 @@ module.exports = grammar({
       field('value', choice($.string, $.number, $.boolean))
     ),
 
-    theme_property_name: $ => choice(
-      'background', 'panel_background', 'panel_grid', 'panel_grid_major',
-      'panel_grid_minor', 'text_size', 'text_family', 'title_size',
-      'axis_text_size', 'axis_line', 'axis_line_width', 'panel_border',
-      'plot_margin', 'panel_spacing', 'legend_background', 'legend_position',
-      'legend_direction'
-    ),
+    theme_property_name: $ => $.identifier,
 
     // Basic tokens
     bare_identifier: $ => token(/[a-zA-Z_][a-zA-Z0-9_]*/),

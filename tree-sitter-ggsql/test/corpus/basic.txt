@@ -490,7 +490,9 @@ THEME minimal
             (bare_identifier)))))
     (viz_clause
       (theme_clause
-        (theme_name)))))
+        (theme_name
+          (identifier
+            (bare_identifier)))))))
 
 ================================================================================
 Plot with labels
@@ -521,13 +523,19 @@ LABEL title => 'My Plot', x => 'X Axis', y => 'Y Axis'
     (viz_clause
       (label_clause
         (label_assignment
-          (label_type)
+          (label_type
+            (identifier
+              (bare_identifier)))
           (string))
         (label_assignment
-          (label_type)
+          (label_type
+            (identifier
+              (bare_identifier)))
           (string))
         (label_assignment
-          (label_type)
+          (label_type
+            (identifier
+              (bare_identifier)))
           (string))))))
 
 ================================================================================
@@ -558,7 +566,9 @@ PROJECT TO cartesian
         (geom_type)))
     (viz_clause
       (project_clause
-        (project_type)))))
+        (project_type
+          (identifier
+            (bare_identifier)))))))
 
 ================================================================================
 PROJECT x, y TO cartesian (explicit aesthetics)
@@ -593,7 +603,9 @@ PROJECT x, y TO cartesian
             (bare_identifier))
           (identifier
             (bare_identifier)))
-        (project_type)))))
+        (project_type
+          (identifier
+            (bare_identifier)))))))
 
 ================================================================================
 PROJECT TO cartesian with SETTING
@@ -623,10 +635,14 @@ PROJECT TO cartesian SETTING ratio => 1
         (geom_type)))
     (viz_clause
       (project_clause
-        (project_type)
+        (project_type
+          (identifier
+            (bare_identifier)))
         (project_properties
           (project_property
-            (project_property_name)
+            (project_property_name
+              (identifier
+                (bare_identifier)))
             (number)))))))
 
 ================================================================================
@@ -657,7 +673,9 @@ PROJECT TO polar
         (geom_type)))
     (viz_clause
       (project_clause
-        (project_type)))))
+        (project_type
+          (identifier
+            (bare_identifier)))))))
 
 ================================================================================
 PROJECT TO polar with SETTING start
@@ -687,10 +705,14 @@ PROJECT TO polar SETTING start => 90
         (geom_type)))
     (viz_clause
       (project_clause
-        (project_type)
+        (project_type
+          (identifier
+            (bare_identifier)))
         (project_properties
           (project_property
-            (project_property_name)
+            (project_property_name
+              (identifier
+                (bare_identifier)))
             (number)))))))
 
 ================================================================================
@@ -726,7 +748,9 @@ PROJECT a, b TO cartesian
             (bare_identifier))
           (identifier
             (bare_identifier)))
-        (project_type)))))
+        (project_type
+          (identifier
+            (bare_identifier)))))))
 
 ================================================================================
 VISUALISE FROM with CTE
