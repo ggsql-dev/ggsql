@@ -4,6 +4,9 @@
 
 use crate::{plot::types::DefaultAestheticValue, Mappings};
 
+// Re-export shared types from the central location
+pub use crate::plot::types::{DefaultParam, DefaultParamValue};
+
 /// Default aesthetic values for a geom type
 ///
 /// This struct describes which aesthetics a geom supports, requires, and their default values.
@@ -77,22 +80,6 @@ impl DefaultAesthetics {
             .find(|(n, _)| *n == name)
             .map(|(_, value)| value)
     }
-}
-
-/// Default value for a layer parameter
-#[derive(Debug, Clone)]
-pub enum DefaultParamValue {
-    String(&'static str),
-    Number(f64),
-    Boolean(bool),
-    Null,
-}
-
-/// Layer parameter definition: name and default value
-#[derive(Debug, Clone)]
-pub struct DefaultParam {
-    pub name: &'static str,
-    pub default: DefaultParamValue,
 }
 
 /// Result of a statistical transformation

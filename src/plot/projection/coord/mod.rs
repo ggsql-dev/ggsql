@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::plot::types::DefaultParam;
 use crate::plot::ParameterValue;
 
 // Coord type implementations
@@ -82,24 +83,20 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// early in the pipeline and transformed back for output.
     fn positional_aesthetic_names(&self) -> &'static [&'static str];
 
-    /// Returns list of allowed property names for SETTING clause.
+    /// Returns list of allowed properties with their default values.
     /// Default: empty (no properties allowed).
-    fn allowed_properties(&self) -> &'static [&'static str] {
+    fn default_properties(&self) -> &'static [DefaultParam] {
         &[]
     }
 
-    /// Returns default value for a property, if any.
-    fn get_property_default(&self, _name: &str) -> Option<ParameterValue> {
-        None
-    }
-
     /// Resolve and validate properties.
-    /// Default implementation validates against allowed_properties.
+    /// Default implementation validates against default_properties.
     fn resolve_properties(
         &self,
         properties: &HashMap<String, ParameterValue>,
     ) -> Result<HashMap<String, ParameterValue>, String> {
-        let allowed = self.allowed_properties();
+        let defaults = self.default_properties();
+        let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
 
         // Check for unknown properties
         for key in properties.keys() {
@@ -120,10 +117,10 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
         // Start with user properties, add defaults for missing ones
         let mut resolved = properties.clone();
-        for &prop_name in allowed {
-            if !resolved.contains_key(prop_name) {
-                if let Some(default) = self.get_property_default(prop_name) {
-                    resolved.insert(prop_name.to_string(), default);
+        for param in defaults {
+            if !resolved.contains_key(param.name) {
+                if let Some(default) = param.to_parameter_value() {
+                    resolved.insert(param.name.to_string(), default);
                 }
             }
         }
@@ -178,14 +175,9 @@ impl Coord {
         self.0.positional_aesthetic_names()
     }
 
-    /// Returns list of allowed property names for SETTING clause.
-    pub fn allowed_properties(&self) -> &'static [&'static str] {
-        self.0.allowed_properties()
-    }
-
-    /// Returns default value for a property, if any.
-    pub fn get_property_default(&self, name: &str) -> Option<ParameterValue> {
-        self.0.get_property_default(name)
+    /// Returns list of allowed properties with their default values.
+    pub fn default_properties(&self) -> &'static [DefaultParam] {
+        self.0.default_properties()
     }
 
     /// Resolve and validate properties.

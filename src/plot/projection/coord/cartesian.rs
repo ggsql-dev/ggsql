@@ -1,6 +1,7 @@
 //! Cartesian coordinate system implementation
 
 use super::{CoordKind, CoordTrait};
+use crate::plot::types::{DefaultParam, DefaultParamValue};
 
 /// Cartesian coordinate system - standard x/y coordinates
 #[derive(Debug, Clone, Copy)]
@@ -19,8 +20,17 @@ impl CoordTrait for Cartesian {
         &["x", "y"]
     }
 
-    fn allowed_properties(&self) -> &'static [&'static str] {
-        &["ratio", "clip"]
+    fn default_properties(&self) -> &'static [DefaultParam] {
+        &[
+            DefaultParam {
+                name: "ratio",
+                default: DefaultParamValue::Null,
+            },
+            DefaultParam {
+                name: "clip",
+                default: DefaultParamValue::Null,
+            },
+        ]
     }
 }
 
@@ -44,11 +54,12 @@ mod tests {
     }
 
     #[test]
-    fn test_cartesian_allowed_properties() {
+    fn test_cartesian_default_properties() {
         let cartesian = Cartesian;
-        let allowed = cartesian.allowed_properties();
-        assert!(allowed.contains(&"ratio"));
-        assert!(allowed.contains(&"clip"));
+        let defaults = cartesian.default_properties();
+        let names: Vec<&str> = defaults.iter().map(|p| p.name).collect();
+        assert!(names.contains(&"ratio"));
+        assert!(names.contains(&"clip"));
     }
 
     #[test]

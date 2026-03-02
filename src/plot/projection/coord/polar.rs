@@ -1,7 +1,7 @@
 //! Polar coordinate system implementation
 
 use super::{CoordKind, CoordTrait};
-use crate::plot::ParameterValue;
+use crate::plot::types::{DefaultParam, DefaultParamValue};
 
 /// Polar coordinate system - for pie charts, rose plots
 #[derive(Debug, Clone, Copy)]
@@ -20,15 +20,25 @@ impl CoordTrait for Polar {
         &["theta", "radius"]
     }
 
-    fn allowed_properties(&self) -> &'static [&'static str] {
-        &["clip", "start", "end", "inner"]
-    }
-
-    fn get_property_default(&self, name: &str) -> Option<ParameterValue> {
-        match name {
-            "start" => Some(ParameterValue::Number(0.0)), // 0 degrees = 12 o'clock
-            _ => None,
-        }
+    fn default_properties(&self) -> &'static [DefaultParam] {
+        &[
+            DefaultParam {
+                name: "clip",
+                default: DefaultParamValue::Null,
+            },
+            DefaultParam {
+                name: "start",
+                default: DefaultParamValue::Number(0.0), // 0 degrees = 12 o'clock
+            },
+            DefaultParam {
+                name: "end",
+                default: DefaultParamValue::Null,
+            },
+            DefaultParam {
+                name: "inner",
+                default: DefaultParamValue::Null,
+            },
+        ]
     }
 }
 
@@ -41,6 +51,7 @@ impl std::fmt::Display for Polar {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::ParameterValue;
     use std::collections::HashMap;
 
     #[test]
@@ -51,22 +62,26 @@ mod tests {
     }
 
     #[test]
-    fn test_polar_allowed_properties() {
+    fn test_polar_default_properties() {
         let polar = Polar;
-        let allowed = polar.allowed_properties();
-        assert!(allowed.contains(&"clip"));
-        assert!(allowed.contains(&"start"));
-        assert!(allowed.contains(&"end"));
-        assert!(allowed.contains(&"inner"));
-        assert_eq!(allowed.len(), 4);
+        let defaults = polar.default_properties();
+        let names: Vec<&str> = defaults.iter().map(|p| p.name).collect();
+        assert!(names.contains(&"clip"));
+        assert!(names.contains(&"start"));
+        assert!(names.contains(&"end"));
+        assert!(names.contains(&"inner"));
+        assert_eq!(defaults.len(), 4);
     }
 
     #[test]
     fn test_polar_start_default() {
         let polar = Polar;
-        let default = polar.get_property_default("start");
-        assert!(default.is_some());
-        assert_eq!(default.unwrap(), ParameterValue::Number(0.0));
+        let defaults = polar.default_properties();
+        let start_param = defaults.iter().find(|p| p.name == "start").unwrap();
+        assert!(matches!(
+            start_param.default,
+            DefaultParamValue::Number(0.0)
+        ));
     }
 
     #[test]

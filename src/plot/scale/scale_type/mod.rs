@@ -27,6 +27,7 @@ use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_positional_aesthetic};
+use crate::plot::types::{DefaultParam, DefaultParamValue};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -533,18 +534,15 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         Ok(None) // Default implementation: no default range
     }
 
-    /// Returns list of allowed property names for SETTING clause.
-    /// The aesthetic parameter allows different properties for different aesthetics.
+    /// Returns list of allowed properties with their default values.
+    ///
+    /// Properties that vary by aesthetic (like `expand` for positional-only, or `oob`
+    /// with aesthetic-dependent defaults) should use `DefaultParamValue::Null` as their
+    /// default value. The `resolve_properties()` method handles these special cases.
+    ///
     /// Default: empty (no properties allowed).
-    fn allowed_properties(&self, _aesthetic: &str) -> &'static [&'static str] {
+    fn default_properties(&self) -> &'static [DefaultParam] {
         &[]
-    }
-
-    /// Returns default value for a property, if any.
-    /// Called by resolve_properties for allowed properties not in user input.
-    /// The aesthetic parameter allows different defaults for different aesthetics.
-    fn get_property_default(&self, _aesthetic: &str, _name: &str) -> Option<ParameterValue> {
-        None
     }
 
     /// Returns the list of transforms this scale type supports.
@@ -620,14 +618,22 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     }
 
     /// Resolve and validate properties. NOT meant to be overridden by implementations.
-    /// - Validates all properties are in allowed_properties()
-    /// - Applies defaults via get_property_default()
+    /// - Validates all properties are in default_properties()
+    /// - Applies defaults, with special handling for aesthetic-dependent properties
     fn resolve_properties(
         &self,
         aesthetic: &str,
         properties: &HashMap<String, ParameterValue>,
     ) -> Result<HashMap<String, ParameterValue>, String> {
-        let allowed = self.allowed_properties(aesthetic);
+        let defaults = self.default_properties();
+        let is_positional = is_positional_aesthetic(aesthetic);
+
+        // Build allowed list, excluding "expand" for non-positional aesthetics
+        let allowed: Vec<&str> = defaults
+            .iter()
+            .filter(|p| p.name != "expand" || is_positional)
+            .map(|p| p.name)
+            .collect();
 
         // Check for unknown properties
         for key in properties.keys() {
@@ -649,10 +655,21 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
         // Start with user properties, add defaults for missing ones
         let mut resolved = properties.clone();
-        for &prop_name in allowed {
-            if !resolved.contains_key(prop_name) {
-                if let Some(default) = self.get_property_default(aesthetic, prop_name) {
-                    resolved.insert(prop_name.to_string(), default);
+        for param in defaults {
+            // Skip expand for non-positional aesthetics
+            if param.name == "expand" && !is_positional {
+                continue;
+            }
+
+            if !resolved.contains_key(param.name) {
+                // Special case: oob default varies by aesthetic when marked as Null
+                if param.name == "oob" && matches!(param.default, DefaultParamValue::Null) {
+                    resolved.insert(
+                        "oob".to_string(),
+                        ParameterValue::String(default_oob(aesthetic).to_string()),
+                    );
+                } else if let Some(default) = param.to_parameter_value() {
+                    resolved.insert(param.name.to_string(), default);
                 }
             }
         }

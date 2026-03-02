@@ -907,6 +907,45 @@ impl SqlExpression {
     }
 }
 
+// =============================================================================
+// Default Property Types (Shared by Coord, Scale, and Geom traits)
+// =============================================================================
+
+/// Default value for a property parameter
+///
+/// Used by traits to declare both allowed property names and their default values
+/// in a single declaration, avoiding the need to keep two separate implementations
+/// in sync.
+#[derive(Debug, Clone)]
+pub enum DefaultParamValue {
+    String(&'static str),
+    Number(f64),
+    Boolean(bool),
+    Null,
+}
+
+/// Property definition: name and default value
+///
+/// Used by `CoordTrait`, `ScaleTypeTrait`, and `GeomTrait` to declare their
+/// allowed properties and default values in a single place.
+#[derive(Debug, Clone)]
+pub struct DefaultParam {
+    pub name: &'static str,
+    pub default: DefaultParamValue,
+}
+
+impl DefaultParam {
+    /// Convert the default value to a ParameterValue, if not Null
+    pub fn to_parameter_value(&self) -> Option<ParameterValue> {
+        match &self.default {
+            DefaultParamValue::String(s) => Some(ParameterValue::String(s.to_string())),
+            DefaultParamValue::Number(n) => Some(ParameterValue::Number(*n)),
+            DefaultParamValue::Boolean(b) => Some(ParameterValue::Boolean(*b)),
+            DefaultParamValue::Null => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
