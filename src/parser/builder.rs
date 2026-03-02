@@ -4,6 +4,7 @@
 //! handling all the node types defined in the grammar.
 
 use crate::plot::layer::geom::Geom;
+use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
 use crate::{GgsqlError, Result};
@@ -268,6 +269,19 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
                 continue;
             }
         }
+    }
+
+    // Resolve coord (infer from mappings if not explicit)
+    // This must happen after parsing but before initialize_aesthetic_context()
+    let layer_mappings: Vec<&Mappings> = spec.layers.iter().map(|l| &l.mappings).collect();
+    if let Some(inferred) = resolve_coord(
+        spec.project.as_ref(),
+        &spec.global_mappings,
+        &layer_mappings,
+    )
+    .map_err(GgsqlError::ParseError)?
+    {
+        spec.project = Some(inferred);
     }
 
     // Initialize aesthetic context based on coord and facet
@@ -3308,5 +3322,106 @@ mod tests {
         let literal_node2 = source2.find_node(&root2, "(literal_value) @lit").unwrap();
         let parsed2 = parse_literal_value(&literal_node2, &source2).unwrap();
         assert!(matches!(parsed2, AestheticValue::Literal(ParameterValue::Number(n)) if n == 42.0));
+    }
+
+    // ========================================
+    // Coordinate System Inference Tests
+    // ========================================
+
+    #[test]
+    fn test_infer_cartesian_from_x_y_mappings() {
+        let query = "VISUALISE DRAW point MAPPING date AS x, value AS y";
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // Should infer cartesian projection
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Cartesian);
+        assert_eq!(project.aesthetics, vec!["x", "y"]);
+    }
+
+    #[test]
+    fn test_infer_polar_from_theta_radius_mappings() {
+        let query = "VISUALISE DRAW bar MAPPING cat AS theta, val AS radius";
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // Should infer polar projection
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Polar);
+        assert_eq!(project.aesthetics, vec!["theta", "radius"]);
+    }
+
+    #[test]
+    fn test_explicit_project_overrides_inference() {
+        // Explicitly use cartesian even though mappings use theta
+        let query = r#"
+            VISUALISE
+            DRAW bar MAPPING cat AS theta, val AS radius
+            PROJECT TO cartesian
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // Should use explicit cartesian despite polar-looking mappings
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Cartesian);
+    }
+
+    #[test]
+    fn test_conflicting_aesthetics_error() {
+        // Using both x and theta should error
+        let query = "VISUALISE DRAW point MAPPING a AS x, b AS theta";
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Conflicting"));
+    }
+
+    #[test]
+    fn test_no_positional_keeps_default() {
+        // Only color mapping, no positional aesthetics
+        let query = "VISUALISE DRAW point MAPPING region AS color";
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // Should have no explicit project (defaults will be used later)
+        // The resolve_coord returns None when no positional aesthetics found
+        assert!(specs[0].project.is_none());
+    }
+
+    #[test]
+    fn test_infer_from_global_mappings() {
+        let query = "VISUALISE date AS x, value AS y DRAW point";
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // Should infer cartesian from global mappings
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Cartesian);
+    }
+
+    #[test]
+    fn test_infer_from_xmin_ymax_variants() {
+        let query = "VISUALISE DRAW ribbon MAPPING date AS x, lo AS ymin, hi AS ymax";
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // Should infer cartesian from positional variants
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Cartesian);
     }
 }
