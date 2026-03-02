@@ -99,7 +99,7 @@ pub fn resolve_coord(
 /// Updates the found flags accordingly.
 fn check_aesthetic(aesthetic: &str, found_cartesian: &mut bool, found_polar: &mut bool) {
     // Skip non-positional aesthetics (color, size, etc.)
-    if NON_POSITIONAL.contains(&name) {
+    if NON_POSITIONAL.contains(&aesthetic) {
         return;
     }
 
@@ -365,20 +365,5 @@ mod tests {
         assert_eq!(strip_positional_suffix("theta"), "theta");
         assert_eq!(strip_positional_suffix("thetamin"), "theta");
         assert_eq!(strip_positional_suffix("radiusmax"), "radius");
-    }
-
-    #[test]
-    fn test_is_non_positional() {
-        assert!(is_non_positional("color"));
-        assert!(is_non_positional("colour"));
-        assert!(is_non_positional("fill"));
-        assert!(is_non_positional("size"));
-        assert!(is_non_positional("shape"));
-        assert!(is_non_positional("opacity"));
-
-        assert!(!is_non_positional("x"));
-        assert!(!is_non_positional("y"));
-        assert!(!is_non_positional("theta"));
-        assert!(!is_non_positional("radius"));
     }
 }
