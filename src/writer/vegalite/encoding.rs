@@ -3,10 +3,10 @@
 //! This module handles building Vega-Lite encoding channels from ggsql aesthetic mappings,
 //! including type inference, scale properties, and title handling.
 
-use crate::plot::aesthetic::is_positional_aesthetic;
+use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
 use crate::plot::{CoordKind, ParameterValue};
-use crate::{is_primary_positional, primary_aesthetic, AestheticValue, DataFrame, Plot, Result};
+use crate::{AestheticValue, DataFrame, Plot, Result};
 use polars::prelude::*;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -361,8 +361,11 @@ fn determine_field_type_for_aesthetic(
     df: &DataFrame,
     spec: &Plot,
     identity_scale: &mut bool,
+    aesthetic_ctx: &AestheticContext,
 ) -> String {
-    let primary = primary_aesthetic(aesthetic);
+    let primary = aesthetic_ctx
+        .primary_internal_positional(aesthetic)
+        .unwrap_or(aesthetic);
     let inferred = infer_field_type(df, col);
 
     if let Some(scale) = spec.find_scale(primary) {
@@ -393,8 +396,11 @@ fn apply_title_to_encoding(
     spec: &Plot,
     titled_families: &mut HashSet<String>,
     primary_aesthetics: &HashSet<String>,
+    aesthetic_ctx: &AestheticContext,
 ) {
-    let primary = primary_aesthetic(aesthetic);
+    let primary = aesthetic_ctx
+        .primary_internal_positional(aesthetic)
+        .unwrap_or(aesthetic);
     let is_primary = aesthetic == primary;
     let primary_exists = primary_aesthetics.contains(primary);
 
@@ -806,12 +812,21 @@ fn build_column_encoding(
     is_dummy: bool,
     ctx: &mut EncodingContext,
 ) -> Result<Value> {
-    let primary = primary_aesthetic(aesthetic);
+    let aesthetic_ctx = ctx.spec.get_aesthetic_context();
+    let primary = aesthetic_ctx
+        .primary_internal_positional(aesthetic)
+        .unwrap_or(aesthetic);
     let mut identity_scale = false;
 
     // Determine field type from scale or infer from data
-    let field_type =
-        determine_field_type_for_aesthetic(aesthetic, col, ctx.df, ctx.spec, &mut identity_scale);
+    let field_type = determine_field_type_for_aesthetic(
+        aesthetic,
+        col,
+        ctx.df,
+        ctx.spec,
+        &mut identity_scale,
+        &aesthetic_ctx,
+    );
 
     // Check if this aesthetic has a binned scale
     let is_binned = ctx
@@ -843,6 +858,7 @@ fn build_column_encoding(
         ctx.spec,
         ctx.titled_families,
         ctx.primary_aesthetics,
+        &aesthetic_ctx,
     );
 
     // Build scale properties
@@ -876,7 +892,7 @@ fn build_column_encoding(
     };
 
     // Position scales don't include zero by default
-    if is_primary_positional(aesthetic) {
+    if aesthetic_ctx.is_primary_internal(aesthetic) {
         scale_obj.insert("zero".to_string(), json!(false));
     }
 

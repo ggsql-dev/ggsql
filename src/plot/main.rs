@@ -35,8 +35,6 @@ pub use super::layer::geom::{
     DefaultAesthetics, DefaultParam, DefaultParamValue, Geom, GeomTrait, GeomType, StatResult,
 };
 
-use super::aesthetic::primary_aesthetic;
-
 // Re-export Layer from the layer module
 pub use super::layer::Layer;
 
@@ -221,6 +219,9 @@ impl Plot {
     /// - Primary aesthetics always take precedence over variants for labels
     /// - Variant aesthetics can still contribute labels when the primary doesn't exist
     pub fn compute_aesthetic_labels(&mut self) {
+        // Get aesthetic context before borrowing labels mutably
+        let aesthetic_ctx = self.get_aesthetic_context();
+
         // Ensure Labels struct exists
         if self.labels.is_none() {
             self.labels = Some(Labels {
@@ -234,7 +235,9 @@ impl Plot {
         for primaries_only in [true, false] {
             for layer in &self.layers {
                 for (aesthetic, value) in &layer.mappings.aesthetics {
-                    let primary = primary_aesthetic(aesthetic);
+                    let primary = aesthetic_ctx
+                        .primary_internal_positional(aesthetic)
+                        .unwrap_or(aesthetic);
                     let is_primary = aesthetic == primary;
 
                     // First pass: only primaries; second pass: only variants
@@ -522,27 +525,28 @@ mod tests {
 
     #[test]
     fn test_aesthetic_family_primary_lookup() {
-        // Handles internal names (pos1, pos2, etc.) and non-positional aesthetics.
-        // For user-facing families, use AestheticContext.
+        // Test using AestheticContext for internal aesthetic family lookups
+        use crate::plot::aesthetic::AestheticContext;
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
         // Test that internal variant aesthetics map to their primary
-        assert_eq!(primary_aesthetic("pos1"), "pos1");
-        assert_eq!(primary_aesthetic("pos1min"), "pos1");
-        assert_eq!(primary_aesthetic("pos1max"), "pos1");
-        assert_eq!(primary_aesthetic("pos1end"), "pos1");
-        assert_eq!(primary_aesthetic("pos2"), "pos2");
-        assert_eq!(primary_aesthetic("pos2min"), "pos2");
-        assert_eq!(primary_aesthetic("pos2max"), "pos2");
-        assert_eq!(primary_aesthetic("pos2end"), "pos2");
+        assert_eq!(ctx.primary_internal_positional("pos1"), Some("pos1"));
+        assert_eq!(ctx.primary_internal_positional("pos1min"), Some("pos1"));
+        assert_eq!(ctx.primary_internal_positional("pos1max"), Some("pos1"));
+        assert_eq!(ctx.primary_internal_positional("pos1end"), Some("pos1"));
+        assert_eq!(ctx.primary_internal_positional("pos2"), Some("pos2"));
+        assert_eq!(ctx.primary_internal_positional("pos2min"), Some("pos2"));
+        assert_eq!(ctx.primary_internal_positional("pos2max"), Some("pos2"));
+        assert_eq!(ctx.primary_internal_positional("pos2end"), Some("pos2"));
 
         // Non-positional aesthetics return themselves
-        assert_eq!(primary_aesthetic("color"), "color");
-        assert_eq!(primary_aesthetic("size"), "size");
-        assert_eq!(primary_aesthetic("fill"), "fill");
+        assert_eq!(ctx.primary_internal_positional("color"), Some("color"));
+        assert_eq!(ctx.primary_internal_positional("size"), Some("size"));
+        assert_eq!(ctx.primary_internal_positional("fill"), Some("fill"));
 
-        // User-facing names return themselves (family resolution via AestheticContext)
-        assert_eq!(primary_aesthetic("x"), "x");
-        assert_eq!(primary_aesthetic("xmin"), "xmin");
+        // User-facing names are not recognized as internal aesthetics
+        assert_eq!(ctx.primary_internal_positional("x"), None);
+        assert_eq!(ctx.primary_internal_positional("xmin"), None);
     }
 
     #[test]

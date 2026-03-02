@@ -58,8 +58,7 @@ pub use plot::{
 
 // Re-export aesthetic classification utilities
 pub use plot::aesthetic::{
-    get_aesthetic_family, is_positional_aesthetic, is_primary_positional, primary_aesthetic,
-    AestheticContext, NON_POSITIONAL, POSITIONAL_SUFFIXES,
+    is_positional_aesthetic, AestheticContext, NON_POSITIONAL, POSITIONAL_SUFFIXES,
 };
 
 // Future modules - not yet implemented

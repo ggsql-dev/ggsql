@@ -23,7 +23,7 @@ pub use schema::TypeInfo;
 
 use crate::naming;
 use crate::parser;
-use crate::plot::aesthetic::{is_positional_aesthetic, primary_aesthetic};
+use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
 use crate::{DataFrame, GgsqlError, Plot, Result};
@@ -657,6 +657,7 @@ fn add_discrete_columns_to_partition_by(
     layers: &mut [Layer],
     layer_schemas: &[Schema],
     scales: &[Scale],
+    aesthetic_ctx: &AestheticContext,
 ) {
     // Build a map of aesthetic -> scale for quick lookup
     let scale_map: HashMap<&str, &Scale> =
@@ -698,8 +699,10 @@ fn add_discrete_columns_to_partition_by(
                 //
                 // Discrete and Binned scales produce categorical groupings.
                 // Continuous scales don't group. Identity defers to column type.
-                let primary_aesthetic = primary_aesthetic(aesthetic);
-                let is_discrete = if let Some(scale) = scale_map.get(primary_aesthetic) {
+                let primary_aes = aesthetic_ctx
+                    .primary_internal_positional(aesthetic)
+                    .unwrap_or(aesthetic);
+                let is_discrete = if let Some(scale) = scale_map.get(primary_aes) {
                     if let Some(ref scale_type) = scale.scale_type {
                         match scale_type.scale_type_kind() {
                             ScaleTypeKind::Discrete
@@ -1033,7 +1036,13 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Add discrete mapped columns to partition_by for all layers
     let scales = specs[0].scales.clone();
-    add_discrete_columns_to_partition_by(&mut specs[0].layers, &layer_schemas, &scales);
+    let aesthetic_ctx = specs[0].get_aesthetic_context();
+    add_discrete_columns_to_partition_by(
+        &mut specs[0].layers,
+        &layer_schemas,
+        &scales,
+        &aesthetic_ctx,
+    );
 
     // Clone scales for apply_layer_transforms
     let scales = specs[0].scales.clone();

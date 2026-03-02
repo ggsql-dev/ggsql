@@ -28,7 +28,7 @@ mod projection;
 use crate::plot::ArrayElement;
 use crate::plot::{CoordKind, ParameterValue, Scale, ScaleTypeKind};
 use crate::writer::Writer;
-use crate::{naming, primary_aesthetic, AestheticValue, DataFrame, GgsqlError, Plot, Result};
+use crate::{naming, AestheticValue, DataFrame, GgsqlError, Plot, Result};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -221,6 +221,9 @@ fn build_layer_encoding(
 ) -> Result<serde_json::Map<String, Value>> {
     let mut encoding = serde_json::Map::new();
 
+    // Get aesthetic context for name transformation
+    let aesthetic_ctx = spec.get_aesthetic_context();
+
     // Track which aesthetic families have been titled to ensure only one title per family
     let mut titled_families: std::collections::HashSet<String> = std::collections::HashSet::new();
 
@@ -230,7 +233,12 @@ fn build_layer_encoding(
         .mappings
         .aesthetics
         .keys()
-        .filter(|a| primary_aesthetic(a) == a.as_str())
+        .filter(|a| {
+            aesthetic_ctx
+                .primary_internal_positional(a)
+                .map(|p| p == a.as_str())
+                .unwrap_or(false)
+        })
         .cloned()
         .collect();
 
@@ -242,9 +250,6 @@ fn build_layer_encoding(
         primary_aesthetics: &primary_aesthetics,
         free_scales,
     };
-
-    // Get aesthetic context for name transformation
-    let aesthetic_ctx = spec.get_aesthetic_context();
 
     // Build encoding channels for each aesthetic mapping
     // Mappings contains:

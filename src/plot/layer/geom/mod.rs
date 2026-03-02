@@ -53,9 +53,6 @@ mod vline;
 // Re-export types
 pub use types::{DefaultAesthetics, DefaultParam, DefaultParamValue, StatResult};
 
-// Re-export aesthetic family utilities from the central module
-pub use crate::plot::aesthetic::get_aesthetic_family;
-
 // Re-export geom structs for direct access if needed
 pub use abline::AbLine;
 pub use area::Area;

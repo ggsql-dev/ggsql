@@ -914,10 +914,11 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
         match child.kind() {
             "PROJECT" | "SETTING" | "TO" | "=>" | "," => continue,
             "project_aesthetics" => {
-                user_aesthetics = Some(parse_project_aesthetics(&child, source)?);
+                let query = "(identifier) @aes";
+                user_aesthetics = Some(source.find_texts(&child, query));
             }
             "project_type" => {
-                coord = parse_coord(&child, source)?;
+                coord = parse_coord_system(&child, source)?;
             }
             "project_properties" => {
                 // Find all project_property nodes
@@ -968,12 +969,6 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
         aesthetics,
         properties,
     })
-}
-
-/// Parse project aesthetics from a project_aesthetics node
-fn parse_project_aesthetics(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
-    let query = "(identifier) @aes";
-    Ok(source.find_texts(node, query))
 }
 
 /// Validate that positional aesthetic names don't conflict with reserved names
@@ -1044,7 +1039,7 @@ fn validate_project_properties(
 }
 
 /// Parse coord type from a project_type node
-fn parse_coord(node: &Node, source: &SourceTree) -> Result<Coord> {
+fn parse_coord_system(node: &Node, source: &SourceTree) -> Result<Coord> {
     let text = source.get_text(node);
     match text.to_lowercase().as_str() {
         "cartesian" => Ok(Coord::cartesian()),
