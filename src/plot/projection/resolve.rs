@@ -99,7 +99,7 @@ pub fn resolve_coord(
 /// Updates the found flags accordingly.
 fn check_aesthetic(aesthetic: &str, found_cartesian: &mut bool, found_polar: &mut bool) {
     // Skip non-positional aesthetics (color, size, etc.)
-    if is_non_positional(aesthetic) {
+    if NON_POSITIONAL.contains(&name) {
         return;
     }
 
@@ -115,11 +115,6 @@ fn check_aesthetic(aesthetic: &str, found_cartesian: &mut bool, found_polar: &mu
     if POLAR_PRIMARIES.contains(&primary) {
         *found_polar = true;
     }
-}
-
-/// Check if an aesthetic is non-positional (color, size, etc.)
-fn is_non_positional(name: &str) -> bool {
-    NON_POSITIONAL.contains(&name)
 }
 
 /// Strip positional suffix from an aesthetic name.
