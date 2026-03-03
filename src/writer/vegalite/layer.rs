@@ -31,6 +31,7 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Bar => "bar",
         GeomType::Area => "area",
         GeomType::Tile => "rect",
+        GeomType::Rect => "rect",
         GeomType::Ribbon => "area",
         GeomType::Polygon => "line",
         GeomType::Histogram => "bar",
@@ -237,6 +238,116 @@ impl GeomRenderer for RibbonRenderer {
         if let Some(ymin) = encoding.remove("ymin") {
             encoding.insert("y2".to_string(), ymin);
         }
+        Ok(())
+    }
+}
+
+// =============================================================================
+// Rect Renderer
+// =============================================================================
+
+/// Renderer for rect geom - handles continuous and discrete rectangles
+///
+/// For continuous scales: remaps xmin/xmax → x/x2, ymin/ymax → y/y2
+/// For discrete scales: keeps x/y as-is and applies width/height as band fractions
+pub struct RectRenderer;
+
+impl RectRenderer {
+    /// Extract band size (width or height) from encoding for discrete scales.
+    ///
+    /// Returns error if the aesthetic is mapped to a variable column (field),
+    /// extracts constant value if present, or returns default 0.9.
+    fn extract_band_size(
+        encoding_obj: Option<&Map<String, Value>>,
+        aesthetic: &str,
+        axis: &str,
+    ) -> Result<f64> {
+        const DEFAULT_BAND_SIZE: f64 = 0.9;
+
+        // Early return with default if encoding not present
+        let Some(enc) = encoding_obj else {
+            return Ok(DEFAULT_BAND_SIZE);
+        };
+
+        // Early return with default if aesthetic not in encoding
+        let Some(size_enc) = enc.get(aesthetic) else {
+            return Ok(DEFAULT_BAND_SIZE);
+        };
+
+        // Check if it's a field (variable) - error
+        if size_enc.get("field").is_some() {
+            return Err(GgsqlError::WriterError(format!(
+                "Discrete {} scale does not support variable {} columns.",
+                axis, aesthetic
+            )));
+        }
+
+        // Extract constant value or default
+        Ok(size_enc
+            .get("value")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(DEFAULT_BAND_SIZE))
+    }
+}
+
+impl GeomRenderer for RectRenderer {
+    fn modify_encoding(&self, encoding: &mut Map<String, Value>, _layer: &Layer) -> Result<()> {
+        // Handle x-direction: continuous if has xmin/xmax, discrete otherwise
+        if let Some(xmin) = encoding.remove("xmin") {
+            encoding.insert("x".to_string(), xmin);
+        }
+        if let Some(xmax) = encoding.remove("xmax") {
+            encoding.insert("x2".to_string(), xmax);
+        }
+
+        // Handle y-direction: continuous if has ymin/ymax, discrete otherwise
+        if let Some(ymin) = encoding.remove("ymin") {
+            encoding.insert("y".to_string(), ymin);
+        }
+        if let Some(ymax) = encoding.remove("ymax") {
+            encoding.insert("y2".to_string(), ymax);
+        }
+
+        Ok(())
+    }
+
+    fn modify_spec(&self, layer_spec: &mut Value, layer: &Layer) -> Result<()> {
+        // Check each direction independently for discrete vs continuous
+        let encoding_obj = layer_spec
+            .get("encoding")
+            .and_then(|e| e.as_object());
+
+        let x_is_discrete = encoding_obj
+            .map(|e| !e.contains_key("x2"))
+            .unwrap_or(true);
+        let y_is_discrete = encoding_obj
+            .map(|e| !e.contains_key("y2"))
+            .unwrap_or(true);
+
+        // Early return if both continuous (standard rect mark already set by geom_to_mark)
+        if !x_is_discrete && !y_is_discrete {
+            return Ok(());
+        }
+
+        // At least one direction is discrete - build mark spec with band sizing
+        let mut mark = json!({
+            "type": "rect",
+            "clip": true
+        });
+
+        // Handle discrete x (needs band width)
+        if x_is_discrete {
+            let width = Self::extract_band_size(encoding_obj, "width", "x")?;
+            mark["width"] = json!({"band": width});
+        }
+
+        // Handle discrete y (needs band height)
+        if y_is_discrete {
+            let height = Self::extract_band_size(encoding_obj, "height", "y")?;
+            mark["height"] = json!({"band": height});
+        }
+
+        layer_spec["mark"] = mark;
         Ok(())
     }
 }
@@ -786,6 +897,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Path => Box::new(PathRenderer),
         GeomType::Bar => Box::new(BarRenderer),
         GeomType::Area => Box::new(AreaRenderer),
+        GeomType::Rect => Box::new(RectRenderer),
         GeomType::Ribbon => Box::new(RibbonRenderer),
         GeomType::Polygon => Box::new(PolygonRenderer),
         GeomType::Boxplot => Box::new(BoxplotRenderer),

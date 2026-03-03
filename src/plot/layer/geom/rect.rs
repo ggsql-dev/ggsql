@@ -66,19 +66,6 @@ impl GeomTrait for Rect {
         &["pos1", "pos2", "pos1min", "pos1max", "pos2min", "pos2max"]
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
-                name: "width",
-                default: DefaultParamValue::Number(0.9),
-            },
-            DefaultParam {
-                name: "height",
-                default: DefaultParamValue::Number(0.9),
-            },
-        ]
-    }
-
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
         &[
             "pos1", "pos1min", "pos1max", "width", "pos2", "pos2min", "pos2max", "height",
