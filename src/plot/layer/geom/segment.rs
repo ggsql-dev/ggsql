@@ -15,10 +15,10 @@ impl GeomTrait for Segment {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("x", DefaultAestheticValue::Required),
-                ("y", DefaultAestheticValue::Required),
-                ("xend", DefaultAestheticValue::Null),
-                ("yend", DefaultAestheticValue::Null),
+                ("pos1", DefaultAestheticValue::Required),
+                ("pos2", DefaultAestheticValue::Required),
+                ("pos1end", DefaultAestheticValue::Null),
+                ("pos2end", DefaultAestheticValue::Null),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),

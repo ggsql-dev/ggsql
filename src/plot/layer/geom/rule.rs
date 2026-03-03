@@ -15,8 +15,8 @@ impl GeomTrait for Rule {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("x", DefaultAestheticValue::Null),
-                ("y", DefaultAestheticValue::Null),
+                ("pos1", DefaultAestheticValue::Null),
+                ("pos2", DefaultAestheticValue::Null),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
