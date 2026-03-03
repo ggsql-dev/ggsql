@@ -253,40 +253,70 @@ impl GeomRenderer for RibbonRenderer {
 pub struct RectRenderer;
 
 impl RectRenderer {
-    /// Extract band size (width or height) from encoding for discrete scales.
-    ///
-    /// Returns error if the aesthetic is mapped to a variable column (field),
-    /// extracts constant value if present, or returns default 0.9.
+    /// Extract and remove band size (width/height) from encoding for discrete scales.
+    /// Should only be called for discrete scales.
     fn extract_band_size(
-        encoding_obj: Option<&Map<String, Value>>,
+        encoding: &mut Map<String, Value>,
         aesthetic: &str,
         axis: &str,
     ) -> Result<f64> {
         const DEFAULT_BAND_SIZE: f64 = 0.9;
 
-        // Early return with default if encoding not present
-        let Some(enc) = encoding_obj else {
+        // Extract and remove the aesthetic
+        let size_enc = encoding.remove(aesthetic);
+
+        // If no aesthetic specified, use default
+        let Some(size_enc) = size_enc else {
             return Ok(DEFAULT_BAND_SIZE);
         };
 
-        // Early return with default if aesthetic not in encoding
-        let Some(size_enc) = enc.get(aesthetic) else {
-            return Ok(DEFAULT_BAND_SIZE);
-        };
+        // Case 1: value encoding (from SETTING parameter) - extract directly
+        if let Some(value) = size_enc.get("value").and_then(|v| v.as_f64()) {
+            return Ok(value);
+        }
 
-        // Check if it's a field (variable) - error
-        if size_enc.get("field").is_some() {
+        // Case 2: field encoding (from MAPPING) - check scale domain for constant
+        if size_enc.get("field").is_none() {
+            // Neither value nor field - shouldn't happen
             return Err(GgsqlError::WriterError(format!(
-                "Discrete {} scale does not support variable {} columns.",
-                axis, aesthetic
+                "Invalid {} encoding (expected value or field).",
+                aesthetic
             )));
         }
 
-        // Extract constant value or default
-        Ok(size_enc
-            .get("value")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(DEFAULT_BAND_SIZE))
+        // Helper closure for repeated error message
+        let domain_error = || {
+            GgsqlError::WriterError(format!(
+                "Could not determine {} value for discrete {} scale.",
+                aesthetic, axis
+            ))
+        };
+
+        // Extract domain from scale
+        let domain = size_enc
+            .get("scale")
+            .and_then(|s| s.get("domain"))
+            .and_then(|d| d.as_array())
+            .ok_or_else(domain_error)?;
+
+        if domain.len() != 2 {
+            return Err(domain_error());
+        }
+
+        let (Some(min), Some(max)) = (domain[0].as_f64(), domain[1].as_f64()) else {
+            return Err(domain_error());
+        };
+
+        if (min - max).abs() < 1e-10 {
+            // Constant value - use it
+            Ok(min)
+        } else {
+            // Variable - error
+            Err(GgsqlError::WriterError(format!(
+                "Discrete {} scale does not support variable {} columns.",
+                axis, aesthetic
+            )))
+        }
     }
 }
 
@@ -311,39 +341,37 @@ impl GeomRenderer for RectRenderer {
         Ok(())
     }
 
-    fn modify_spec(&self, layer_spec: &mut Value, layer: &Layer) -> Result<()> {
-        // Check each direction independently for discrete vs continuous
-        let encoding_obj = layer_spec
-            .get("encoding")
-            .and_then(|e| e.as_object());
+    fn modify_spec(&self, layer_spec: &mut Value, _layer: &Layer) -> Result<()> {
+        let encoding = layer_spec
+            .get_mut("encoding")
+            .and_then(|e| e.as_object_mut());
 
-        let x_is_discrete = encoding_obj
-            .map(|e| !e.contains_key("x2"))
-            .unwrap_or(true);
-        let y_is_discrete = encoding_obj
-            .map(|e| !e.contains_key("y2"))
-            .unwrap_or(true);
+        let Some(encoding) = encoding else {
+            return Ok(());
+        };
 
-        // Early return if both continuous (standard rect mark already set by geom_to_mark)
+        // Check which directions are discrete
+        let x_is_discrete = !encoding.contains_key("x2");
+        let y_is_discrete = !encoding.contains_key("y2");
+
+        // Early return if both continuous
         if !x_is_discrete && !y_is_discrete {
             return Ok(());
         }
 
-        // At least one direction is discrete - build mark spec with band sizing
+        // Build mark spec with band sizing for discrete directions
         let mut mark = json!({
             "type": "rect",
             "clip": true
         });
 
-        // Handle discrete x (needs band width)
         if x_is_discrete {
-            let width = Self::extract_band_size(encoding_obj, "width", "x")?;
+            let width = Self::extract_band_size(encoding, "width", "x")?;
             mark["width"] = json!({"band": width});
         }
 
-        // Handle discrete y (needs band height)
         if y_is_discrete {
-            let height = Self::extract_band_size(encoding_obj, "height", "y")?;
+            let height = Self::extract_band_size(encoding, "height", "y")?;
             mark["height"] = json!({"band": height});
         }
 

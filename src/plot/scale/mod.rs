@@ -61,6 +61,8 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
         "fill" | "stroke"
         // Size aesthetics
         | "size" | "linewidth"
+        // Dimension aesthetics
+        | "width" | "height"
         // Other visual aesthetics
         | "opacity" | "shape" | "linetype"
     )

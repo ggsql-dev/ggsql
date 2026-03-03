@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use super::types::get_column_name;
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
+use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::{DataFrame, GgsqlError, Mappings, Result};
@@ -31,18 +31,18 @@ impl GeomTrait for Rect {
             defaults: &[
                 // All positional aesthetics are optional inputs (Null)
                 // They become Delayed after stat transform
-                ("pos1", DefaultAestheticValue::Null),       // x (center)
-                ("pos1min", DefaultAestheticValue::Null),    // xmin
-                ("pos1max", DefaultAestheticValue::Null),    // xmax
-                ("width", DefaultAestheticValue::Null),      // width (aesthetic, can map to column)
-                ("pos2", DefaultAestheticValue::Null),       // y (center)
-                ("pos2min", DefaultAestheticValue::Null),    // ymin
-                ("pos2max", DefaultAestheticValue::Null),    // ymax
-                ("height", DefaultAestheticValue::Null),     // height (aesthetic, can map to column)
+                ("pos1", DefaultAestheticValue::Null), // x (center)
+                ("pos1min", DefaultAestheticValue::Null), // xmin
+                ("pos1max", DefaultAestheticValue::Null), // xmax
+                ("width", DefaultAestheticValue::Null), // width (aesthetic, can map to column)
+                ("pos2", DefaultAestheticValue::Null), // y (center)
+                ("pos2min", DefaultAestheticValue::Null), // ymin
+                ("pos2max", DefaultAestheticValue::Null), // ymax
+                ("height", DefaultAestheticValue::Null), // height (aesthetic, can map to column)
                 // Visual aesthetics
                 ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),
-                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("opacity", DefaultAestheticValue::Number(0.5)),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
@@ -59,11 +59,14 @@ impl GeomTrait for Rect {
             // For discrete scales: remap to center
             ("pos1", DefaultAestheticValue::Column("pos1")),
             ("pos2", DefaultAestheticValue::Column("pos2")),
+            // Width/height passed through for discrete (writer validation)
+            ("width", DefaultAestheticValue::Column("width")),
+            ("height", DefaultAestheticValue::Column("height")),
         ]
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
-        &["pos1", "pos2", "pos1min", "pos1max", "pos2min", "pos2max"]
+        &["pos1", "pos2", "pos1min", "pos1max", "pos2min", "pos2max", "width", "height"]
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
@@ -104,27 +107,36 @@ fn stat_rect(
     group_by: &[String],
     _parameters: &HashMap<String, ParameterValue>,
 ) -> Result<StatResult> {
-    // Extract x-direction aesthetics
+    // Get aesthetic column names for SQL (at stat time, all aesthetics are columns)
     let x = get_column_name(aesthetics, "pos1");
     let xmin = get_column_name(aesthetics, "pos1min");
     let xmax = get_column_name(aesthetics, "pos1max");
     let width = get_column_name(aesthetics, "width");
 
-    // Extract y-direction aesthetics
     let y = get_column_name(aesthetics, "pos2");
     let ymin = get_column_name(aesthetics, "pos2min");
     let ymax = get_column_name(aesthetics, "pos2max");
     let height = get_column_name(aesthetics, "height");
 
+    // Filter out width/height from group_by (they're position aesthetics, not grouping)
+    let group_by: Vec<String> = group_by
+        .iter()
+        .filter(|col| {
+            !width.as_ref().map_or(false, |w| col == &w)
+                && !height.as_ref().map_or(false, |h| col == &h)
+        })
+        .cloned()
+        .collect();
+
     // Detect if x and y are discrete by checking schema
     let is_x_discrete = x
         .as_ref()
-        .and_then(|col| schema.iter().find(|c| c.name == *col))
+        .and_then(|col| schema.iter().find(|c| &c.name == col))
         .map(|c| c.is_discrete)
         .unwrap_or(false);
     let is_y_discrete = y
         .as_ref()
-        .and_then(|col| schema.iter().find(|c| c.name == *col))
+        .and_then(|col| schema.iter().find(|c| &c.name == col))
         .map(|c| c.is_discrete)
         .unwrap_or(false);
 
@@ -147,35 +159,45 @@ fn stat_rect(
         "y",
     )?;
 
-    // Build stat column names
-    let stat_x = naming::stat_column("pos1");
-    let stat_xmin = naming::stat_column("pos1min");
-    let stat_xmax = naming::stat_column("pos1max");
-    let stat_y = naming::stat_column("pos2");
-    let stat_ymin = naming::stat_column("pos2min");
-    let stat_ymax = naming::stat_column("pos2max");
-
-    // Build SELECT list
+    // Build SELECT list and stat_columns based on discrete vs continuous
     let mut select_parts = vec![];
+    let mut stat_columns = vec![];
 
     // Add group_by columns first
     if !group_by.is_empty() {
         select_parts.push(group_by.join(", "));
     }
 
-    // Add position columns based on discrete vs continuous
+    // X direction
     if is_x_discrete {
-        select_parts.push(format!("{} AS {}", x_expr_min, stat_x));
+        select_parts.push(format!("{} AS {}", x_expr_min, naming::stat_column("pos1")));
+        stat_columns.push("pos1".to_string());
+        // For discrete, pass through width if mapped (for scale training)
+        if let Some(ref width_col) = width {
+            select_parts.push(format!("{} AS {}", width_col, naming::stat_column("width")));
+            stat_columns.push("width".to_string());
+        }
     } else {
-        select_parts.push(format!("{} AS {}", x_expr_min, stat_xmin));
-        select_parts.push(format!("{} AS {}", x_expr_max, stat_xmax));
+        select_parts.push(format!("{} AS {}", x_expr_min, naming::stat_column("pos1min")));
+        select_parts.push(format!("{} AS {}", x_expr_max, naming::stat_column("pos1max")));
+        stat_columns.push("pos1min".to_string());
+        stat_columns.push("pos1max".to_string());
     }
 
+    // Y direction
     if is_y_discrete {
-        select_parts.push(format!("{} AS {}", y_expr_min, stat_y));
+        select_parts.push(format!("{} AS {}", y_expr_min, naming::stat_column("pos2")));
+        stat_columns.push("pos2".to_string());
+        // For discrete, pass through height if mapped (for scale training)
+        if let Some(ref height_col) = height {
+            select_parts.push(format!("{} AS {}", height_col, naming::stat_column("height")));
+            stat_columns.push("height".to_string());
+        }
     } else {
-        select_parts.push(format!("{} AS {}", y_expr_min, stat_ymin));
-        select_parts.push(format!("{} AS {}", y_expr_max, stat_ymax));
+        select_parts.push(format!("{} AS {}", y_expr_min, naming::stat_column("pos2min")));
+        select_parts.push(format!("{} AS {}", y_expr_max, naming::stat_column("pos2max")));
+        stat_columns.push("pos2min".to_string());
+        stat_columns.push("pos2max".to_string());
     }
 
     let select_list = select_parts.join(", ");
@@ -186,41 +208,20 @@ fn stat_rect(
         select_list, query
     );
 
-    // Return stat columns based on discrete vs continuous
-    let stat_columns = match (is_x_discrete, is_y_discrete) {
-        (true, true) => vec!["pos1".to_string(), "pos2".to_string()],
-        (true, false) => vec![
-            "pos1".to_string(),
-            "pos2min".to_string(),
-            "pos2max".to_string(),
-        ],
-        (false, true) => vec![
-            "pos1min".to_string(),
-            "pos1max".to_string(),
-            "pos2".to_string(),
-        ],
-        (false, false) => vec![
-            "pos1min".to_string(),
-            "pos1max".to_string(),
-            "pos2min".to_string(),
-            "pos2max".to_string(),
-        ],
-    };
+    // Build consumed aesthetics - all potentially mapped positional aesthetics
+    let mut consumed = vec!["pos1", "pos1min", "pos1max", "pos2", "pos2min", "pos2max"];
+    if width.is_some() {
+        consumed.push("width");
+    }
+    if height.is_some() {
+        consumed.push("height");
+    }
 
     Ok(StatResult::Transformed {
         query: transformed_query,
         stat_columns,
         dummy_columns: vec![],
-        consumed_aesthetics: vec![
-            "pos1".to_string(),
-            "pos1min".to_string(),
-            "pos1max".to_string(),
-            "width".to_string(),
-            "pos2".to_string(),
-            "pos2min".to_string(),
-            "pos2max".to_string(),
-            "height".to_string(),
-        ],
+        consumed_aesthetics: consumed.iter().map(|s| s.to_string()).collect(),
     })
 }
 
