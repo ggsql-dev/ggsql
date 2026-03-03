@@ -584,6 +584,7 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "bar" => Ok(Geom::bar()),
         "area" => Ok(Geom::area()),
         "tile" => Ok(Geom::tile()),
+        "rect" => Ok(Geom::rect()),
         "polygon" => Ok(Geom::polygon()),
         "ribbon" => Ok(Geom::ribbon()),
         "histogram" => Ok(Geom::histogram()),
