@@ -26,7 +26,7 @@ use crate::parser;
 use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
-use crate::{DataFrame, GgsqlError, Plot, Result};
+use crate::{DataFrame, DataSource, GgsqlError, Plot, Result};
 use std::collections::{HashMap, HashSet};
 
 use crate::reader::Reader;
@@ -153,6 +153,11 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema]) {
     for spec in specs {
         for (layer, schema) in spec.layers.iter_mut().zip(layer_schemas.iter()) {
+            // Skip annotation layers - they don't inherit global mappings
+            if matches!(layer.source, Some(DataSource::Annotation)) {
+                continue;
+            }
+
             let supported = layer.geom.aesthetics().supported();
             let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
 

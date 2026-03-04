@@ -224,8 +224,11 @@ pub fn determine_layer_source(
             format!("'{}'", path)
         }
         Some(DataSource::Annotation) => {
-            // TODO: Implement annotation layer data source generation
-            // For now, generate a dummy single-row table
+            // Annotation layer - generate a single-row dummy table.
+            // The execution pipeline expects all layers to have a DataFrame, even though
+            // SETTING literals eventually render as Vega-Lite datum values ({"value": ...})
+            // that don't reference the data. The 1-row dummy satisfies schema detection,
+            // type resolution, and other intermediate steps that expect data to exist.
             "(SELECT 1 AS __ggsql_dummy__)".to_string()
         }
         None => {
