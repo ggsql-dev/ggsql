@@ -133,23 +133,42 @@ fn stat_rect(
         .unwrap_or(false);
 
     // Generate SQL expressions based on parameter combinations
-    // Validation (exactly 2 params, discrete + min/max check) happens inside
-    let (x_expr_min, x_expr_max) = generate_position_expressions(
-        x.as_deref(),
-        xmin.as_deref(),
-        xmax.as_deref(),
-        width.as_deref(),
-        is_x_discrete,
-        "x",
-    )?;
-    let (y_expr_min, y_expr_max) = generate_position_expressions(
-        y.as_deref(),
-        ymin.as_deref(),
-        ymax.as_deref(),
-        height.as_deref(),
-        is_y_discrete,
-        "y",
-    )?;
+    // For discrete: returns (center, size) where size defaults to 1.0
+    // For continuous: returns (min_expr, max_expr)
+    let (x_expr_1, x_expr_2) = if is_x_discrete {
+        generate_discrete_position_expressions(
+            x.as_deref(),
+            xmin.as_deref(),
+            xmax.as_deref(),
+            width.as_deref(),
+            "x",
+        )?
+    } else {
+        generate_continuous_position_expressions(
+            x.as_deref(),
+            xmin.as_deref(),
+            xmax.as_deref(),
+            width.as_deref(),
+            "x",
+        )?
+    };
+    let (y_expr_1, y_expr_2) = if is_y_discrete {
+        generate_discrete_position_expressions(
+            y.as_deref(),
+            ymin.as_deref(),
+            ymax.as_deref(),
+            height.as_deref(),
+            "y",
+        )?
+    } else {
+        generate_continuous_position_expressions(
+            y.as_deref(),
+            ymin.as_deref(),
+            ymax.as_deref(),
+            height.as_deref(),
+            "y",
+        )?
+    };
 
     // Define consumed aesthetics (these will be transformed, not passed through)
     // This list determines both what columns to exclude from pass-through
@@ -175,22 +194,21 @@ fn stat_rect(
 
     // X direction
     if is_x_discrete {
-        select_parts.push(format!("{} AS {}", x_expr_min, naming::stat_column("pos1")));
+        // x_expr_1 is center, x_expr_2 is width (defaults to 1.0)
+        select_parts.push(format!("{} AS {}", x_expr_1, naming::stat_column("pos1")));
+        select_parts.push(format!("{} AS {}", x_expr_2, naming::stat_column("width")));
         stat_columns.push("pos1".to_string());
-        // For discrete, pass through width if mapped (for scale training)
-        if let Some(ref width_col) = width {
-            select_parts.push(format!("{} AS {}", width_col, naming::stat_column("width")));
-            stat_columns.push("width".to_string());
-        }
+        stat_columns.push("width".to_string());
     } else {
+        // x_expr_1 is min, x_expr_2 is max
         select_parts.push(format!(
             "{} AS {}",
-            x_expr_min,
+            x_expr_1,
             naming::stat_column("pos1min")
         ));
         select_parts.push(format!(
             "{} AS {}",
-            x_expr_max,
+            x_expr_2,
             naming::stat_column("pos1max")
         ));
         stat_columns.push("pos1min".to_string());
@@ -199,26 +217,21 @@ fn stat_rect(
 
     // Y direction
     if is_y_discrete {
-        select_parts.push(format!("{} AS {}", y_expr_min, naming::stat_column("pos2")));
+        // y_expr_1 is center, y_expr_2 is height (defaults to 1.0)
+        select_parts.push(format!("{} AS {}", y_expr_1, naming::stat_column("pos2")));
+        select_parts.push(format!("{} AS {}", y_expr_2, naming::stat_column("height")));
         stat_columns.push("pos2".to_string());
-        // For discrete, pass through height if mapped (for scale training)
-        if let Some(ref height_col) = height {
-            select_parts.push(format!(
-                "{} AS {}",
-                height_col,
-                naming::stat_column("height")
-            ));
-            stat_columns.push("height".to_string());
-        }
+        stat_columns.push("height".to_string());
     } else {
+        // y_expr_1 is min, y_expr_2 is max
         select_parts.push(format!(
             "{} AS {}",
-            y_expr_min,
+            y_expr_1,
             naming::stat_column("pos2min")
         ));
         select_parts.push(format!(
             "{} AS {}",
-            y_expr_max,
+            y_expr_2,
             naming::stat_column("pos2max")
         ));
         stat_columns.push("pos2min".to_string());
@@ -242,23 +255,21 @@ fn stat_rect(
     })
 }
 
-/// Generate SQL expressions for position min/max based on parameter combinations
-///
-/// Returns (min_expr, max_expr) or (center_expr, center_expr) for discrete
+/// Generate SQL expressions for discrete position (returns center, size)
 ///
 /// Validates:
 /// - Discrete scales cannot use min/max aesthetics
-/// - Exactly 2 parameters provided (via match statement)
-fn generate_position_expressions(
+/// - Center is required
+/// - Size defaults to "1.0" if not provided
+fn generate_discrete_position_expressions(
     center: Option<&str>,
     min: Option<&str>,
     max: Option<&str>,
     size: Option<&str>,
-    is_discrete: bool,
     axis: &str,
 ) -> Result<(String, String)> {
     // Validate: discrete scales cannot use min/max
-    if is_discrete && (min.is_some() || max.is_some()) {
+    if min.is_some() || max.is_some() {
         return Err(GgsqlError::ValidationError(format!(
             "Cannot use {}min/{}max with discrete {} aesthetic. Use {} + {} instead.",
             axis,
@@ -269,21 +280,33 @@ fn generate_position_expressions(
         )));
     }
 
-    // For discrete, only center + size is valid
-    if is_discrete {
-        if let (Some(c), Some(_)) = (center, size) {
-            return Ok((c.to_string(), c.to_string()));
-        }
-        return Err(GgsqlError::ValidationError(format!(
-            "Discrete {} requires {} and {}.",
+    match center {
+        Some(c) => Ok((c.to_string(), size.unwrap_or("1.0").to_string())),
+        None => Err(GgsqlError::ValidationError(format!(
+            "Discrete {} requires {}.",
             axis,
-            axis,
-            if axis == "x" { "width" } else { "height" }
-        )));
+            axis
+        ))),
     }
+}
 
-    // For continuous, handle all 6 combinations
-    // The _ arm catches invalid parameter counts (not exactly 2)
+/// Generate SQL expressions for continuous position (returns min_expr, max_expr)
+///
+/// Handles all 7 valid parameter combinations:
+/// - min + max
+/// - center + size
+/// - center only (defaults size to 1.0)
+/// - center + min
+/// - center + max
+/// - min + size
+/// - max + size
+fn generate_continuous_position_expressions(
+    center: Option<&str>,
+    min: Option<&str>,
+    max: Option<&str>,
+    size: Option<&str>,
+    axis: &str,
+) -> Result<(String, String)> {
     match (center, min, max, size) {
         // Case 1: min + max
         (None, Some(min_col), Some(max_col), None) => {
@@ -293,6 +316,11 @@ fn generate_position_expressions(
         (Some(c), None, None, Some(s)) => Ok((
             format!("({} - {} / 2.0)", c, s),
             format!("({} + {} / 2.0)", c, s),
+        )),
+        // Case 2b: center only (default size to 1.0)
+        (Some(c), None, None, None) => Ok((
+            format!("({} - 0.5)", c),
+            format!("({} + 0.5)", c),
         )),
         // Case 3: center + min
         (Some(c), Some(min_col), None, None) => {
@@ -446,6 +474,12 @@ mod tests {
                 vec!["pos1", "width"],
                 "(__ggsql_aes_pos1__ - __ggsql_aes_width__ / 2.0)",
                 "(__ggsql_aes_pos1__ + __ggsql_aes_width__ / 2.0)",
+            ),
+            (
+                "x only (default width 1.0)",
+                vec!["pos1"],
+                "(__ggsql_aes_pos1__ - 0.5)",
+                "(__ggsql_aes_pos1__ + 0.5)",
             ),
             (
                 "x + xmin",
@@ -746,7 +780,8 @@ mod tests {
     // ==================== Validation Error Tests ====================
 
     #[test]
-    fn test_error_too_few_x_params() {
+    fn test_continuous_x_defaults_width() {
+        // Test that continuous x without explicit width defaults to 1.0
         let aesthetics = create_aesthetics(&["pos1", "pos2min", "pos2max"]);
         let schema = create_schema(&[]);
         let group_by = vec![];
@@ -759,9 +794,17 @@ mod tests {
             &group_by,
             &parameters,
         );
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("exactly 2 x-direction parameters"));
+        assert!(result.is_ok());
+        let stat_result = result.unwrap();
+        match stat_result {
+            StatResult::Transformed { query, stat_columns, .. } => {
+                assert!(query.contains("(__ggsql_aes_pos1__ - 0.5)"));
+                assert!(query.contains("(__ggsql_aes_pos1__ + 0.5)"));
+                assert!(stat_columns.contains(&"pos1min".to_string()));
+                assert!(stat_columns.contains(&"pos1max".to_string()));
+            }
+            _ => panic!("Expected Transformed"),
+        }
     }
 
     #[test]
@@ -803,7 +846,8 @@ mod tests {
     }
 
     #[test]
-    fn test_error_discrete_requires_width() {
+    fn test_discrete_x_defaults_width() {
+        // Test that discrete x without explicit width defaults to 1.0
         let aesthetics = create_aesthetics(&["pos1", "pos2min", "pos2max"]);
         let schema = create_schema(&["pos1"]);
         let group_by = vec![];
@@ -816,9 +860,15 @@ mod tests {
             &group_by,
             &parameters,
         );
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Discrete x requires x and width"));
+        assert!(result.is_ok());
+        let stat_result = result.unwrap();
+        match stat_result {
+            StatResult::Transformed { query, stat_columns, .. } => {
+                assert!(query.contains("1.0 AS __ggsql_stat_width"));
+                assert!(stat_columns.contains(&"width".to_string()));
+            }
+            _ => panic!("Expected Transformed"),
+        }
     }
 
     // ==================== Non-Consumed Aesthetic Tests ====================
