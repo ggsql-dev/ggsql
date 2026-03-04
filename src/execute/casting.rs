@@ -223,6 +223,11 @@ pub fn determine_layer_source(
         Some(DataSource::FilePath(path)) => {
             format!("'{}'", path)
         }
+        Some(DataSource::Annotation) => {
+            // TODO: Implement annotation layer data source generation
+            // For now, generate a dummy single-row table
+            "(SELECT 1 AS __ggsql_dummy__)".to_string()
+        }
         None => {
             // Layer uses global data - caller must ensure has_global is true
             debug_assert!(has_global, "Layer has no source and no global data");

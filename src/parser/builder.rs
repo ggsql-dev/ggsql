@@ -305,6 +305,12 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
                 let layer = build_layer(&child, source)?;
                 spec.layers.push(layer);
             }
+            "place_clause" => {
+                let mut layer = build_layer(&child, source)?;
+                // Mark as annotation layer with dummy data source
+                layer.source = Some(DataSource::Annotation);
+                spec.layers.push(layer);
+            }
             "scale_clause" => {
                 let scale = build_scale(&child, source)?;
                 spec.scales.push(scale);
