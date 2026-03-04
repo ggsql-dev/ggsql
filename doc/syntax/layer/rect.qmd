@@ -1,0 +1,103 @@
+---
+title: "Rectangle"
+---
+
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+Rectangles can be used to draw heatmaps or indicate ranges.
+
+## Aesthetics
+The following aesthetics are recognised by the rectangle layer.
+
+### Required
+
+* Pick two of the following:
+    * `x`: The center along the x-axis.
+    * `width`: The size of the rectangle in the horizontal dimension.
+    * `xmin`: The left position along the x-axis. Unavailable when `x` is discrete.
+    * `xmax`: The right position laong the x-axis. Unavailable when `x` is discrete.
+
+Alternatively, use only `x`, which will set `width` to 1 by default.
+
+* Pick two of the following:
+    * `y`: The center along the y-axis.
+    * `height`: The size of the rectangle in the vertical dimension.
+    * `ymin`: The bottom position along the y-axis. Unavailable when `y` is discrete.
+    * `ymax`: The top position along the y-axis. Unailable when `y` is discrete.
+
+Alternatively, use only `y`, which will set `height` to 1 by default.
+
+### Optional
+* `stroke`: The colour of the contour lines.
+* `fill`: The colour of the inner area.
+* `colour`: Shorthand for setting `stroke` and `fill` simultaneously.
+* `opacity`: The opacity of colours.
+* `linewidth`: The width of the contour lines.
+* `linetype`: The dash pattern of the contour line.
+
+## Settings
+The rectangle layer has no additional settings.
+
+## Data transformation.
+When the x-aesthetics are continuous, x-data is reparameterised to `xmin` and `xmax`.
+When the y-aesthetics are continuous, y-data is reparameterised to `ymin` and `ymax`.
+
+## Examples
+
+Just using `x` and `y`. Note that `width` and `height` are set to 1.
+
+```{ggsql}
+VISUALISE Day AS x, Month AS y, Temp AS colour FROM ggsql:airquality
+  DRAW rect 
+```
+
+Customising `width` and `height` with either the `MAPPING` or `SETTING` clauses.
+
+```{ggsql}
+VISUALISE Day AS x, Month AS y, Temp AS colour FROM ggsql:airquality
+  DRAW rect MAPPING 0.5 AS width SETTING height => 0.8
+```
+
+If `x` is continuous, then `width` can be variable. Likewise for `y` and `height`.
+
+```{ggsql}
+SELECT *, Temp / (SELECT MAX(Temp) FROM ggsql:airquality) AS norm_temp 
+FROM ggsql:airquality
+VISUALISE 
+    Day AS x, 
+    Month AS y, 
+    Temp AS colour
+  DRAW rect 
+    MAPPING 
+      norm_temp AS width, 
+      norm_temp AS height
+```
+
+Using top, right, bottom, left parameterisation instead.
+
+```{ggsql}
+SELECT
+  MIN(Date) AS start,
+  MAX(Date) AS end,
+  MIN(Temp) AS min,
+  MAX(Temp) AS max
+FROM ggsql:airquality
+GROUP BY
+  WEEKOFYEAR(Date)
+
+VISUALISE start AS xmin, end AS xmax, min AS ymin, max AS ymax
+  DRAW rect
+```
+
+Using a rectangle as an annotation.
+
+```{ggsql}
+VISUALISE FROM ggsql:airquality
+  DRAW rect MAPPING
+    '1973-06-01' AS xmin,
+    '1973-06-30' AS xmax,
+    50 AS ymin, 
+    100 AS ymax,
+    'June' AS colour
+  DRAW line MAPPING Date AS x, Temp AS y
+```
