@@ -42,11 +42,11 @@ mod line;
 mod path;
 mod point;
 mod polygon;
+mod rect;
 mod ribbon;
 mod segment;
 mod smooth;
 mod text;
-mod tile;
 mod violin;
 mod vline;
 
@@ -68,11 +68,11 @@ pub use line::Line;
 pub use path::Path;
 pub use point::Point;
 pub use polygon::Polygon;
+pub use rect::Rect;
 pub use ribbon::Ribbon;
 pub use segment::Segment;
 pub use smooth::Smooth;
 pub use text::Text;
-pub use tile::Tile;
 pub use violin::Violin;
 pub use vline::VLine;
 
@@ -87,7 +87,7 @@ pub enum GeomType {
     Path,
     Bar,
     Area,
-    Tile,
+    Rect,
     Polygon,
     Ribbon,
     Histogram,
@@ -113,7 +113,7 @@ impl std::fmt::Display for GeomType {
             GeomType::Path => "path",
             GeomType::Bar => "bar",
             GeomType::Area => "area",
-            GeomType::Tile => "tile",
+            GeomType::Rect => "rect",
             GeomType::Polygon => "polygon",
             GeomType::Ribbon => "ribbon",
             GeomType::Histogram => "histogram",
@@ -251,9 +251,9 @@ impl Geom {
         Self(Arc::new(Area))
     }
 
-    /// Create a Tile geom
-    pub fn tile() -> Self {
-        Self(Arc::new(Tile))
+    /// Create a Rect geom
+    pub fn rect() -> Self {
+        Self(Arc::new(Rect))
     }
 
     /// Create a Polygon geom
@@ -339,7 +339,7 @@ impl Geom {
             GeomType::Path => Self::path(),
             GeomType::Bar => Self::bar(),
             GeomType::Area => Self::area(),
-            GeomType::Tile => Self::tile(),
+            GeomType::Rect => Self::rect(),
             GeomType::Polygon => Self::polygon(),
             GeomType::Ribbon => Self::ribbon(),
             GeomType::Histogram => Self::histogram(),
