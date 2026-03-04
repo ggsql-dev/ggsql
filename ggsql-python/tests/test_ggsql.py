@@ -194,6 +194,33 @@ class TestWriterRender:
         assert "layer" in spec_dict
 
 
+class TestSecondaryChannelEncoding:
+    """Tests for Vega-Lite secondary channel encoding (x2, y2)."""
+
+    def test_bar_y2_has_no_disallowed_properties(self):
+        """Bar chart y2 encoding should not have type, scale, or axis properties."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        df = pl.DataFrame({"survived": [0, 1, 1, 0, 0, 1, 0, 1, 0, 0]})
+        reader.register("titanic", df)
+        spec = reader.execute(
+            "SELECT survived FROM titanic "
+            "VISUALISE survived AS x "
+            "DRAW bar "
+            "LABEL title => 'Survival Count'"
+        )
+        writer = ggsql.VegaLiteWriter()
+        vl = json.loads(writer.render(spec))
+
+        # Find y2 in any layer
+        for layer in vl.get("layer", [vl]):
+            y2 = layer.get("encoding", {}).get("y2")
+            if y2 is not None:
+                assert "axis" not in y2, f"y2 should not have 'axis': {y2}"
+                assert "scale" not in y2, f"y2 should not have 'scale': {y2}"
+                assert "type" not in y2, f"y2 should not have 'type': {y2}"
+                assert "field" in y2, f"y2 should have 'field': {y2}"
+
+
 class TestRenderAltairDataFrameConversion:
     """Tests for DataFrame handling in render_altair()."""
 
