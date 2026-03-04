@@ -493,7 +493,7 @@ mod tests {
         let text = Geom::text().aesthetics();
         assert!(text.is_supported("label"));
         assert!(text.is_supported("family"));
-        assert_eq!(text.required(), &["pos1", "pos2"]);
+        assert_eq!(text.required(), &["pos1", "pos2", "label"]);
 
         // Statistical geoms only require pos1
         assert_eq!(Geom::histogram().aesthetics().required(), &["pos1"]);
