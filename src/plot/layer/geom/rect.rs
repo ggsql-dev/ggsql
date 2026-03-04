@@ -180,7 +180,9 @@ fn stat_rect(
     let (y_select, y_stat_cols) = process_direction("y", aesthetics, parameters, schema)?;
 
     // Define consumed aesthetics (these will be transformed, not passed through)
-    let consumed_aesthetic_names = ["pos1", "pos1min", "pos1max", "width", "pos2", "pos2min", "pos2max", "height"];
+    let consumed_aesthetic_names = [
+        "pos1", "pos1min", "pos1max", "width", "pos2", "pos2min", "pos2max", "height",
+    ];
 
     // Convert aesthetic names to column names for filtering
     let consumed_columns: Vec<String> = consumed_aesthetic_names
@@ -216,7 +218,10 @@ fn stat_rect(
         query: transformed_query,
         stat_columns,
         dummy_columns: vec![],
-        consumed_aesthetics: consumed_aesthetic_names.iter().map(|s| s.to_string()).collect(),
+        consumed_aesthetics: consumed_aesthetic_names
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
     })
 }
 
@@ -249,8 +254,7 @@ fn generate_discrete_position_expressions(
         Some(c) => Ok((c.to_string(), size.unwrap_or("1.0").to_string())),
         None => Err(GgsqlError::ValidationError(format!(
             "Discrete {} requires {}.",
-            axis,
-            axis
+            axis, axis
         ))),
     }
 }
@@ -283,10 +287,7 @@ fn generate_continuous_position_expressions(
             format!("({} + {} / 2.0)", c, s),
         )),
         // Case 2b: center only (default size to 1.0)
-        (Some(c), None, None, None) => Ok((
-            format!("({} - 0.5)", c),
-            format!("({} + 0.5)", c),
-        )),
+        (Some(c), None, None, None) => Ok((format!("({} - 0.5)", c), format!("({} + 0.5)", c))),
         // Case 3: center + min
         (Some(c), Some(min_col), None, None) => {
             Ok((min_col.to_string(), format!("(2 * {} - {})", c, min_col)))
@@ -762,7 +763,11 @@ mod tests {
         assert!(result.is_ok());
         let stat_result = result.unwrap();
         match stat_result {
-            StatResult::Transformed { query, stat_columns, .. } => {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                ..
+            } => {
                 assert!(query.contains("(__ggsql_aes_pos1__ - 0.5)"));
                 assert!(query.contains("(__ggsql_aes_pos1__ + 0.5)"));
                 assert!(stat_columns.contains(&"pos1min".to_string()));
@@ -828,7 +833,11 @@ mod tests {
         assert!(result.is_ok());
         let stat_result = result.unwrap();
         match stat_result {
-            StatResult::Transformed { query, stat_columns, .. } => {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                ..
+            } => {
                 assert!(query.contains("1.0 AS __ggsql_stat_width"));
                 assert!(stat_columns.contains(&"width".to_string()));
             }
