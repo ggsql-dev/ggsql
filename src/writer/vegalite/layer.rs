@@ -260,7 +260,7 @@ impl RectRenderer {
         aesthetic: &str,
         axis: &str,
     ) -> Result<f64> {
-        const DEFAULT_BAND_SIZE: f64 = 0.9;
+        const DEFAULT_BAND_SIZE: f64 = 1.0;
 
         // Extract and remove the aesthetic
         let size_enc = encoding.remove(aesthetic);
@@ -1109,5 +1109,230 @@ mod tests {
                 {"field": "species", "type": "nominal"}
             ]))
         );
+    }
+
+    // =============================================================================
+    // RectRenderer Test Helpers
+    // =============================================================================
+
+    /// Helper to create a quantitative encoding entry
+    fn quant(field: &str) -> Value {
+        json!({"field": field, "type": "quantitative"})
+    }
+
+    /// Helper to create a nominal encoding entry
+    fn nominal(field: &str) -> Value {
+        json!({"field": field, "type": "nominal"})
+    }
+
+    /// Helper to create a literal value encoding
+    fn literal(val: f64) -> Value {
+        json!({"value": val})
+    }
+
+    /// Helper to create a scale encoding with explicit domain
+    /// Use same min/max for constant scales, different values for variable scales
+    fn scale(field: &str, min: f64, max: f64) -> Value {
+        json!({
+            "field": field,
+            "type": "quantitative",
+            "scale": {
+                "domain": [min, max]
+            }
+        })
+    }
+
+    /// Helper to run rect rendering pipeline (modify_encoding + modify_spec)
+    fn render_rect(
+        encoding: &mut Map<String, Value>,
+    ) -> Result<Value> {
+        let renderer = RectRenderer;
+        let layer = Layer::new(crate::plot::Geom::rect());
+
+        renderer.modify_encoding(encoding, &layer)?;
+
+        let mut layer_spec = json!({
+            "mark": {"type": "rect", "clip": true},
+            "encoding": encoding
+        });
+
+        renderer.modify_spec(&mut layer_spec, &layer)?;
+        Ok(layer_spec)
+    }
+
+    // =============================================================================
+    // RectRenderer Tests
+    // =============================================================================
+
+    #[test]
+    fn test_rect_continuous_both_axes() {
+        // Test rect with continuous scales on both axes (xmin/xmax, ymin/ymax)
+        // Should remap xmin->x, xmax->x2, ymin->y, ymax->y2
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("xmin".to_string(), quant("xmin_col"));
+        encoding.insert("xmax".to_string(), quant("xmax_col"));
+        encoding.insert("ymin".to_string(), quant("ymin_col"));
+        encoding.insert("ymax".to_string(), quant("ymax_col"));
+
+        let spec = render_rect(&mut encoding).unwrap();
+
+        // Should remap to x/x2/y/y2
+        let enc = spec["encoding"].as_object().unwrap();
+        assert_eq!(enc.get("x"), Some(&quant("xmin_col")));
+        assert_eq!(enc.get("x2"), Some(&quant("xmax_col")));
+        assert_eq!(enc.get("y"), Some(&quant("ymin_col")));
+        assert_eq!(enc.get("y2"), Some(&quant("ymax_col")));
+
+        // Original min/max should be removed
+        assert!(enc.get("xmin").is_none());
+        assert!(enc.get("xmax").is_none());
+        assert!(enc.get("ymin").is_none());
+        assert!(enc.get("ymax").is_none());
+
+        // Should not have band sizing (both continuous)
+        assert!(spec["mark"].get("width").is_none());
+        assert!(spec["mark"].get("height").is_none());
+    }
+
+    #[test]
+    fn test_rect_discrete_x_continuous_y() {
+        // Test rect with discrete x scale and continuous y scale
+        // x/width (discrete) and ymin/ymax (continuous)
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), nominal("day"));
+        encoding.insert("width".to_string(), literal(0.8));
+        encoding.insert("ymin".to_string(), quant("ymin_col"));
+        encoding.insert("ymax".to_string(), quant("ymax_col"));
+
+        let spec = render_rect(&mut encoding).unwrap();
+        let enc = spec["encoding"].as_object().unwrap();
+
+        // x should remain as x (discrete)
+        assert_eq!(enc.get("x"), Some(&nominal("day")));
+
+        // y should be remapped from ymin/ymax
+        assert_eq!(enc.get("y"), Some(&quant("ymin_col")));
+        assert_eq!(enc.get("y2"), Some(&quant("ymax_col")));
+
+        // width should be removed
+        assert!(enc.get("width").is_none());
+
+        // Should have width band sizing for discrete x
+        assert_eq!(spec["mark"]["width"], json!({"band": 0.8}));
+        assert!(spec["mark"].get("height").is_none()); // y is continuous, no band height
+    }
+
+    #[test]
+    fn test_rect_discrete_both_axes_literal_width() {
+        // Test rect with discrete scales on both axes with literal width/height
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), nominal("day"));
+        encoding.insert("width".to_string(), literal(0.7));
+        encoding.insert("y".to_string(), nominal("hour"));
+        encoding.insert("height".to_string(), literal(0.9));
+
+        let spec = render_rect(&mut encoding).unwrap();
+        let enc = spec["encoding"].as_object().unwrap();
+
+        // x and y should remain
+        assert_eq!(enc.get("x"), Some(&nominal("day")));
+        assert_eq!(enc.get("y"), Some(&nominal("hour")));
+
+        // width/height should be removed
+        assert!(enc.get("width").is_none());
+        assert!(enc.get("height").is_none());
+
+        // Should have both width and height band sizing
+        assert_eq!(spec["mark"]["width"], json!({"band": 0.7}));
+        assert_eq!(spec["mark"]["height"], json!({"band": 0.9}));
+    }
+
+    #[test]
+    fn test_rect_discrete_both_axes_default_width() {
+        // Test rect with discrete scales on both axes without explicit width/height
+        // Should use default band size (1.0)
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), nominal("day"));
+        encoding.insert("y".to_string(), nominal("hour"));
+
+        let spec = render_rect(&mut encoding).unwrap();
+
+        // Should have default band sizing (1.0) for both
+        assert_eq!(spec["mark"]["width"], json!({"band": 1.0}));
+        assert_eq!(spec["mark"]["height"], json!({"band": 1.0}));
+    }
+
+    #[test]
+    fn test_rect_discrete_with_constant_width_column() {
+        // Test rect with discrete x scale where width is a constant-valued column
+        // This should work by detecting the constant in the scale domain
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), nominal("day"));
+        encoding.insert("width".to_string(), scale("width_col", 0.85, 0.85)); // constant
+        encoding.insert("ymin".to_string(), quant("ymin_col"));
+        encoding.insert("ymax".to_string(), quant("ymax_col"));
+
+        let spec = render_rect(&mut encoding).unwrap();
+
+        // Should extract the constant value 0.85
+        assert_eq!(spec["mark"]["width"], json!({"band": 0.85}));
+    }
+
+    #[test]
+    fn test_rect_discrete_with_variable_width_column_error() {
+        // Test that variable width columns on discrete scales produce an error
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), nominal("day"));
+        encoding.insert("width".to_string(), scale("width_col", 0.5, 0.9)); // variable
+
+        let result = render_rect(&mut encoding);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Discrete x scale"));
+        assert!(err.to_string().contains("does not support variable width columns"));
+    }
+
+    #[test]
+    fn test_rect_extract_band_size_missing_domain_error() {
+        // Test that missing domain in scale produces an error
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), nominal("day"));
+        encoding.insert("width".to_string(), json!({
+            "field": "width_col",
+            "type": "quantitative",
+            "scale": {}  // missing domain
+        }));
+
+        let result = render_rect(&mut encoding);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Could not determine width value"));
+    }
+
+    #[test]
+    fn test_rect_continuous_x_discrete_y() {
+        // Test rect with continuous x (xmin/xmax) and discrete y (y/height)
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("xmin".to_string(), quant("xmin_col"));
+        encoding.insert("xmax".to_string(), quant("xmax_col"));
+        encoding.insert("y".to_string(), nominal("category"));
+        encoding.insert("height".to_string(), literal(0.6));
+
+        let spec = render_rect(&mut encoding).unwrap();
+        let enc = spec["encoding"].as_object().unwrap();
+
+        // x should be remapped from xmin/xmax
+        assert_eq!(enc.get("x"), Some(&quant("xmin_col")));
+        assert_eq!(enc.get("x2"), Some(&quant("xmax_col")));
+
+        // y should remain as y (discrete)
+        assert_eq!(enc.get("y"), Some(&nominal("category")));
+
+        // height should be removed
+        assert!(enc.get("height").is_none());
+
+        // Should have height band sizing for discrete y
+        assert!(spec["mark"].get("width").is_none()); // x is continuous, no band width
+        assert_eq!(spec["mark"]["height"], json!({"band": 0.6}));
     }
 }
