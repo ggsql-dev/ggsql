@@ -223,13 +223,19 @@ pub fn determine_layer_source(
         Some(DataSource::FilePath(path)) => {
             format!("'{}'", path)
         }
-        Some(DataSource::Annotation) => {
-            // Annotation layer - generate a single-row dummy table.
+        Some(DataSource::Annotation(n)) => {
+            // Annotation layer - generate a dummy table with n rows.
             // The execution pipeline expects all layers to have a DataFrame, even though
             // SETTING literals eventually render as Vega-Lite datum values ({"value": ...})
-            // that don't reference the data. The 1-row dummy satisfies schema detection,
+            // that don't reference the data. The n-row dummy satisfies schema detection,
             // type resolution, and other intermediate steps that expect data to exist.
-            "(SELECT 1 AS __ggsql_dummy__)".to_string()
+            if *n == 1 {
+                "(SELECT 1 AS __ggsql_dummy__)".to_string()
+            } else {
+                // Generate VALUES clause with n rows: VALUES (1), (2), ..., (n)
+                let rows: Vec<String> = (1..=*n).map(|i| format!("({})", i)).collect();
+                format!("(VALUES {} AS t(__ggsql_dummy__))", rows.join(", "))
+            }
         }
         None => {
             // Layer uses global data - caller must ensure has_global is true

@@ -506,9 +506,9 @@ fn build_place_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
     // Build the layer using standard logic
     let mut layer = build_layer(node, source)?;
 
-    // Mark as annotation layer with dummy data source
-    // This triggers special handling in transform_aesthetics_to_internal()
-    layer.source = Some(DataSource::Annotation);
+    // Mark as annotation layer with initial length of 1
+    // The length may be updated in process_annotation_layers() if arrays are present
+    layer.source = Some(DataSource::Annotation(1));
 
     Ok(layer)
 }

@@ -212,7 +212,7 @@ impl Plot {
     /// enabling them to participate in scale training and coordinate transformations.
     pub fn process_annotation_layers(&mut self) {
         for layer in &mut self.layers {
-            if !matches!(layer.source, Some(crate::DataSource::Annotation)) {
+            if !matches!(layer.source, Some(crate::DataSource::Annotation(_))) {
                 continue;
             }
 

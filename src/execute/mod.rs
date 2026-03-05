@@ -154,7 +154,7 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
     for spec in specs {
         for (layer, schema) in spec.layers.iter_mut().zip(layer_schemas.iter()) {
             // Skip annotation layers - they don't inherit global mappings
-            if matches!(layer.source, Some(DataSource::Annotation)) {
+            if matches!(layer.source, Some(DataSource::Annotation(_))) {
                 continue;
             }
 
@@ -2237,9 +2237,8 @@ mod tests {
         // Second layer: PLACE text annotation
         let annotation_layer = &result.specs[0].layers[1];
         assert_eq!(annotation_layer.geom, crate::Geom::text());
-        assert_eq!(
-            annotation_layer.source,
-            Some(DataSource::Annotation),
+        assert!(
+            matches!(annotation_layer.source, Some(DataSource::Annotation(_))),
             "PLACE layer should have Annotation source"
         );
 
