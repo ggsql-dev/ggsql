@@ -308,6 +308,7 @@ fn add_facet_mappings_to_layers(
                         name: var.to_string(),
                         original_name: Some(var.to_string()),
                         is_dummy: false,
+                        is_scaled: true,
                     },
                 );
             }

@@ -14,7 +14,7 @@ use crate::plot::{
     AestheticValue, ArrayElement, ArrayElementType, ColumnInfo, Layer, ParameterValue, Plot, Scale,
     ScaleType, ScaleTypeKind, Schema,
 };
-use crate::{DataFrame, DataSource, GgsqlError, Result};
+use crate::{DataFrame, GgsqlError, Result};
 use polars::prelude::Column;
 use std::collections::{HashMap, HashSet};
 
@@ -995,8 +995,6 @@ pub fn find_columns_for_aesthetic<'a>(
     data_map: &'a HashMap<String, DataFrame>,
     aesthetic_ctx: &AestheticContext,
 ) -> Vec<&'a Column> {
-    use crate::plot::aesthetic::is_positional_aesthetic;
-
     let mut column_refs = Vec::new();
     let aesthetics_to_check = aesthetic_ctx
         .internal_positional_family(aesthetic)
@@ -1005,21 +1003,15 @@ pub fn find_columns_for_aesthetic<'a>(
 
     // Check each layer's mapping - every layer has its own data
     for (i, layer) in layers.iter().enumerate() {
-        // For annotation layers, only train scales for positional aesthetics (pos1, pos2)
-        // Other aesthetics (label, color, size, etc.) should use literal values
-        let is_annotation = matches!(layer.source, Some(DataSource::Annotation(_)));
-        let is_positional_family = is_positional_aesthetic(aesthetic);
-
-        if is_annotation && !is_positional_family {
-            // Skip non-positional aesthetics for annotation layers
-            continue;
-        }
-
         if let Some(df) = data_map.get(&naming::layer_key(i)) {
             for aes_name in &aesthetics_to_check {
-                if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(aes_name) {
-                    if let Ok(column) = df.column(name) {
-                        column_refs.push(column);
+                if let Some(AestheticValue::Column { name, is_scaled, .. }) = layer.mappings.get(aes_name) {
+                    // Only train scales for columns that should be scaled
+                    // Annotation layer literals have is_scaled: false
+                    if *is_scaled {
+                        if let Ok(column) = df.column(name) {
+                            column_refs.push(column);
+                        }
                     }
                 }
             }

@@ -182,6 +182,10 @@ pub enum AestheticValue {
         original_name: Option<String>,
         /// Whether this is a dummy/placeholder column (e.g., for bar charts without x mapped)
         is_dummy: bool,
+        /// Whether scales should be applied to this column
+        /// Set to false for annotation layer literals (e.g., stroke => ['red', 'blue'])
+        /// that are converted to columns but should use identity scales
+        is_scaled: bool,
     },
     /// Literal value (quoted string, number, or boolean)
     Literal(ParameterValue),
@@ -194,6 +198,17 @@ impl AestheticValue {
             name: name.into(),
             original_name: None,
             is_dummy: false,
+            is_scaled: true,
+        }
+    }
+
+    /// Create a column mapping with identity scale (no scale transformation)
+    pub fn identity_column(name: impl Into<String>) -> Self {
+        Self::Column {
+            name: name.into(),
+            original_name: None,
+            is_dummy: false,
+            is_scaled: false,
         }
     }
 
@@ -203,6 +218,7 @@ impl AestheticValue {
             name: name.into(),
             original_name: None,
             is_dummy: true,
+            is_scaled: true,
         }
     }
 
@@ -215,6 +231,7 @@ impl AestheticValue {
             name: name.into(),
             original_name: Some(original_name.into()),
             is_dummy: false,
+            is_scaled: true,
         }
     }
 

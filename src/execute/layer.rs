@@ -498,6 +498,7 @@ where
                         name: prefixed_name,
                         original_name,
                         is_dummy,
+                        is_scaled: true,
                     };
                     layer.mappings.insert(aesthetic.clone(), value);
                 }

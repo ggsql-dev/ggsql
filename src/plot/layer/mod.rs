@@ -239,6 +239,9 @@ impl Layer {
     /// happens in Polars after query execution, before the data goes to the writer.
     pub fn update_mappings_for_aesthetic_columns(&mut self) {
         use crate::naming;
+        use crate::plot::aesthetic::is_positional_aesthetic;
+
+        let is_annotation = matches!(self.source, Some(crate::DataSource::Annotation(_)));
 
         for (aesthetic, value) in self.mappings.aesthetics.iter_mut() {
             let aes_col_name = naming::aesthetic_column(aesthetic);
@@ -256,9 +259,14 @@ impl Layer {
                     *name = aes_col_name;
                 }
                 AestheticValue::Literal(_) => {
-                    // Literals are also columns with prefixed aesthetic name
-                    // Note: literals don't have an original_name to preserve
-                    *value = AestheticValue::standard_column(aes_col_name);
+                    // Literals become columns with prefixed aesthetic name
+                    // For annotation layers, non-positional aesthetics should use identity scales
+                    let is_positional = is_positional_aesthetic(aesthetic);
+                    *value = if is_annotation && !is_positional {
+                        AestheticValue::identity_column(aes_col_name)
+                    } else {
+                        AestheticValue::standard_column(aes_col_name)
+                    };
                 }
             }
         }
@@ -285,6 +293,7 @@ impl Layer {
                 AestheticValue::Column {
                     original_name,
                     is_dummy,
+                    is_scaled,
                     ..
                 } => {
                     // Use the stat name from remappings as the original_name for labels
@@ -293,6 +302,7 @@ impl Layer {
                         name: prefixed_name,
                         original_name: original_name.clone(),
                         is_dummy: *is_dummy,
+                        is_scaled: *is_scaled,
                     }
                 }
                 AestheticValue::Literal(_) => {
@@ -302,6 +312,7 @@ impl Layer {
                         name: prefixed_name,
                         original_name: None,
                         is_dummy: false,
+                        is_scaled: true,
                     }
                 }
             };
