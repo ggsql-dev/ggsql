@@ -4,7 +4,7 @@
 //! scale requirements and updating type info accordingly.
 
 use crate::plot::scale::coerce_dtypes;
-use crate::plot::{ArrayElement, CastTargetType, Layer, ParameterValue, Plot, SqlTypeNames};
+use crate::plot::{CastTargetType, Layer, Plot, SqlTypeNames};
 use crate::{naming, DataSource};
 use polars::prelude::{DataType, TimeUnit};
 use std::collections::{HashMap, HashSet};
@@ -20,60 +20,6 @@ pub struct TypeRequirement {
     pub target_type: CastTargetType,
     /// SQL type name (e.g., "DATE", "DOUBLE", "VARCHAR")
     pub sql_type_name: String,
-}
-
-/// Format a literal value as SQL
-pub fn literal_to_sql(lit: &ParameterValue) -> String {
-    match lit {
-        ParameterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
-        ParameterValue::Number(n) => n.to_string(),
-        ParameterValue::Boolean(b) => {
-            if *b {
-                "TRUE".to_string()
-            } else {
-                "FALSE".to_string()
-            }
-        }
-        ParameterValue::Array(arr) => {
-            // Generate CASE WHEN statement to select array element by row number
-            // The annotation layer dummy table has __ggsql_dummy__ column with values 1, 2, 3, ...
-            // Arrays are homogeneous (homogenized in recycle_value_to_length), so no type mixing
-            let mut case_stmt = String::from("CASE __ggsql_dummy__");
-            for (i, elem) in arr.iter().enumerate() {
-                let row_num = i + 1; // Row numbers start at 1
-                let value_sql = match elem {
-                    ArrayElement::String(s) => format!("'{}'", s.replace('\'', "''")),
-                    ArrayElement::Number(n) => n.to_string(),
-                    ArrayElement::Boolean(b) => {
-                        if *b {
-                            "TRUE".to_string()
-                        } else {
-                            "FALSE".to_string()
-                        }
-                    }
-                    ArrayElement::Date(d) => {
-                        // Convert days since epoch to DATE
-                        format!("DATE '1970-01-01' + INTERVAL {} DAY", d)
-                    }
-                    ArrayElement::DateTime(dt) => {
-                        // Convert microseconds since epoch to TIMESTAMP
-                        format!("TIMESTAMP '1970-01-01 00:00:00' + INTERVAL {} MICROSECOND", dt)
-                    }
-                    ArrayElement::Time(t) => {
-                        // Convert nanoseconds since midnight to TIME
-                        let seconds = t / 1_000_000_000;
-                        let nanos = t % 1_000_000_000;
-                        format!("TIME '00:00:00' + INTERVAL {} SECOND + INTERVAL {} NANOSECOND", seconds, nanos)
-                    }
-                    ArrayElement::Null => "NULL".to_string(),
-                };
-                case_stmt.push_str(&format!(" WHEN {} THEN {}", row_num, value_sql));
-            }
-            case_stmt.push_str(" END");
-            case_stmt
-        }
-        ParameterValue::Null => "NULL".to_string(),
-    }
 }
 
 /// Determine which columns need casting based on scale requirements.

@@ -646,6 +646,38 @@ impl ArrayElement {
         }
     }
 
+    /// Convert this element to a SQL literal string.
+    ///
+    /// Used for generating SQL expressions from literal values.
+    pub fn to_sql(&self) -> String {
+        match self {
+            Self::String(s) => format!("'{}'", s.replace('\'', "''")),
+            Self::Number(n) => n.to_string(),
+            Self::Boolean(b) => {
+                if *b {
+                    "TRUE".to_string()
+                } else {
+                    "FALSE".to_string()
+                }
+            }
+            Self::Date(d) => {
+                // Convert days since epoch to DATE
+                format!("DATE '1970-01-01' + INTERVAL {} DAY", d)
+            }
+            Self::DateTime(dt) => {
+                // Convert microseconds since epoch to TIMESTAMP
+                format!("TIMESTAMP '1970-01-01 00:00:00' + INTERVAL {} MICROSECOND", dt)
+            }
+            Self::Time(t) => {
+                // Convert nanoseconds since midnight to TIME
+                let seconds = t / 1_000_000_000;
+                let nanos = t % 1_000_000_000;
+                format!("TIME '00:00:00' + INTERVAL {} SECOND + INTERVAL {} NANOSECOND", seconds, nanos)
+            }
+            Self::Null => "NULL".to_string(),
+        }
+    }
+
     /// Get the type name for error messages.
     fn type_name(&self) -> &'static str {
         match self {
@@ -823,6 +855,83 @@ impl ParameterValue {
         match self {
             ParameterValue::Array(arr) => Some(arr),
             _ => None,
+        }
+    }
+
+    /// Convert this parameter value to a SQL literal string.
+    ///
+    /// For arrays, generates a CASE WHEN statement that selects array elements by row number
+    /// using the __ggsql_dummy__ column.
+    pub fn to_sql(&self) -> String {
+        match self {
+            ParameterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
+            ParameterValue::Number(n) => n.to_string(),
+            ParameterValue::Boolean(b) => {
+                if *b {
+                    "TRUE".to_string()
+                } else {
+                    "FALSE".to_string()
+                }
+            }
+            ParameterValue::Array(arr) => {
+                let mut case_stmt = String::from("CASE __ggsql_dummy__");
+                for (i, elem) in arr.iter().enumerate() {
+                    let row_num = i + 1;
+                    let value_sql = elem.to_sql();
+                    case_stmt.push_str(&format!(" WHEN {} THEN {}", row_num, value_sql));
+                }
+                case_stmt.push_str(" END");
+                case_stmt
+            }
+            ParameterValue::Null => "NULL".to_string(),
+        }
+    }
+
+    /// Convert a scalar ParameterValue to an ArrayElement.
+    ///
+    /// Panics if called on an Array variant.
+    fn to_array_element(self) -> ArrayElement {
+        match self {
+            ParameterValue::Number(num) => ArrayElement::Number(num),
+            ParameterValue::String(s) => ArrayElement::String(s),
+            ParameterValue::Boolean(b) => ArrayElement::Boolean(b),
+            ParameterValue::Null => ArrayElement::Null,
+            ParameterValue::Array(_) => panic!("Cannot convert Array to single ArrayElement"),
+        }
+    }
+
+    /// Recycle this value to a target array length.
+    ///
+    /// - Scalars (String, Number, Boolean, Null) are converted to arrays with n copies
+    /// - Arrays of length 1 are recycled to n copies of that element
+    /// - Arrays of target length are returned as-is (after homogenization)
+    /// - Arrays of other lengths produce an error
+    pub fn rep(self, n: usize) -> Result<Self, crate::GgsqlError> {
+        match self {
+            // Arrays: homogenize types if mixed, then recycle if needed
+            ParameterValue::Array(arr) => {
+                if arr.len() == 1 {
+                    // Recycle the single element
+                    let element = arr[0].clone();
+                    Ok(ParameterValue::Array(vec![element; n]))
+                } else if arr.len() == n {
+                    // Already correct length - homogenize for type consistency
+                    let arr = ArrayElement::homogenize(&arr);
+                    Ok(ParameterValue::Array(arr))
+                } else {
+                    // Mismatched length - shouldn't happen if validation passed
+                    Err(crate::GgsqlError::InternalError(format!(
+                        "Attempted to recycle array of length {} to length {} (should have been caught earlier)",
+                        arr.len(),
+                        n
+                    )))
+                }
+            }
+            // Scalars: convert to ArrayElement and replicate n times
+            scalar => {
+                let elem = scalar.to_array_element();
+                Ok(ParameterValue::Array(vec![elem; n]))
+            }
         }
     }
 }

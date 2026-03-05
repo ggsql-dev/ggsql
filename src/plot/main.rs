@@ -57,49 +57,6 @@ pub use super::facet::{Facet, FacetLayout};
 /// - Scalar values (Number, String, Boolean) → Array with n copies as ArrayElements
 /// - Length-1 arrays → Expand to n copies of the single element
 /// - Length-n arrays → Return unchanged if n matches target, error otherwise
-fn recycle_value_to_length(
-    value: ParameterValue,
-    target_length: usize,
-) -> Result<ParameterValue, crate::GgsqlError> {
-    match value {
-        // Scalars: convert to array with n copies as ArrayElements
-        ParameterValue::Number(n) => Ok(ParameterValue::Array(
-            vec![ArrayElement::Number(n); target_length],
-        )),
-        ParameterValue::String(s) => Ok(ParameterValue::Array(
-            vec![ArrayElement::String(s); target_length],
-        )),
-        ParameterValue::Boolean(b) => Ok(ParameterValue::Array(
-            vec![ArrayElement::Boolean(b); target_length],
-        )),
-        ParameterValue::Null => Ok(ParameterValue::Array(
-            vec![ArrayElement::Null; target_length],
-        )),
-        // Arrays: homogenize types if mixed, then recycle if needed
-        ParameterValue::Array(arr) => {
-            // Homogenize array if it has mixed incompatible types
-            let arr = ArrayElement::homogenize(&arr);
-
-            // Now handle recycling
-            if arr.len() == 1 {
-                // Recycle the single element
-                let element = arr[0].clone();
-                Ok(ParameterValue::Array(vec![element; target_length]))
-            } else if arr.len() == target_length {
-                // Already correct length
-                Ok(ParameterValue::Array(arr))
-            } else {
-                // Mismatched length - shouldn't happen if validation passed
-                Err(crate::GgsqlError::InternalError(format!(
-                    "Attempted to recycle array of length {} to length {} (should have been caught earlier)",
-                    arr.len(),
-                    target_length
-                )))
-            }
-        }
-    }
-}
-
 // =============================================================================
 // Plot Type
 // =============================================================================
@@ -323,7 +280,7 @@ impl Plot {
                     // Move from parameters to mappings with recycling
                     if let Some(value) = layer.parameters.remove(&param_name) {
                         let recycled_value = if max_length > 1 {
-                            recycle_value_to_length(value, max_length)?
+                            value.rep(max_length)?
                         } else {
                             value
                         };
