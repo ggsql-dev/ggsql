@@ -72,6 +72,7 @@ pyo3 = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest.workspace = true
+jsonschema = "0.44"
 
 [features]
 default = ["duckdb", "sqlite", "vegalite", "ipc", "builtin-data"]
