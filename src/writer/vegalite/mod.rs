@@ -271,6 +271,17 @@ fn build_layer_encoding(
             channel_name = "fillOpacity".to_string();
         }
 
+        // Secondary positional channels (x2, y2, theta2, radius2) only support
+        // field/datum/value in Vega-Lite — not type, scale, axis, or title
+        if matches!(channel_name.as_str(), "x2" | "y2" | "theta2" | "radius2") {
+            let secondary_encoding = match value {
+                AestheticValue::Column { name: col, .. } => json!({"field": col}),
+                AestheticValue::Literal(lit) => json!({"value": lit.to_json()}),
+            };
+            encoding.insert(channel_name, secondary_encoding);
+            continue;
+        }
+
         let channel_encoding = build_encoding_channel(aesthetic, value, &mut enc_ctx)?;
         encoding.insert(channel_name, channel_encoding);
 
@@ -2344,5 +2355,70 @@ mod tests {
             has_domain,
             "x encoding SHOULD have domain when using fixed scales"
         );
+    }
+
+    #[test]
+    fn test_secondary_channels_have_no_disallowed_properties() {
+        // Vega-Lite secondary channels (x2, y2, theta2, radius2) only support:
+        // field, aggregate, bandPosition, bin, timeUnit, title, value.
+        // Properties like type, scale, and axis must NOT be emitted.
+        let writer = VegaLiteWriter::new();
+
+        // Segment geom requires pos1end and pos2end as column mappings,
+        // which map to x2 and y2 in Vega-Lite.
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::segment())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x1".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y1".to_string()),
+            )
+            .with_aesthetic(
+                "xend".to_string(),
+                AestheticValue::standard_column("x2".to_string()),
+            )
+            .with_aesthetic(
+                "yend".to_string(),
+                AestheticValue::standard_column("y2".to_string()),
+            );
+        spec.layers.push(layer);
+
+        let df = df! {
+            "x1" => &[0, 1],
+            "y1" => &[0, 1],
+            "x2" => &[1, 2],
+            "y2" => &[1, 2],
+        }
+        .unwrap();
+
+        transform_spec(&mut spec);
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        for channel in ["x2", "y2"] {
+            for layer in vl_spec["layer"].as_array().unwrap() {
+                if let Some(enc) = layer.get("encoding").and_then(|e| e.get(channel)) {
+                    assert!(
+                        enc.get("field").is_some(),
+                        "{channel} should have 'field': {enc}"
+                    );
+                    assert!(
+                        enc.get("type").is_none(),
+                        "{channel} should not have 'type': {enc}"
+                    );
+                    assert!(
+                        enc.get("scale").is_none(),
+                        "{channel} should not have 'scale': {enc}"
+                    );
+                    assert!(
+                        enc.get("axis").is_none(),
+                        "{channel} should not have 'axis': {enc}"
+                    );
+                }
+            }
+        }
     }
 }
