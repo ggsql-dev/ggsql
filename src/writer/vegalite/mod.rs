@@ -857,25 +857,21 @@ fn apply_facet_properties(
     }
 }
 
-/// Vega-Lite schema version. Update this, the vendored schema file, and
+/// Vega-Lite schema URL. Update this, the vendored schema file, and
 /// the `include_str!` path in `VL_SCHEMA` when bumping versions.
-const VEGALITE_VERSION: &str = "v6";
+const VEGALITE_SCHEMA: &str = "https://vega.github.io/schema/vega-lite/v6.json";
 
 /// Vega-Lite JSON writer
 ///
 /// Generates Vega-Lite v6 specifications from ggsql specs and data.
 pub struct VegaLiteWriter {
-    /// Vega-Lite schema version
     schema: String,
 }
 
 impl VegaLiteWriter {
-    /// Create a new Vega-Lite writer with default settings
     pub fn new() -> Self {
         Self {
-            schema: format!(
-                "https://vega.github.io/schema/vega-lite/{VEGALITE_VERSION}.json"
-            ),
+            schema: VEGALITE_SCHEMA.to_string(),
         }
     }
 
