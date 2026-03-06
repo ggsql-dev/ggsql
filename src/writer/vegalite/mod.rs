@@ -340,9 +340,8 @@ fn apply_faceting(
 
             vl_spec["facet"] = facet_def;
 
-            // Move layer into spec (data reference stays at top level).
-            // Also move width/height into the inner spec: FacetSpec does not allow
-            // "width"/"height": "container" at the top level in Vega-Lite v6.
+            // Move layer + width/height into inner spec (FacetSpec disallows
+            // top-level width/height in VL v6)
             let mut spec_inner = json!({});
             if let Some(layer) = vl_spec.get("layer") {
                 spec_inner["layer"] = layer.clone();
@@ -360,17 +359,11 @@ fn apply_faceting(
             obj.remove("width");
             obj.remove("height");
 
-            // Apply scale resolution
             apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
-
-            // Apply additional properties (columns for wrap)
             apply_facet_properties(vl_spec, &facet.properties, true);
         }
         FacetLayout::Grid { row: _, column: _ } => {
             let mut facet_spec = serde_json::Map::new();
-
-            // Row facet: use internal aesthetic column "facet1"
-            // Vega-Lite requires "row" key in the facet object
             let row_aes_col = naming::aesthetic_column("facet1");
             if facet_df.column(&row_aes_col).is_ok() {
                 let row_scale = scales.iter().find(|s| s.aesthetic == "facet1");
@@ -399,9 +392,7 @@ fn apply_faceting(
 
             vl_spec["facet"] = Value::Object(facet_spec);
 
-            // Move layer into spec (data reference stays at top level).
-            // Also move width/height into the inner spec: FacetSpec does not allow
-            // "width"/"height": "container" at the top level in Vega-Lite v6.
+            // Move layer + width/height into inner spec (same as wrap above)
             let mut spec_inner = json!({});
             if let Some(layer) = vl_spec.get("layer") {
                 spec_inner["layer"] = layer.clone();
@@ -419,10 +410,7 @@ fn apply_faceting(
             obj.remove("width");
             obj.remove("height");
 
-            // Apply scale resolution
             apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
-
-            // Apply additional properties (not columns for grid)
             apply_facet_properties(vl_spec, &facet.properties, false);
         }
     }
@@ -869,11 +857,8 @@ fn apply_facet_properties(
     }
 }
 
-/// Vega-Lite schema version identifier (e.g., "v6").
-///
-/// Used to construct the schema URL in generated specs and to locate the
-/// vendored schema file at `schema/{VEGALITE_VERSION}.json`.  Update both
-/// this constant and the vendored file when bumping Vega-Lite versions.
+/// Vega-Lite schema version. Update this, the vendored schema file, and
+/// the `include_str!` path in `VL_SCHEMA` when bumping versions.
 const VEGALITE_VERSION: &str = "v6";
 
 /// Vega-Lite JSON writer
@@ -1100,7 +1085,6 @@ mod tests {
     use super::encoding::infer_field_type;
     use super::layer::geom_to_mark;
 
-    /// Replace characters that are invalid in URI references with underscores.
     fn sanitize_def_name(s: &str) -> String {
         s.chars()
             .map(|c| match c {
@@ -1110,8 +1094,6 @@ mod tests {
             .collect()
     }
 
-    /// Walk a JSON Value tree and rewrite `$ref` strings that reference renamed definitions.
-    /// Only allocates when a `$ref` actually needs rewriting.
     fn rewrite_refs(val: &mut Value) {
         match val {
             Value::Object(obj) => {
@@ -1132,11 +1114,10 @@ mod tests {
         }
     }
 
-    /// Sanitize the Vega-Lite schema by replacing non-URI-safe characters in definition
-    /// names (angle brackets, parentheses, pipes, etc.) with underscores so that `jsonschema`
-    /// can parse `$ref` values without URI parse errors.
+    /// The VL v6 schema uses TypeScript-style generics in definition names (e.g.,
+    /// `MarkPropDef<(Gradient|string|null)>`) which are invalid in `$ref` URIs.
+    /// Rename those definitions and rewrite their `$ref` references.
     fn sanitize_vegalite_schema(schema: &mut Value) {
-        // Collect mappings from original key → sanitized key for definitions with bad chars
         let defs = match schema
             .get_mut("definitions")
             .and_then(|d| d.as_object_mut())
@@ -1155,14 +1136,12 @@ mod tests {
             return;
         }
 
-        // Rename definition keys
         for (orig, sanitized) in &substitutions {
             if let Some(val) = defs.remove(orig.as_str()) {
                 defs.insert(sanitized.clone(), val);
             }
         }
 
-        // Rewrite $ref values that reference renamed definitions
         rewrite_refs(schema);
     }
 
@@ -2487,7 +2466,6 @@ mod tests {
 
     #[test]
     fn test_schema_validation_catches_invalid_spec() {
-        // A valid spec should pass
         let writer = VegaLiteWriter::new();
         let mut spec = build_spec(Geom::point());
         let df = simple_df();
@@ -2495,7 +2473,6 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
 
-        // An invalid spec should fail validation
         let invalid = r#"{"$schema": "https://vega.github.io/schema/vega-lite/v6.json", "mark": "not_a_mark"}"#;
         let result = std::panic::catch_unwind(|| assert_valid_vegalite(invalid));
         assert!(result.is_err(), "invalid spec should fail validation");
@@ -2503,8 +2480,6 @@ mod tests {
 
     #[test]
     fn test_vendored_schema_matches_upstream() {
-        // Download the schema from the URL the writer emits and compare it to the
-        // vendored copy. Skips gracefully when there's no internet access.
         let writer = VegaLiteWriter::new();
         let response = match ureq::get(&writer.schema).call() {
             Ok(r) => r,
