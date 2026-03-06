@@ -1,6 +1,6 @@
 //! ErrorBar geom implementation
 
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 
 /// ErrorBar geom - error bars (confidence intervals)
@@ -26,6 +26,13 @@ impl GeomTrait for ErrorBar {
                 ("opacity", DefaultAestheticValue::Number(1.0)),
             ],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[DefaultParam {
+            name: "position",
+            default: DefaultParamValue::String("identity"),
+        }]
     }
 }
 
