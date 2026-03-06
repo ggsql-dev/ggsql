@@ -216,7 +216,10 @@ pub fn determine_layer_source(
             } else {
                 // Generate VALUES clause with n rows: (VALUES (1), (2), ..., (n)) AS t(col)
                 let rows: Vec<String> = (1..=*n).map(|i| format!("({})", i)).collect();
-                format!("(SELECT * FROM (VALUES {}) AS t(__ggsql_dummy__))", rows.join(", "))
+                format!(
+                    "(SELECT * FROM (VALUES {}) AS t(__ggsql_dummy__))",
+                    rows.join(", ")
+                )
             }
         }
         None => {

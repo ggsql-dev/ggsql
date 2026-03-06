@@ -432,7 +432,10 @@ mod tests {
 
         // First layer: regular DRAW point
         assert_eq!(specs[0].layers[0].geom, Geom::point());
-        assert!(specs[0].layers[0].source.is_none(), "DRAW layer should have no explicit source");
+        assert!(
+            specs[0].layers[0].source.is_none(),
+            "DRAW layer should have no explicit source"
+        );
 
         // Second layer: PLACE text with annotation source
         assert_eq!(specs[0].layers[1].geom, Geom::text());

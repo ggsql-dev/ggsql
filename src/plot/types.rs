@@ -649,7 +649,10 @@ impl ArrayElement {
         };
 
         // Try to coerce all elements to the inferred type
-        let coerced: Result<Vec<_>, _> = values.iter().map(|elem| elem.coerce_to(target_type)).collect();
+        let coerced: Result<Vec<_>, _> = values
+            .iter()
+            .map(|elem| elem.coerce_to(target_type))
+            .collect();
 
         match coerced {
             Ok(coerced_arr) => coerced_arr,
@@ -657,7 +660,10 @@ impl ArrayElement {
                 // Coercion failed - fall back to String type
                 values
                     .iter()
-                    .map(|elem| elem.coerce_to(ArrayElementType::String).unwrap_or(Self::Null))
+                    .map(|elem| {
+                        elem.coerce_to(ArrayElementType::String)
+                            .unwrap_or(Self::Null)
+                    })
                     .collect()
             }
         }
@@ -683,13 +689,19 @@ impl ArrayElement {
             }
             Self::DateTime(dt) => {
                 // Convert microseconds since epoch to TIMESTAMP
-                format!("TIMESTAMP '1970-01-01 00:00:00' + INTERVAL {} MICROSECOND", dt)
+                format!(
+                    "TIMESTAMP '1970-01-01 00:00:00' + INTERVAL {} MICROSECOND",
+                    dt
+                )
             }
             Self::Time(t) => {
                 // Convert nanoseconds since midnight to TIME
                 let seconds = t / 1_000_000_000;
                 let nanos = t % 1_000_000_000;
-                format!("TIME '00:00:00' + INTERVAL {} SECOND + INTERVAL {} NANOSECOND", seconds, nanos)
+                format!(
+                    "TIME '00:00:00' + INTERVAL {} SECOND + INTERVAL {} NANOSECOND",
+                    seconds, nanos
+                )
             }
             Self::Null => "NULL".to_string(),
         }
@@ -907,11 +919,11 @@ impl ParameterValue {
     /// Convert a scalar ParameterValue to an ArrayElement.
     ///
     /// Panics if called on an Array variant.
-    fn to_array_element(self) -> ArrayElement {
+    fn to_array_element(&self) -> ArrayElement {
         match self {
-            ParameterValue::Number(num) => ArrayElement::Number(num),
-            ParameterValue::String(s) => ArrayElement::String(s),
-            ParameterValue::Boolean(b) => ArrayElement::Boolean(b),
+            ParameterValue::Number(num) => ArrayElement::Number(*num),
+            ParameterValue::String(s) => ArrayElement::String(s.clone()),
+            ParameterValue::Boolean(b) => ArrayElement::Boolean(*b),
             ParameterValue::Null => ArrayElement::Null,
             ParameterValue::Array(_) => panic!("Cannot convert Array to single ArrayElement"),
         }

@@ -939,6 +939,12 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
                 _ => json!(n),
             }
         }
+        ParameterValue::Array(_) => {
+            return Err(crate::GgsqlError::WriterError(format!(
+                "The `{aes}` SETTING must be scalar, not an array.",
+                aes = aesthetic
+            )))
+        }
         _ => lit.to_json(),
     };
     Ok(json!({"value": val}))

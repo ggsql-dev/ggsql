@@ -816,7 +816,8 @@ mod integration_tests {
         // Note: stroke color goes through resolve_aesthetics and may be in different location
         // Just verify it's present somewhere as a literal
         let text_mark = &text_layer["mark"];
-        let has_stroke_value = encoding.get("stroke")
+        let has_stroke_value = encoding
+            .get("stroke")
             .and_then(|s| s.get("value"))
             .is_some()
             || text_mark.get("stroke").is_some();

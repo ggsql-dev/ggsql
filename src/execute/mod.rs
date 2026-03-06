@@ -2228,12 +2228,19 @@ mod tests {
         let result = prepare_data_with_reader(query, &reader).unwrap();
 
         assert_eq!(result.specs.len(), 1);
-        assert_eq!(result.specs[0].layers.len(), 2, "Should have DRAW + PLACE layers");
+        assert_eq!(
+            result.specs[0].layers.len(),
+            2,
+            "Should have DRAW + PLACE layers"
+        );
 
         // First layer: regular DRAW point
         let point_layer = &result.specs[0].layers[0];
         assert_eq!(point_layer.geom, crate::Geom::point());
-        assert!(point_layer.source.is_none(), "DRAW layer should have no explicit source");
+        assert!(
+            point_layer.source.is_none(),
+            "DRAW layer should have no explicit source"
+        );
 
         // Second layer: PLACE text annotation
         let annotation_layer = &result.specs[0].layers[1];
@@ -2441,9 +2448,9 @@ mod tests {
         // DRAW layer should have inherited global color mapping
         let point_layer = &result.specs[0].layers[0];
         assert!(
-            point_layer.mappings.contains_key("color") ||
-            point_layer.mappings.contains_key("fill") ||
-            point_layer.mappings.contains_key("stroke"),
+            point_layer.mappings.contains_key("color")
+                || point_layer.mappings.contains_key("fill")
+                || point_layer.mappings.contains_key("stroke"),
             "DRAW layer should inherit color from global mappings"
         );
 

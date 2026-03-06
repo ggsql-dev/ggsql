@@ -48,16 +48,6 @@ pub use super::projection::{Coord, Projection};
 pub use super::facet::{Facet, FacetLayout};
 
 // =============================================================================
-// Helper Functions
-// =============================================================================
-
-/// Recycle a scalar or length-1 array to a target length.
-///
-/// Recycling rules:
-/// - Scalar values (Number, String, Boolean) → Array with n copies as ArrayElements
-/// - Length-1 arrays → Expand to n copies of the single element
-/// - Length-n arrays → Return unchanged if n matches target, error otherwise
-// =============================================================================
 // Plot Type
 // =============================================================================
 
