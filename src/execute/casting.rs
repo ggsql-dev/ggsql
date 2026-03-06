@@ -4,10 +4,10 @@
 //! scale requirements and updating type info accordingly.
 
 use crate::plot::scale::coerce_dtypes;
-use crate::plot::{CastTargetType, Layer, Plot, SqlTypeNames};
-use crate::{naming, DataSource};
+use crate::plot::{CastTargetType, Plot, SqlTypeNames};
+use crate::naming;
 use polars::prelude::{DataType, TimeUnit};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::schema::TypeInfo;
 
@@ -180,52 +180,6 @@ pub fn update_type_info_for_casting(type_info: &mut [TypeInfo], requirements: &[
             };
             // Update is_discrete flag based on new type
             entry.2 = matches!(entry.1, DataType::String | DataType::Boolean);
-        }
-    }
-}
-
-/// Determine the data source table name for a layer.
-///
-/// Returns the table/CTE name to query from:
-/// - Layer with explicit source (CTE, table, file) → that source name
-/// - Layer using global data → global table name
-pub fn determine_layer_source(
-    layer: &Layer,
-    materialized_ctes: &HashSet<String>,
-    has_global: bool,
-) -> String {
-    match &layer.source {
-        Some(DataSource::Identifier(name)) => {
-            if materialized_ctes.contains(name) {
-                naming::cte_table(name)
-            } else {
-                name.clone()
-            }
-        }
-        Some(DataSource::FilePath(path)) => {
-            format!("'{}'", path)
-        }
-        Some(DataSource::Annotation(n)) => {
-            // Annotation layer - generate a dummy table with n rows.
-            // The execution pipeline expects all layers to have a DataFrame, even though
-            // SETTING literals eventually render as Vega-Lite datum values ({"value": ...})
-            // that don't reference the data. The n-row dummy satisfies schema detection,
-            // type resolution, and other intermediate steps that expect data to exist.
-            if *n == 1 {
-                "(SELECT 1 AS __ggsql_dummy__)".to_string()
-            } else {
-                // Generate VALUES clause with n rows: (VALUES (1), (2), ..., (n)) AS t(col)
-                let rows: Vec<String> = (1..=*n).map(|i| format!("({})", i)).collect();
-                format!(
-                    "(SELECT * FROM (VALUES {}) AS t(__ggsql_dummy__))",
-                    rows.join(", ")
-                )
-            }
-        }
-        None => {
-            // Layer uses global data - caller must ensure has_global is true
-            debug_assert!(has_global, "Layer has no source and no global data");
-            naming::global_table()
         }
     }
 }

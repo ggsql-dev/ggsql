@@ -889,8 +889,8 @@ impl ParameterValue {
 
     /// Convert this parameter value to a SQL literal string.
     ///
-    /// For arrays, generates a CASE WHEN statement that selects array elements by row number
-    /// using the __ggsql_dummy__ column.
+    /// Only supports scalar values (String, Number, Boolean, Null).
+    /// Arrays are handled separately in annotation layer VALUES clause generation.
     pub fn to_sql(&self) -> String {
         match self {
             ParameterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
@@ -902,15 +902,8 @@ impl ParameterValue {
                     "FALSE".to_string()
                 }
             }
-            ParameterValue::Array(arr) => {
-                let mut case_stmt = String::from("CASE __ggsql_dummy__");
-                for (i, elem) in arr.iter().enumerate() {
-                    let row_num = i + 1;
-                    let value_sql = elem.to_sql();
-                    case_stmt.push_str(&format!(" WHEN {} THEN {}", row_num, value_sql));
-                }
-                case_stmt.push_str(" END");
-                case_stmt
+            ParameterValue::Array(_) => {
+                panic!("ParameterValue::to_sql() does not support arrays. Arrays in annotation layers should be handled via VALUES clause generation.")
             }
             ParameterValue::Null => "NULL".to_string(),
         }

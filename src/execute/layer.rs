@@ -16,19 +16,40 @@ use super::schema::build_aesthetic_schema;
 
 /// Build the source query for a layer.
 ///
-/// Returns `SELECT * FROM source` where source is either:
-/// - The layer's explicit source (table, CTE, file)
-/// - The global table if layer has no explicit source
-///
-/// Note: This is distinct from `build_layer_base_query()` which builds a full
-/// SELECT with aesthetic column renames and type casts.
+/// Returns a complete query that can be executed to retrieve the layer's data:
+/// - Annotation layers → VALUES clause with all aesthetic columns
+/// - Table/CTE layers → `SELECT * FROM table_or_cte`
+/// - File path layers → `SELECT * FROM 'path'`
+/// - Layers without explicit source → `SELECT * FROM __ggsql_global__`
 pub fn layer_source_query(
     layer: &Layer,
     materialized_ctes: &HashSet<String>,
     has_global: bool,
 ) -> String {
-    let source = super::casting::determine_layer_source(layer, materialized_ctes, has_global);
-    format!("SELECT * FROM {}", source)
+    match &layer.source {
+        Some(crate::DataSource::Annotation(n)) => {
+            // Annotation layers: return complete VALUES clause
+            build_annotation_values_clause(layer, *n)
+        }
+        Some(crate::DataSource::Identifier(name)) => {
+            // Regular table or CTE
+            let source = if materialized_ctes.contains(name) {
+                naming::cte_table(name)
+            } else {
+                name.clone()
+            };
+            format!("SELECT * FROM {}", source)
+        }
+        Some(crate::DataSource::FilePath(path)) => {
+            // File path source
+            format!("SELECT * FROM '{}'", path)
+        }
+        None => {
+            // Layer uses global data
+            debug_assert!(has_global, "Layer has no source and no global data");
+            format!("SELECT * FROM {}", naming::global_table())
+        }
+    }
 }
 
 /// Build the SELECT list for a layer query with aesthetic-renamed columns and casting.
@@ -273,6 +294,9 @@ pub fn apply_pre_stat_transform(
 /// 2. Renames columns to aesthetic names (e.g., "Date" AS "__ggsql_aes_x__")
 /// 3. Applies type casts based on scale requirements
 ///
+/// For annotation layers, the source_query is already the complete VALUES clause,
+/// so it's returned as-is (no wrapping, filtering, or casting needed).
+///
 /// The resulting query can be used for:
 /// - Schema completion (fetching min/max values)
 /// - Scale input range resolution
@@ -282,8 +306,8 @@ pub fn apply_pre_stat_transform(
 /// # Arguments
 ///
 /// * `layer` - The layer configuration with aesthetic mappings
-/// * `source_query` - The base query for the layer's data source
-/// * `type_requirements` - Columns that need type casting
+/// * `source_query` - The base query for the layer's data source (for annotations, this is already the VALUES clause)
+/// * `type_requirements` - Columns that need type casting (not applicable to annotations)
 ///
 /// # Returns
 ///
@@ -293,6 +317,12 @@ pub fn build_layer_base_query(
     source_query: &str,
     type_requirements: &[TypeRequirement],
 ) -> String {
+    // For annotation layers, source_query is already the VALUES clause from layer_source_query()
+    // Just return it as-is - no wrapping, filtering, or casting needed
+    if matches!(layer.source, Some(crate::DataSource::Annotation(_))) {
+        return source_query.to_string();
+    }
+
     // Build SELECT list with aesthetic renames, casts
     let select_exprs = build_layer_select_list(layer, type_requirements);
     let select_clause = if select_exprs.is_empty() {
@@ -564,4 +594,87 @@ where
     };
 
     Ok(final_query)
+}
+
+/// Build a VALUES clause for an annotation layer with all aesthetic columns.
+///
+/// Generates SQL like: `(VALUES (val1_row1, val2_row1), (val1_row2, val2_row2)) AS t(col1, col2)`
+///
+/// This eliminates the need for dummy tables and CASE statements by directly
+/// specifying all values in a single VALUES clause with proper column names.
+///
+/// # Arguments
+///
+/// * `layer` - The annotation layer with aesthetics as Literal values
+/// * `n` - Number of rows (from DataSource::Annotation(n))
+///
+/// # Returns
+///
+/// A complete SQL expression ready to use as a FROM clause
+fn build_annotation_values_clause(layer: &Layer, n: usize) -> String {
+    use crate::plot::ArrayElement;
+
+    // Collect all aesthetic mappings that are literals
+    // Convert scalars to single-element vectors for uniform handling
+    let mut columns: Vec<Vec<ArrayElement>> = Vec::new();
+    let mut column_names = Vec::new();
+
+    for (aesthetic, value) in &layer.mappings.aesthetics {
+        if let crate::AestheticValue::Literal(param) = value {
+            let column_values = match param {
+                crate::plot::ParameterValue::Array(arr) => {
+                    assert_eq!(
+                        arr.len(),
+                        n,
+                        "Array length mismatch: expected {}, got {} for aesthetic '{}'",
+                        n,
+                        arr.len(),
+                        aesthetic
+                    );
+                    arr.clone()
+                }
+                crate::plot::ParameterValue::Number(num) => {
+                    // Scalar number: replicate n times
+                    vec![ArrayElement::Number(*num); n]
+                }
+                crate::plot::ParameterValue::String(s) => {
+                    // Scalar string: replicate n times
+                    vec![ArrayElement::String(s.clone()); n]
+                }
+                crate::plot::ParameterValue::Boolean(b) => {
+                    // Scalar boolean: replicate n times
+                    vec![ArrayElement::Boolean(*b); n]
+                }
+                crate::plot::ParameterValue::Null => {
+                    // Null: replicate n times
+                    vec![ArrayElement::Null; n]
+                }
+            };
+
+            columns.push(column_values);
+            column_names.push(naming::aesthetic_column(aesthetic));
+        }
+    }
+
+    // Build VALUES rows: (val1_row1, val2_row1), (val1_row2, val2_row2), ...
+    let mut rows = Vec::new();
+    for i in 0..n {
+        let values: Vec<String> = columns.iter().map(|col| col[i].to_sql()).collect();
+        rows.push(format!("({})", values.join(", ")));
+    }
+
+    // Build complete VALUES clause with column names
+    let values_clause = rows.join(", ");
+    let column_list = column_names
+        .iter()
+        .map(|c| format!("\"{}\"", c))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    // Return a SELECT statement wrapping the VALUES clause
+    // This matches the format of regular layer queries and allows proper wrapping by schema queries
+    format!(
+        "SELECT * FROM (VALUES {}) AS t({})",
+        values_clause, column_list
+    )
 }
