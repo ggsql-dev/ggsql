@@ -42,9 +42,12 @@ jobs:
           args: --release
           sccache: true
         env:
-          # Ensure the cc crate routes C/C++ compilations (e.g. DuckDB)
-          # through sccache on all platforms, including Windows/MSVC
-          CC_WRAPPER: sccache
+          # On Windows/MSVC, the cc crate's cl.exe detection bypasses its
+          # RUSTC_WRAPPER-based sccache fallback. Setting CC/CXX explicitly
+          # makes the cc crate parse "sccache" as a known wrapper and "cl"
+          # as the compiler, routing DuckDB C++ builds through sccache.
+          CC: ${{ runner.os == 'Windows' && 'sccache cl' || '' }}
+          CXX: ${{ runner.os == 'Windows' && 'sccache cl' || '' }}
 
       - name: Upload wheel
         uses: actions/upload-artifact@v4
