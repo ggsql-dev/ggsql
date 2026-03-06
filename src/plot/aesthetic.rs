@@ -331,22 +331,6 @@ pub fn is_facet_aesthetic(aesthetic: &str) -> bool {
     false
 }
 
-/// Check if an internal aesthetic maps to a Vega-Lite **secondary** encoding channel
-/// (x2, y2, theta2, radius2).
-///
-/// Vega-Lite secondary channels only support a restricted set of properties
-/// (`field`, `aggregate`, `bandPosition`, `bin`, `timeUnit`, `title`, `value`).
-/// Properties like `type`, `scale`, and `axis` must not be emitted for these.
-///
-/// Matches internal names like `pos1end`, `pos2end`, etc.
-#[inline]
-pub fn is_secondary_channel(name: &str) -> bool {
-    name.starts_with("pos") && name.ends_with("end") && {
-        let mid = &name[3..name.len() - 3];
-        !mid.is_empty() && mid.chars().all(|c| c.is_ascii_digit())
-    }
-}
-
 /// Check if aesthetic is an internal positional (pos1, pos1min, pos2max, etc.)
 ///
 /// This function works with **internal** aesthetic names after transformation.

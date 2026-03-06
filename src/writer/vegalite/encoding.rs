@@ -3,7 +3,7 @@
 //! This module handles building Vega-Lite encoding channels from ggsql aesthetic mappings,
 //! including type inference, scale properties, and title handling.
 
-use crate::plot::aesthetic::{is_positional_aesthetic, is_secondary_channel, AestheticContext};
+use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
 use crate::plot::{CoordKind, ParameterValue};
 use crate::{AestheticValue, DataFrame, Plot, Result};
@@ -819,27 +819,6 @@ fn build_column_encoding(
     let primary = aesthetic_ctx
         .primary_internal_positional(aesthetic)
         .unwrap_or(aesthetic);
-
-    // Vega-Lite secondary channels (x2, y2, theta2, radius2) only allow a restricted
-    // set of properties: field, aggregate, bandPosition, bin, timeUnit, title, value.
-    // Properties like type, scale, and axis must not be emitted.
-    if is_secondary_channel(aesthetic) {
-        let mut encoding = json!({ "field": col });
-
-        // Apply title handling (title is allowed on secondary channels)
-        apply_title_to_encoding(
-            &mut encoding,
-            aesthetic,
-            original_name,
-            ctx.spec,
-            ctx.titled_families,
-            ctx.primary_aesthetics,
-            &aesthetic_ctx,
-        );
-
-        return Ok(encoding);
-    }
-
     let mut identity_scale = false;
 
     // Determine field type from scale or infer from data
