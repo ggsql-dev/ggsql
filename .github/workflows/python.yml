@@ -34,6 +34,10 @@ jobs:
           workspaces: ggsql-python
           shared-key: ${{ matrix.os }}-python
 
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
@@ -43,9 +47,10 @@ jobs:
           sccache: true
         env:
           # On Windows/MSVC, the cc crate's cl.exe detection bypasses its
-          # RUSTC_WRAPPER-based sccache fallback. Setting CC/CXX explicitly
-          # makes the cc crate parse "sccache" as a known wrapper and "cl"
-          # as the compiler, routing DuckDB C++ builds through sccache.
+          # RUSTC_WRAPPER-based sccache fallback. Setting CC/CXX tells the
+          # cc crate to parse "sccache" as a known wrapper and "cl" as the
+          # compiler, routing DuckDB C++ builds through sccache.
+          # ilammy/msvc-dev-cmd puts cl.exe on PATH so sccache can find it.
           CC: ${{ runner.os == 'Windows' && 'sccache cl' || '' }}
           CXX: ${{ runner.os == 'Windows' && 'sccache cl' || '' }}
 
