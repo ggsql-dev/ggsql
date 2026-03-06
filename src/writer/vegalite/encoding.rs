@@ -848,8 +848,8 @@ fn build_column_encoding(
         "type": field_type,
     });
 
-    // For binned scales, add bin: "binned" for proper axis tick placement
-    if is_binned {
+    // bin: "binned" is only valid for positional channels in VL v6
+    if is_binned && !is_binned_legend {
         encoding["bin"] = json!("binned");
     }
 
