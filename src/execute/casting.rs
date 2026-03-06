@@ -4,7 +4,7 @@
 //! scale requirements and updating type info accordingly.
 
 use crate::plot::scale::coerce_dtypes;
-use crate::plot::{CastTargetType, Layer, ParameterValue, Plot, SqlTypeNames};
+use crate::plot::{CastTargetType, Layer, Plot, SqlTypeNames};
 use crate::{naming, DataSource};
 use polars::prelude::{DataType, TimeUnit};
 use std::collections::{HashMap, HashSet};
@@ -20,24 +20,6 @@ pub struct TypeRequirement {
     pub target_type: CastTargetType,
     /// SQL type name (e.g., "DATE", "DOUBLE", "VARCHAR")
     pub sql_type_name: String,
-}
-
-/// Format a literal value as SQL
-pub fn literal_to_sql(lit: &ParameterValue) -> String {
-    match lit {
-        ParameterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
-        ParameterValue::Number(n) => n.to_string(),
-        ParameterValue::Boolean(b) => {
-            if *b {
-                "TRUE".to_string()
-            } else {
-                "FALSE".to_string()
-            }
-        }
-        ParameterValue::Array(_) | ParameterValue::Null => {
-            unreachable!("Grammar prevents arrays and null in literal aesthetic mappings")
-        }
-    }
 }
 
 /// Determine which columns need casting based on scale requirements.
@@ -222,6 +204,23 @@ pub fn determine_layer_source(
         }
         Some(DataSource::FilePath(path)) => {
             format!("'{}'", path)
+        }
+        Some(DataSource::Annotation(n)) => {
+            // Annotation layer - generate a dummy table with n rows.
+            // The execution pipeline expects all layers to have a DataFrame, even though
+            // SETTING literals eventually render as Vega-Lite datum values ({"value": ...})
+            // that don't reference the data. The n-row dummy satisfies schema detection,
+            // type resolution, and other intermediate steps that expect data to exist.
+            if *n == 1 {
+                "(SELECT 1 AS __ggsql_dummy__)".to_string()
+            } else {
+                // Generate VALUES clause with n rows: (VALUES (1), (2), ..., (n)) AS t(col)
+                let rows: Vec<String> = (1..=*n).map(|i| format!("({})", i)).collect();
+                format!(
+                    "(SELECT * FROM (VALUES {}) AS t(__ggsql_dummy__))",
+                    rows.join(", ")
+                )
+            }
         }
         None => {
             // Layer uses global data - caller must ensure has_global is true

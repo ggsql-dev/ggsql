@@ -413,4 +413,53 @@ mod tests {
             Some(DataSource::Identifier("cte".to_string()))
         );
     }
+
+    #[test]
+    fn test_place_clause() {
+        let query = r#"
+            SELECT x, y FROM data
+            VISUALISE x, y
+            DRAW point
+            PLACE text SETTING x => 5, y => 10, label => 'Hello'
+        "#;
+
+        let result = parse_query(query);
+        assert!(result.is_ok(), "Failed to parse PLACE clause: {:?}", result);
+
+        let specs = result.unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].layers.len(), 2, "Expected 2 layers (DRAW + PLACE)");
+
+        // First layer: regular DRAW point
+        assert_eq!(specs[0].layers[0].geom, Geom::point());
+        assert!(
+            specs[0].layers[0].source.is_none(),
+            "DRAW layer should have no explicit source"
+        );
+
+        // Second layer: PLACE text with annotation source
+        assert_eq!(specs[0].layers[1].geom, Geom::text());
+        assert!(
+            matches!(specs[0].layers[1].source, Some(DataSource::Annotation(_))),
+            "PLACE layer should have Annotation source"
+        );
+
+        // Verify positional aesthetics moved to mappings with internal names
+        // (transform_aesthetics_to_internal runs as part of parse_query)
+        assert!(
+            specs[0].layers[1].mappings.contains_key("pos1"),
+            "x should be transformed to pos1 and moved to mappings"
+        );
+        assert!(
+            specs[0].layers[1].mappings.contains_key("pos2"),
+            "y should be transformed to pos2 and moved to mappings"
+        );
+
+        // Verify non-positional parameter (label) stays in parameters (with internal name = same)
+        assert_eq!(
+            specs[0].layers[1].parameters.get("label"),
+            Some(&ParameterValue::String("Hello".to_string())),
+            "Non-positional parameters remain in parameters"
+        );
+    }
 }

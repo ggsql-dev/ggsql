@@ -1005,9 +1005,16 @@ pub fn find_columns_for_aesthetic<'a>(
     for (i, layer) in layers.iter().enumerate() {
         if let Some(df) = data_map.get(&naming::layer_key(i)) {
             for aes_name in &aesthetics_to_check {
-                if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(aes_name) {
-                    if let Ok(column) = df.column(name) {
-                        column_refs.push(column);
+                if let Some(AestheticValue::Column {
+                    name, is_scaled, ..
+                }) = layer.mappings.get(aes_name)
+                {
+                    // Only train scales for columns that should be scaled
+                    // Annotation layer literals have is_scaled: false
+                    if *is_scaled {
+                        if let Ok(column) = df.column(name) {
+                            column_refs.push(column);
+                        }
                     }
                 }
             }

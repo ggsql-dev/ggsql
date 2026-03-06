@@ -11,7 +11,7 @@ use crate::{naming, DataFrame, GgsqlError, Result};
 use polars::prelude::DataType;
 use std::collections::{HashMap, HashSet};
 
-use super::casting::{literal_to_sql, TypeRequirement};
+use super::casting::TypeRequirement;
 use super::schema::build_aesthetic_schema;
 
 /// Build the source query for a layer.
@@ -90,7 +90,7 @@ pub fn build_layer_select_list(
             }
             AestheticValue::Literal(lit) => {
                 // Literals become columns with prefixed aesthetic name
-                format!("{} AS \"{}\"", literal_to_sql(lit), aes_col_name)
+                format!("{} AS \"{}\"", lit.to_sql(), aes_col_name)
             }
         };
 
@@ -498,6 +498,7 @@ where
                         name: prefixed_name,
                         original_name,
                         is_dummy,
+                        is_scaled: true,
                     };
                     layer.mappings.insert(aesthetic.clone(), value);
                 }

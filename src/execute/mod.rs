@@ -26,7 +26,7 @@ use crate::parser;
 use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
-use crate::{DataFrame, GgsqlError, Plot, Result};
+use crate::{DataFrame, DataSource, GgsqlError, Plot, Result};
 use std::collections::{HashMap, HashSet};
 
 use crate::reader::Reader;
@@ -153,6 +153,11 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema]) {
     for spec in specs {
         for (layer, schema) in spec.layers.iter_mut().zip(layer_schemas.iter()) {
+            // Skip annotation layers - they don't inherit global mappings
+            if matches!(layer.source, Some(DataSource::Annotation(_))) {
+                continue;
+            }
+
             let supported = layer.geom.aesthetics().supported();
             let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
 
@@ -303,6 +308,7 @@ fn add_facet_mappings_to_layers(
                         name: var.to_string(),
                         original_name: Some(var.to_string()),
                         is_dummy: false,
+                        is_scaled: true,
                     },
                 );
             }
@@ -1225,6 +1231,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::ParameterValue;
 
     #[cfg(feature = "duckdb")]
     #[test]
@@ -2194,6 +2201,272 @@ mod tests {
             line_df.height(),
             2,
             "line layer with facet column should not be expanded"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_annotation_layer() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE test_place AS SELECT * FROM (VALUES (1, 10), (2, 20), (3, 30)) AS t(x, y)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM test_place
+            VISUALISE x, y
+            DRAW point
+            PLACE text SETTING x => 2, y => 25, label => 'Annotation', size => 14
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        assert_eq!(result.specs.len(), 1);
+        assert_eq!(
+            result.specs[0].layers.len(),
+            2,
+            "Should have DRAW + PLACE layers"
+        );
+
+        // First layer: regular DRAW point
+        let point_layer = &result.specs[0].layers[0];
+        assert_eq!(point_layer.geom, crate::Geom::point());
+        assert!(
+            point_layer.source.is_none(),
+            "DRAW layer should have no explicit source"
+        );
+
+        // Second layer: PLACE text annotation
+        let annotation_layer = &result.specs[0].layers[1];
+        assert_eq!(annotation_layer.geom, crate::Geom::text());
+        assert!(
+            matches!(annotation_layer.source, Some(DataSource::Annotation(_))),
+            "PLACE layer should have Annotation source"
+        );
+
+        // Verify annotation layer has 1-row data
+        let annotation_key = annotation_layer.data_key.as_ref().unwrap();
+        let annotation_df = result.data.get(annotation_key).unwrap();
+        assert_eq!(
+            annotation_df.height(),
+            1,
+            "Annotation layer should have exactly 1 row"
+        );
+
+        // Verify positional aesthetics are moved from SETTING to mappings with transformed names
+        // They become Column references (not Literals) so they can participate in scale training
+        assert!(
+            matches!(
+                annotation_layer.mappings.get("pos1"),
+                Some(AestheticValue::Column { name, .. }) if name == "__ggsql_aes_pos1__"
+            ),
+            "x should be transformed to pos1, moved to mappings, and materialized as column"
+        );
+        assert!(
+            matches!(
+                annotation_layer.mappings.get("pos2"),
+                Some(AestheticValue::Column { name, .. }) if name == "__ggsql_aes_pos2__"
+            ),
+            "y should be transformed to pos2, moved to mappings, and materialized as column"
+        );
+
+        // Verify non-positional aesthetics are in mappings as Literals (via resolve_aesthetics)
+        assert!(
+            matches!(
+                annotation_layer.mappings.get("label"),
+                Some(AestheticValue::Literal(ParameterValue::String(s))) if s == "Annotation"
+            ),
+            "label should be in mappings as Literal"
+        );
+        assert!(
+            matches!(
+                annotation_layer.mappings.get("size"),
+                Some(AestheticValue::Literal(ParameterValue::Number(n))) if *n == 14.0
+            ),
+            "size should be in mappings as Literal"
+        );
+
+        // Parameters should be empty after resolve_aesthetics moves them to mappings
+        assert!(
+            annotation_layer.parameters.is_empty(),
+            "All SETTING parameters should be moved to mappings"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_missing_required_aesthetic() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT 1 AS x, 2 AS y
+            VISUALISE x, y
+            DRAW point
+            PLACE text SETTING x => 5, label => 'Missing y!'
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(result.is_err(), "Should fail validation");
+
+        match result {
+            Err(GgsqlError::ValidationError(msg)) => {
+                assert!(
+                    msg.contains("pos2"),
+                    "Error should mention missing pos2 aesthetic: {}",
+                    msg
+                );
+            }
+            Err(e) => panic!("Expected ValidationError, got: {}", e),
+            Ok(_) => panic!("Expected error, got success"),
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_affects_scale_ranges() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Data has x from 1-3, but PLACE annotation at x=10 should extend the range
+        let query = r#"
+            SELECT 1 AS x, 10 AS y UNION ALL
+            SELECT 2 AS x, 20 AS y UNION ALL
+            SELECT 3 AS x, 30 AS y
+            VISUALISE x, y
+            DRAW point
+            PLACE text SETTING x => 10, y => 50, label => 'Extended'
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(result.is_ok(), "Query should execute: {:?}", result.err());
+
+        let prep = result.unwrap();
+
+        // Check that x scale input_range includes both data range (1-3) and annotation point (10)
+        let x_scale = prep.specs[0].find_scale("pos1");
+        assert!(x_scale.is_some(), "Should have x scale");
+
+        let scale = x_scale.unwrap();
+        if let Some(input_range) = &scale.input_range {
+            // Input range should include the annotation x value (10)
+            // The scale input_range is resolved from the combined data + annotation DataFrames
+            assert!(
+                input_range.len() >= 2,
+                "Scale input_range should have min/max values"
+            );
+            // Check that the range max is at least 10 (the annotation x value)
+            if let Some(max_val) = input_range.last() {
+                match max_val {
+                    crate::plot::types::ArrayElement::Number(n) => {
+                        assert!(
+                            *n >= 10.0,
+                            "Scale input_range max should include annotation point at x=10, got: {}",
+                            n
+                        );
+                    }
+                    _ => panic!("Expected numeric input_range value"),
+                }
+            }
+        } else {
+            panic!("Scale should have an input_range");
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_array_recycling_scalar() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT 1 AS x, 10 AS y
+            VISUALISE x, y
+            DRAW point
+            PLACE text SETTING x => [1, 2, 3], y => 10, label => 'Same'
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        let annotation_layer = &result.specs[0].layers[1];
+        assert_eq!(
+            annotation_layer.source,
+            Some(DataSource::Annotation(3)),
+            "Should recycle scalar y to length 3"
+        );
+
+        let annotation_key = annotation_layer.data_key.as_ref().unwrap();
+        let annotation_df = result.data.get(annotation_key).unwrap();
+        assert_eq!(annotation_df.height(), 3, "Should have 3 rows");
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_array_mismatched_lengths_error() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT 1 AS x, 10 AS y
+            VISUALISE x, y
+            DRAW point
+            PLACE text SETTING x => [1, 2, 3], y => [10, 20], label => 'Test'
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(result.is_err(), "Should error on mismatched array lengths");
+
+        match result {
+            Err(GgsqlError::ValidationError(msg)) => {
+                assert!(
+                    msg.contains("mismatched array lengths"),
+                    "Error should mention mismatched lengths: {}",
+                    msg
+                );
+            }
+            Err(e) => panic!("Expected ValidationError, got: {}", e),
+            Ok(_) => panic!("Expected error, got success"),
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_no_global_mapping_inheritance() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT 1 AS x, 2 AS y, 'red' AS color
+            VISUALISE x, y, color
+            DRAW point
+            PLACE text SETTING x => 5, y => 10, label => 'Test'
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // DRAW layer should have inherited global color mapping
+        let point_layer = &result.specs[0].layers[0];
+        assert!(
+            point_layer.mappings.contains_key("color")
+                || point_layer.mappings.contains_key("fill")
+                || point_layer.mappings.contains_key("stroke"),
+            "DRAW layer should inherit color from global mappings"
+        );
+
+        // PLACE layer should NOT have inherited global mappings
+        let annotation_layer = &result.specs[0].layers[1];
+        assert!(
+            !annotation_layer.mappings.contains_key("color"),
+            "PLACE layer should not inherit color from global mappings"
+        );
+        assert!(
+            !annotation_layer.mappings.contains_key("fill"),
+            "PLACE layer should not inherit fill from global mappings"
+        );
+        assert!(
+            !annotation_layer.mappings.contains_key("stroke"),
+            "PLACE layer should not inherit stroke from global mappings"
         );
     }
 }
