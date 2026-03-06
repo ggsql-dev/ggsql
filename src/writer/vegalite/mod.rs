@@ -340,14 +340,25 @@ fn apply_faceting(
 
             vl_spec["facet"] = facet_def;
 
-            // Move layer into spec (data reference stays at top level)
+            // Move layer into spec (data reference stays at top level).
+            // Also move width/height into the inner spec: FacetSpec does not allow
+            // "width"/"height": "container" at the top level in Vega-Lite v6.
             let mut spec_inner = json!({});
             if let Some(layer) = vl_spec.get("layer") {
                 spec_inner["layer"] = layer.clone();
             }
+            if let Some(w) = vl_spec.get("width").cloned() {
+                spec_inner["width"] = w;
+            }
+            if let Some(h) = vl_spec.get("height").cloned() {
+                spec_inner["height"] = h;
+            }
 
             vl_spec["spec"] = spec_inner;
-            vl_spec.as_object_mut().unwrap().remove("layer");
+            let obj = vl_spec.as_object_mut().unwrap();
+            obj.remove("layer");
+            obj.remove("width");
+            obj.remove("height");
 
             // Apply scale resolution
             apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
@@ -388,14 +399,25 @@ fn apply_faceting(
 
             vl_spec["facet"] = Value::Object(facet_spec);
 
-            // Move layer into spec (data reference stays at top level)
+            // Move layer into spec (data reference stays at top level).
+            // Also move width/height into the inner spec: FacetSpec does not allow
+            // "width"/"height": "container" at the top level in Vega-Lite v6.
             let mut spec_inner = json!({});
             if let Some(layer) = vl_spec.get("layer") {
                 spec_inner["layer"] = layer.clone();
             }
+            if let Some(w) = vl_spec.get("width").cloned() {
+                spec_inner["width"] = w;
+            }
+            if let Some(h) = vl_spec.get("height").cloned() {
+                spec_inner["height"] = h;
+            }
 
             vl_spec["spec"] = spec_inner;
-            vl_spec.as_object_mut().unwrap().remove("layer");
+            let obj = vl_spec.as_object_mut().unwrap();
+            obj.remove("layer");
+            obj.remove("width");
+            obj.remove("height");
 
             // Apply scale resolution
             apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
