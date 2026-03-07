@@ -1,6 +1,6 @@
 //! VLine geom implementation
 
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 
 /// VLine geom - vertical reference lines
@@ -22,6 +22,13 @@ impl GeomTrait for VLine {
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[DefaultParam {
+            name: "position",
+            default: DefaultParamValue::String("identity"),
+        }]
     }
 }
 
