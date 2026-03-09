@@ -402,7 +402,7 @@ class TestCustomReader:
             def execute_sql(self, sql: str) -> pl.DataFrame:
                 return self.conn.execute(sql).pl()
 
-            def register(self, name: str, df: pl.DataFrame, _replace: bool) -> None:
+            def register(self, name: str, df: pl.DataFrame, replace: bool = False) -> None:
                 self.conn.register(name, df)
 
         reader = RegisterReader()
@@ -453,7 +453,7 @@ class TestCustomReader:
             def execute_sql(self, sql: str) -> pl.DataFrame:
                 return self.conn.execute(sql).pl()
 
-            def register(self, name: str, df: pl.DataFrame, _replace: bool) -> None:
+            def register(self, name: str, df: pl.DataFrame, replace: bool = False) -> None:
                 self.conn.register(name, df)
 
         reader = DuckDBBackedReader()
@@ -484,7 +484,7 @@ class TestCustomReader:
                 self.execute_calls.append(sql)
                 return self.conn.execute(sql).pl()
 
-            def register(self, name: str, df: pl.DataFrame, _replace: bool) -> None:
+            def register(self, name: str, df: pl.DataFrame, replace: bool = False) -> None:
                 self.conn.register(name, df)
 
         reader = RecordingReader()

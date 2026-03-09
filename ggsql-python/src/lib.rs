@@ -166,9 +166,13 @@ impl Reader for PyReaderBridge {
         Python::attach(|py| {
             let py_df =
                 polars_to_py(py, &df).map_err(|e| GgsqlError::ReaderError(e.to_string()))?;
+            let kwargs = PyDict::new(py);
+            kwargs
+                .set_item("replace", replace)
+                .map_err(|e| GgsqlError::ReaderError(e.to_string()))?;
             self.obj
                 .bind(py)
-                .call_method1("register", (name, py_df, replace))
+                .call_method("register", (name, py_df), Some(&kwargs))
                 .map_err(|e| GgsqlError::ReaderError(format!("Reader.register() failed: {}", e)))?;
             Ok(())
         })
