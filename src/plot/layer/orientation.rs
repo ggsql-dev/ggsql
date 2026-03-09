@@ -88,7 +88,12 @@ pub fn resolve_orientation(layer: &Layer, scales: &[Scale]) -> Orientation {
         return Orientation::Aligned;
     }
 
-    detect_from_scales(scales, &layer.geom.geom_type(), &layer.mappings)
+    detect_from_scales(
+        scales,
+        &layer.geom.geom_type(),
+        &layer.mappings,
+        &layer.remappings,
+    )
 }
 
 /// Check if a geom type supports orientation auto-detection.
@@ -110,9 +115,14 @@ pub fn geom_has_implicit_orientation(geom: &GeomType) -> bool {
     )
 }
 
-/// Detect orientation from scales and mappings.
+/// Detect orientation from scales, mappings, and remappings.
 ///
 /// Applies unified rules in order:
+///
+/// 0. **Remapping without mapping**: If no positional mappings exist but remappings
+///    target a positional axis, the remapping target is the value axis:
+///    - Remapping to pos1 only → Transposed (pos1 is value axis, main axis must be pos2)
+///    - Remapping to pos2 only → Aligned (pos2 is value axis, main axis is pos1)
 ///
 /// 1. **Single scale present**: The present scale defines the primary axis
 ///    - Only pos1 → Primary
@@ -127,7 +137,29 @@ pub fn geom_has_implicit_orientation(geom: &GeomType) -> bool {
 ///    - pos1 continuous, pos2 discrete → Secondary
 ///
 /// 4. **Default**: Primary
-fn detect_from_scales(scales: &[Scale], _geom: &GeomType, mappings: &Mappings) -> Orientation {
+fn detect_from_scales(
+    scales: &[Scale],
+    _geom: &GeomType,
+    mappings: &Mappings,
+    remappings: &Mappings,
+) -> Orientation {
+    // Check for positional mappings
+    let has_pos1_mapping = mappings.contains_key("pos1");
+    let has_pos2_mapping = mappings.contains_key("pos2");
+
+    // Rule 0: Remapping without mapping - remapping target is the value axis
+    if !has_pos1_mapping && !has_pos2_mapping {
+        let has_pos1_remapping = remappings.contains_key("pos1");
+        let has_pos2_remapping = remappings.contains_key("pos2");
+
+        if has_pos1_remapping && !has_pos2_remapping {
+            return Orientation::Transposed;
+        }
+        if has_pos2_remapping && !has_pos1_remapping {
+            return Orientation::Aligned;
+        }
+    }
+
     let pos1_scale = scales.iter().find(|s| s.aesthetic == "pos1");
     let pos2_scale = scales.iter().find(|s| s.aesthetic == "pos2");
 
@@ -513,6 +545,74 @@ mod tests {
             AestheticValue::standard_column("value".to_string()),
         );
 
+        let mut scale1 = Scale::new("pos1");
+        scale1.scale_type = Some(ScaleType::discrete());
+        let mut scale2 = Scale::new("pos2");
+        scale2.scale_type = Some(ScaleType::continuous());
+        let scales = vec![scale1, scale2];
+
+        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+    }
+
+    #[test]
+    fn test_resolve_orientation_remapping_to_pos1() {
+        // Bar with no mappings but remapping to pos1 → Transposed
+        // This covers: VISUALISE FROM data DRAW bar REMAPPING proportion AS x
+        let mut layer = Layer::new(Geom::bar());
+        layer.remappings.insert(
+            "pos1".to_string(),
+            AestheticValue::standard_column("proportion".to_string()),
+        );
+
+        let scales = vec![];
+        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Transposed);
+    }
+
+    #[test]
+    fn test_resolve_orientation_remapping_to_pos2() {
+        // Bar with no mappings but remapping to pos2 → Aligned (default)
+        let mut layer = Layer::new(Geom::bar());
+        layer.remappings.insert(
+            "pos2".to_string(),
+            AestheticValue::standard_column("count".to_string()),
+        );
+
+        let scales = vec![];
+        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+    }
+
+    #[test]
+    fn test_resolve_orientation_remapping_both_axes() {
+        // Bar with remappings to both axes → falls through to default (Aligned)
+        let mut layer = Layer::new(Geom::bar());
+        layer.remappings.insert(
+            "pos1".to_string(),
+            AestheticValue::standard_column("x_val".to_string()),
+        );
+        layer.remappings.insert(
+            "pos2".to_string(),
+            AestheticValue::standard_column("y_val".to_string()),
+        );
+
+        let scales = vec![];
+        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+    }
+
+    #[test]
+    fn test_resolve_orientation_mapping_overrides_remapping() {
+        // Bar with pos1 mapping AND pos1 remapping → mapping takes precedence
+        // The remapping rule only applies when NO positional mappings exist
+        let mut layer = Layer::new(Geom::bar());
+        layer.mappings.insert(
+            "pos1".to_string(),
+            AestheticValue::standard_column("category".to_string()),
+        );
+        layer.remappings.insert(
+            "pos1".to_string(),
+            AestheticValue::standard_column("proportion".to_string()),
+        );
+
+        // With pos1 discrete scale → Aligned (normal rule 3)
         let mut scale1 = Scale::new("pos1");
         scale1.scale_type = Some(ScaleType::discrete());
         let mut scale2 = Scale::new("pos2");
