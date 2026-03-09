@@ -654,3 +654,135 @@ class TestVegaLiteWriterRenderChart:
         writer = ggsql.VegaLiteWriter()
         chart = writer.render_chart(spec, validate=False)
         assert isinstance(chart, altair.FacetChart)
+
+
+class TestExecuteWithData:
+    """Tests for reader.execute() with data= parameter."""
+
+    def test_execute_with_single_dataframe(self):
+        """Can pass a single DataFrame via data dict."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
+        spec = reader.execute(
+            "SELECT * FROM mydata VISUALISE x, y DRAW point",
+            data={"mydata": df},
+        )
+        assert spec.metadata()["rows"] == 3
+
+    def test_execute_with_multiple_dataframes(self):
+        """Can pass multiple DataFrames via data dict."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        df1 = pl.DataFrame({"id": [1, 2, 3], "y": [10, 20, 30]})
+        df2 = pl.DataFrame({"id": [2, 3], "category": ["A", "B"]})
+        spec = reader.execute(
+            "SELECT t1.id AS x, t1.y FROM t1 JOIN t2 ON t1.id = t2.id "
+            "VISUALISE x, y DRAW point",
+            data={"t1": df1, "t2": df2},
+        )
+        assert spec.metadata()["rows"] == 2
+
+    def test_execute_with_data_cleans_up(self):
+        """DataFrames passed via data= are unregistered after execution."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
+        reader.execute(
+            "SELECT * FROM temp VISUALISE x, y DRAW point",
+            data={"temp": df},
+        )
+        # Table should be cleaned up — querying it should fail
+        with pytest.raises(ggsql.ReaderError):
+            reader.execute_sql("SELECT * FROM temp")
+
+    def test_execute_with_data_cleans_up_on_error(self):
+        """DataFrames are unregistered even if execution fails."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
+        with pytest.raises(ggsql.ParseError):
+            reader.execute(
+                "SELECT * FROM temp VISUALISE DRAW not_a_geom",
+                data={"temp": df},
+            )
+        # Table should still be cleaned up
+        with pytest.raises(ggsql.ReaderError):
+            reader.execute_sql("SELECT * FROM temp")
+
+    def test_execute_without_data_still_works(self):
+        """Calling execute() without data= still works as before."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
+        assert spec.metadata()["rows"] == 1
+
+    def test_execute_with_empty_data(self):
+        """Passing empty data= dict works fine."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        spec = reader.execute(
+            "SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point",
+            data={},
+        )
+        assert spec.metadata()["rows"] == 1
+
+    def test_execute_with_data_preserves_preexisting_table(self):
+        """data= does not unregister a table that existed before the call."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        existing = pl.DataFrame({"x": [1, 2], "y": [10, 20]})
+        reader.register("mytable", existing)
+
+        # Pass same name via data= — should replace temporarily, then NOT unregister
+        override = pl.DataFrame({"x": [3, 4, 5], "y": [30, 40, 50]})
+        spec = reader.execute(
+            "SELECT * FROM mytable VISUALISE x, y DRAW point",
+            data={"mytable": override},
+        )
+        assert spec.metadata()["rows"] == 3
+
+        # The pre-existing table should still be queryable (not unregistered)
+        result = reader.execute_sql("SELECT * FROM mytable")
+        assert result.shape[0] > 0
+
+    def test_module_execute_with_data(self):
+        """Module-level execute() also supports data= parameter."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
+        spec = ggsql.execute(
+            "SELECT * FROM mydata VISUALISE x, y DRAW point",
+            reader,
+            data={"mydata": df},
+        )
+        assert spec.metadata()["rows"] == 3
+
+
+class TestTypeStubs:
+    """Tests for type stub presence and correctness."""
+
+    def test_stub_file_exists(self):
+        """Type stub file exists for the native module."""
+        import pathlib
+
+        assert ggsql.__file__ is not None
+        ggsql_dir = pathlib.Path(ggsql.__file__).parent
+        stub_path = ggsql_dir / "_ggsql.pyi"
+        assert stub_path.exists(), f"Type stub not found at {stub_path}"
+
+    def test_stub_exports_match_module(self):
+        """All public names from _ggsql are in the stub."""
+        import pathlib
+
+        assert ggsql.__file__ is not None
+        ggsql_dir = pathlib.Path(ggsql.__file__).parent
+        stub_path = ggsql_dir / "_ggsql.pyi"
+        stub_text = stub_path.read_text()
+
+        # Core classes and functions should be in the stub
+        for name in [
+            "DuckDBReader",
+            "VegaLiteWriter",
+            "Validated",
+            "Spec",
+            "validate",
+            "execute",
+            "ParseError",
+            "ValidationError",
+            "ReaderError",
+            "WriterError",
+        ]:
+            assert name in stub_text, f"{name} not found in type stub"
