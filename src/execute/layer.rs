@@ -163,7 +163,6 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
     Ok(df)
 }
 
-
 /// Convert a literal value to a Polars Series with constant values.
 pub fn literal_to_series(name: &str, lit: &ParameterValue, len: usize) -> polars::prelude::Series {
     use polars::prelude::{NamedFrom, Series};
@@ -635,13 +634,15 @@ fn normalize_mapping_column_names(
             let expected_col = naming::aesthetic_column(&aesthetic);
             match value {
                 AestheticValue::Column {
-                    name, original_name, ..
+                    name,
+                    original_name,
+                    ..
                 } => {
                     // The current column name might be wrong (e.g., __ggsql_aes_pos2__ for pos1)
                     // We need to flip it to match the aesthetic key
                     let current_col_aesthetic =
                         naming::extract_aesthetic_name(name).unwrap_or_default();
-                    let flipped_aesthetic = aesthetic_ctx.flip_positional(&current_col_aesthetic);
+                    let flipped_aesthetic = aesthetic_ctx.flip_positional(current_col_aesthetic);
 
                     // If flipping results in the correct aesthetic, update the column name
                     if flipped_aesthetic == aesthetic {

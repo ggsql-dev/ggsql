@@ -180,10 +180,8 @@ fn detect_from_scales(
 
     // Rule 2: Both continuous - range mapping axis is secondary
     if pos1_continuous && pos2_continuous {
-        let has_pos1_range =
-            mappings.contains_key("pos1min") || mappings.contains_key("pos1max");
-        let has_pos2_range =
-            mappings.contains_key("pos2min") || mappings.contains_key("pos2max");
+        let has_pos1_range = mappings.contains_key("pos1min") || mappings.contains_key("pos1max");
+        let has_pos2_range = mappings.contains_key("pos2min") || mappings.contains_key("pos2max");
 
         if has_pos1_range && !has_pos2_range {
             return Orientation::Transposed;
@@ -340,7 +338,10 @@ mod tests {
         layer.orientation = Some(Orientation::Transposed);
 
         let scales = vec![];
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Transposed);
+        assert_eq!(
+            resolve_orientation(&layer, &scales),
+            Orientation::Transposed
+        );
     }
 
     #[test]
@@ -370,7 +371,10 @@ mod tests {
         scale.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale];
 
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Transposed);
+        assert_eq!(
+            resolve_orientation(&layer, &scales),
+            Orientation::Transposed
+        );
     }
 
     #[test]
@@ -383,7 +387,10 @@ mod tests {
         scale2.scale_type = Some(ScaleType::discrete());
         let scales = vec![scale1, scale2];
 
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Transposed);
+        assert_eq!(
+            resolve_orientation(&layer, &scales),
+            Orientation::Transposed
+        );
     }
 
     #[test]
@@ -507,7 +514,10 @@ mod tests {
         scale2.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale1, scale2];
 
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Transposed);
+        assert_eq!(
+            resolve_orientation(&layer, &scales),
+            Orientation::Transposed
+        );
     }
 
     #[test]
@@ -529,7 +539,10 @@ mod tests {
         scale2.scale_type = Some(ScaleType::discrete());
         let scales = vec![scale1, scale2];
 
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Transposed);
+        assert_eq!(
+            resolve_orientation(&layer, &scales),
+            Orientation::Transposed
+        );
     }
 
     #[test]
@@ -565,7 +578,10 @@ mod tests {
         );
 
         let scales = vec![];
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Transposed);
+        assert_eq!(
+            resolve_orientation(&layer, &scales),
+            Orientation::Transposed
+        );
     }
 
     #[test]

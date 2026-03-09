@@ -56,8 +56,8 @@ fn flip_dataframe_positional_columns(df: DataFrame, aesthetic_ctx: &AestheticCon
 
         // Check if this is an aesthetic column (__ggsql_aes_XXX__)
         if let Some(aesthetic) = naming::extract_aesthetic_name(&col_str) {
-            if is_positional_aesthetic(&aesthetic) {
-                let flipped = aesthetic_ctx.flip_positional(&aesthetic);
+            if is_positional_aesthetic(aesthetic) {
+                let flipped = aesthetic_ctx.flip_positional(aesthetic);
                 if flipped != aesthetic {
                     let new_col_name = naming::aesthetic_column(&flipped);
                     renames.push((col_str, new_col_name));
@@ -1262,8 +1262,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                 if flipped_keys.insert(key.clone()) {
                     // First time flipping this data key
                     if let Some(df) = data_map.remove(key) {
-                        let flipped_df =
-                            flip_dataframe_positional_columns(df, &aesthetic_ctx);
+                        let flipped_df = flip_dataframe_positional_columns(df, &aesthetic_ctx);
                         data_map.insert(key.clone(), flipped_df);
                     }
                 }
