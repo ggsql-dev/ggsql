@@ -477,6 +477,22 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
         }
     }
 
+    // Extract orientation from parameters if present
+    let orientation = parameters
+        .remove("orientation")
+        .map(|v| {
+            match v {
+            ParameterValue::String(s) => s
+                .parse()
+                .map_err(|e: String| GgsqlError::ParseError(e)),
+            _ => Err(GgsqlError::ParseError(
+                "orientation must be a string ('aligned', 'transposed', 'vertical', or 'horizontal')"
+                    .to_string(),
+            )),
+        }
+        })
+        .transpose()?;
+
     let mut layer = Layer::new(geom);
     layer.mappings = aesthetics;
     layer.remappings = remappings;
@@ -485,6 +501,7 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
     layer.filter = filter;
     layer.order_by = order_by;
     layer.source = layer_source;
+    layer.orientation = orientation;
 
     Ok(layer)
 }

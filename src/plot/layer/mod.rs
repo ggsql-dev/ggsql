@@ -8,6 +8,10 @@ use std::collections::HashMap;
 
 // Geom is now a submodule of layer
 pub mod geom;
+pub mod orientation;
+
+// Re-export orientation types
+pub use orientation::Orientation;
 
 // Re-export geom types for convenience
 pub use geom::{
@@ -55,6 +59,10 @@ pub struct Layer {
     pub order_by: Option<SqlExpression>,
     /// Columns for grouping/partitioning (from PARTITION BY clause)
     pub partition_by: Vec<String>,
+    /// Layer orientation (None = auto-detect from scales)
+    /// Used for geoms with implicit orientation (bar, histogram, boxplot, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub orientation: Option<Orientation>,
     /// Key for this layer's data in the datamap (set during execution).
     /// Defaults to `None`. Set to `__ggsql_layer_<idx>__` during execution,
     /// but may point to another layer's data when queries are deduplicated.
@@ -74,6 +82,7 @@ impl Layer {
             filter: None,
             order_by: None,
             partition_by: Vec::new(),
+            orientation: None,
             data_key: None,
         }
     }
@@ -139,7 +148,15 @@ impl Layer {
     /// Check if this layer has the required aesthetics for its geom
     pub fn validate_required_aesthetics(&self) -> std::result::Result<(), String> {
         for aesthetic in self.geom.aesthetics().required() {
-            if !self.mappings.contains_key(aesthetic) {
+            // Special case: "pos_" means either pos1 or pos2 (orientation-agnostic)
+            if aesthetic == "pos_" {
+                if !self.mappings.contains_key("pos1") && !self.mappings.contains_key("pos2") {
+                    return Err(format!(
+                        "Geom '{}' requires a positional aesthetic (x or y) but none was provided",
+                        self.geom
+                    ));
+                }
+            } else if !self.mappings.contains_key(aesthetic) {
                 return Err(format!(
                     "Geom '{}' requires aesthetic '{}' but it was not provided",
                     self.geom, aesthetic

@@ -10,8 +10,8 @@ The path layer is used to create lineplots, but contrary to the [line layer](lin
 The following aesthetics are recognised by the path layer.
 
 ### Required
-* `x`: Position along the x-axis
-* `y`: Position along the y-axis
+* Primary axis (e.g. `x`): Position along the primary axis.
+* Secondary axis (e.g. `y`): Position along the secondary axis.
 
 ### Optional
 * `colour`/`stroke`: The colour of the path
@@ -20,10 +20,10 @@ The following aesthetics are recognised by the path layer.
 * `linetype`: The type of path, i.e. the dashing pattern
 
 ## Settings
-The line layer has no additional settings
+The path layer has no additional settings
 
 ## Data transformation
-The line layer does not transform its data but passes it through unchanged
+The path layer does not transform its data but passes it through unchanged
 
 ## Examples
 

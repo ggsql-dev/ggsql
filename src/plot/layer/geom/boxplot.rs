@@ -125,7 +125,8 @@ fn stat_boxplot(
         }
     };
 
-    // Fix boxplots to be vertical, when we later have orientation this may change
+    // pos2 is the value axis, pos1 is the grouping axis (standard orientation)
+    // Orientation handling is done in the layer transform pipeline via flip_mappings()
     let (value_col, group_col) = (y, x);
 
     // The `groups` vector is never empty, it contains at least the opposite axis as column

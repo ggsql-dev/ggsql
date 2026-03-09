@@ -30,6 +30,10 @@ use std::collections::HashMap;
 
 /// Positional aesthetic suffixes - applied to primary names to create variant aesthetics
 /// e.g., "x" + "min" = "xmin", "pos1" + "end" = "pos1end"
+///
+/// Note: "offset" is intentionally NOT included here because it's a positioning
+/// adjustment that shouldn't influence scale training or be part of aesthetic families.
+/// The `flip_positional` method handles offset correctly via prefix detection.
 pub const POSITIONAL_SUFFIXES: &[&str] = &["min", "max", "end"];
 
 // =============================================================================
@@ -304,6 +308,40 @@ impl AestheticContext {
     pub fn user_facet(&self) -> &[&'static str] {
         &self.user_facet
     }
+
+    // === Orientation Flipping ===
+
+    /// Flip a positional aesthetic to its opposite position.
+    ///
+    /// Swaps pos1 ↔ pos2 (and their suffixed variants like pos1min ↔ pos2min).
+    /// Non-positional aesthetics are returned unchanged.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+    /// assert_eq!(ctx.flip_positional("pos1"), "pos2");
+    /// assert_eq!(ctx.flip_positional("pos2min"), "pos1min");
+    /// assert_eq!(ctx.flip_positional("pos1end"), "pos2end");
+    /// assert_eq!(ctx.flip_positional("color"), "color"); // unchanged
+    /// ```
+    pub fn flip_positional(&self, name: &str) -> String {
+        // Only flip if we have exactly 2 positional aesthetics
+        if self.internal_primaries.len() != 2 {
+            return name.to_string();
+        }
+
+        // Check if it's a pos1 or pos2 variant
+        if let Some(rest) = name.strip_prefix("pos1") {
+            return format!("pos2{}", rest);
+        }
+        if let Some(rest) = name.strip_prefix("pos2") {
+            return format!("pos1{}", rest);
+        }
+
+        // Not a positional aesthetic, return unchanged
+        name.to_string()
+    }
 }
 
 /// Check if aesthetic is a user-facing facet aesthetic (panel, row, column)
@@ -562,7 +600,7 @@ mod tests {
     fn test_aesthetic_context_families() {
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
-        // Get internal family
+        // Get internal family (offset not included - it's a positioning adjustment)
         let pos1_family = ctx.internal_positional_family("pos1").unwrap();
         let pos1_strs: Vec<&str> = pos1_family.iter().map(|s| s.as_str()).collect();
         assert_eq!(pos1_strs, vec!["pos1", "pos1min", "pos1max", "pos1end"]);

@@ -11,8 +11,8 @@ The violins are mirrored kernel density estimates, similar to the [density](dens
 The following aesthetics are recognised by the violin layer.
 
 ### Required
-* `x`: Position on the x-axis (categorical).
-* `y`: Value on the y-axis for which to compute density.
+* Primary axis (e.g. `x`): The categories to create violins for.
+* Secondary axis (e.g. `y`): The values to calculate the density for the violins for
 
 ### Optional
 * `stroke`: The colour of the contour lines.
@@ -49,6 +49,9 @@ The major difference between a violin layer and a density layer is just the matt
 ### Default remappings
 
 * `density AS offset`: By default the offsets around a centerline reflect the computed density.
+
+## Orientation
+Violin plots has categories along their primary axis. The orientation can be deduced purely from the mapping. To create a violin plot with the violins "laying down" you map the categories to `y` instead of `x` (assuming a default Cartesian coordinate system).
 
 ## Examples
 

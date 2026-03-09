@@ -9,8 +9,8 @@ Boxplots display a summary of a continuous distribution. In the style of Tukey, 
 The following aesthetics are recognised by the boxplot layer.
 
 ### Required
-* `x`: Position on the x-axis
-* `y`: Position on the y-axis
+* Primary axis (e.g. `x`): The categories to create boxplots for.
+* Secondary axis (e.g. `y`): The values to calculate the summary statistics for the boxplot for
 
 ### Optional
 * `stroke`: The colour of the box contours, whiskers, median line and outliers.
@@ -42,7 +42,10 @@ Observations are considered outliers when they are more extreme than the whisker
 
 ### Default remapping
 
-* `value AS y`: By default the values are displayed along the y-axis.
+* `value AS <secondary axis>`: By default the values are displayed using the layers secondary axis.
+
+## Orientation
+Boxplots has categories along their primary axis. The orientation can be deduced purely from the mapping. To create a boxplot with the boxplots "laying down" you map the categories to `y` instead of `x` (assuming a default Cartesian coordinate system).
 
 ### Examples
 

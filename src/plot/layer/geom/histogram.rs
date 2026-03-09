@@ -22,7 +22,9 @@ impl GeomTrait for Histogram {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("pos1", DefaultAestheticValue::Required),
+                // pos_ means either pos1 or pos2 (orientation-agnostic)
+                // User maps x for vertical histogram, y for horizontal
+                ("pos_", DefaultAestheticValue::Required),
                 ("weight", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),

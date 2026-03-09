@@ -7,8 +7,8 @@ The polar coordinate system interprets its primary aesthetic as the angular posi
 ## Default aesthetics
 The polar coordinate system has the following default positional aesthetics which will be used if no others have been provided:
 
-* **Primary**: `theta` (angular position)
-* **Secondary**: `radius` (distance from center)
+* **First**: `theta` (angular position)
+* **Second**: `radius` (distance from center)
 
 Users can provide their own aesthetic names if needed. For example, if using `x` and `y` aesthetics:
 

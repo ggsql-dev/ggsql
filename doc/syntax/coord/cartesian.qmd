@@ -7,8 +7,8 @@ The Cartesian coordinate system is the most well-known and the default for ggsql
 ## Default aesthetics
 The Cartesian coordinate system has the following default positional aesthetics which will be used if no others have been provided:
 
-* **Primary**: `x` (horizontal position)
-* **Secondary**: `y` (vertical position)
+* **First**: `x` (horizontal position)
+* **Second**: `y` (vertical position)
 
 Users can provide their own aesthetic names if needed, e.g.
 

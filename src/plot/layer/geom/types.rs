@@ -27,17 +27,23 @@ impl DefaultAesthetics {
     }
 
     /// Get supported aesthetic names (excludes Delayed, for MAPPING validation)
+    ///
+    /// Note: `pos_` is expanded to both `pos1` and `pos2` for orientation-agnostic geoms.
     pub fn supported(&self) -> Vec<&'static str> {
-        self.defaults
-            .iter()
-            .filter_map(|(name, value)| {
-                if !matches!(value, DefaultAestheticValue::Delayed) {
-                    Some(*name)
-                } else {
-                    None
-                }
-            })
-            .collect()
+        let mut result = Vec::new();
+        for (name, value) in self.defaults {
+            if matches!(value, DefaultAestheticValue::Delayed) {
+                continue;
+            }
+            // Expand pos_ to both pos1 and pos2
+            if *name == "pos_" {
+                result.push("pos1");
+                result.push("pos2");
+            } else {
+                result.push(*name);
+            }
+        }
+        result
     }
 
     /// Get required aesthetic names (those marked as Required)
@@ -55,10 +61,19 @@ impl DefaultAesthetics {
     }
 
     /// Check if an aesthetic is supported (not Delayed)
+    ///
+    /// Note: If `pos_` is in defaults, both `pos1` and `pos2` are considered supported.
     pub fn is_supported(&self, name: &str) -> bool {
-        self.defaults
-            .iter()
-            .any(|(n, value)| *n == name && !matches!(value, DefaultAestheticValue::Delayed))
+        self.defaults.iter().any(|(n, value)| {
+            if matches!(value, DefaultAestheticValue::Delayed) {
+                return false;
+            }
+            // pos_ supports both pos1 and pos2
+            if *n == "pos_" && (name == "pos1" || name == "pos2") {
+                return true;
+            }
+            *n == name
+        })
     }
 
     /// Check if an aesthetic exists (including Delayed)
