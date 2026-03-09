@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Union
+from typing import Any, Protocol, Union, runtime_checkable
 
 import altair
 import narwhals as nw
 from narwhals.typing import IntoFrame
+import polars as pl
 
 from ggsql._ggsql import (
     DuckDBReader,
@@ -14,6 +15,10 @@ from ggsql._ggsql import (
     Spec,
     validate,
     execute,
+    ParseError,
+    ValidationError,
+    ReaderError,
+    WriterError,
 )
 
 __all__ = [
@@ -22,12 +27,18 @@ __all__ = [
     "VegaLiteWriter",
     "Validated",
     "Spec",
+    "Reader",
     # Functions
     "validate",
     "execute",
     "render_altair",
+    # Exceptions
+    "ParseError",
+    "ValidationError",
+    "ReaderError",
+    "WriterError",
 ]
-__version__ = "0.1.0"
+__version__ = "0.1.4"
 
 # Type alias for any Altair chart type
 AltairChart = Union[
@@ -39,6 +50,29 @@ AltairChart = Union[
     altair.VConcatChart,
     altair.RepeatChart,
 ]
+
+
+@runtime_checkable
+class Reader(Protocol):
+    """Protocol for ggsql database readers.
+
+    Any object implementing these methods can be used as a reader with
+    ``ggsql.execute()``. Native readers like ``DuckDBReader`` satisfy
+    this protocol automatically.
+
+    Required methods
+    ----------------
+    execute_sql(sql: str) -> polars.DataFrame
+        Execute a SQL query and return results as a polars DataFrame.
+    register(name: str, df: polars.DataFrame, replace: bool = False) -> None
+        Register a DataFrame as a named table for SQL queries.
+    """
+
+    def execute_sql(self, sql: str) -> pl.DataFrame: ...
+
+    def register(
+        self, name: str, df: pl.DataFrame, replace: bool = False
+    ) -> None: ...
 
 
 def _json_to_altair_chart(vegalite_json: str, **kwargs: Any) -> AltairChart:

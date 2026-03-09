@@ -2,6 +2,8 @@
 // See: https://github.com/PyO3/pyo3/issues/4327
 #![allow(clippy::useless_conversion)]
 
+use pyo3::create_exception;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList};
 use std::io::Cursor;
@@ -11,6 +13,48 @@ use ggsql::reader::{DuckDBReader as RustDuckDBReader, Reader};
 use ggsql::validate::{validate as rust_validate, ValidationWarning};
 use ggsql::writer::{VegaLiteWriter as RustVegaLiteWriter, Writer as RustWriter};
 use ggsql::GgsqlError;
+
+// ============================================================================
+// Custom Exception Classes
+// ============================================================================
+
+// All subclass ValueError for backwards compatibility
+create_exception!(
+    ggsql,
+    ParseError,
+    PyValueError,
+    "Raised on query syntax errors."
+);
+create_exception!(
+    ggsql,
+    ValidationError,
+    PyValueError,
+    "Raised on semantic validation errors."
+);
+create_exception!(
+    ggsql,
+    ReaderError,
+    PyValueError,
+    "Raised on data source errors."
+);
+create_exception!(
+    ggsql,
+    WriterError,
+    PyValueError,
+    "Raised on output generation errors."
+);
+
+/// Convert a GgsqlError to the appropriate typed Python exception.
+fn ggsql_err_to_py(e: GgsqlError) -> PyErr {
+    let msg = e.to_string();
+    match e {
+        GgsqlError::ParseError(_) => PyErr::new::<ParseError, _>(msg),
+        GgsqlError::ValidationError(_) => PyErr::new::<ValidationError, _>(msg),
+        GgsqlError::ReaderError(_) => PyErr::new::<ReaderError, _>(msg),
+        GgsqlError::WriterError(_) => PyErr::new::<WriterError, _>(msg),
+        GgsqlError::InternalError(_) => PyErr::new::<PyValueError, _>(msg),
+    }
+}
 
 use polars::prelude::{DataFrame, IpcReader, IpcWriter, SerReader, SerWriter};
 
@@ -142,9 +186,13 @@ impl Reader for PyReaderBridge {
         Python::attach(|py| {
             let py_df =
                 polars_to_py(py, &df).map_err(|e| GgsqlError::ReaderError(e.to_string()))?;
+            let kwargs = PyDict::new(py);
+            kwargs
+                .set_item("replace", replace)
+                .map_err(|e| GgsqlError::ReaderError(e.to_string()))?;
             self.obj
                 .bind(py)
-                .call_method1("register", (name, py_df, replace))
+                .call_method("register", (name, py_df), Some(&kwargs))
                 .map_err(|e| GgsqlError::ReaderError(format!("Reader.register() failed: {}", e)))?;
             Ok(())
         })
@@ -175,7 +223,7 @@ macro_rules! try_native_readers {
             if let Ok(native) = $reader.downcast::<$native_type>() {
                 return native.borrow().inner.execute($query)
                     .map(|s| PySpec { inner: s })
-                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()));
+                    .map_err(ggsql_err_to_py);
             }
         )*
     }};
@@ -224,8 +272,8 @@ impl PyDuckDBReader {
     ///     If the connection string is invalid or the database cannot be opened.
     #[new]
     fn new(connection: &str) -> PyResult<Self> {
-        let inner = RustDuckDBReader::from_connection_string(connection)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+        let inner =
+            RustDuckDBReader::from_connection_string(connection).map_err(ggsql_err_to_py)?;
         Ok(Self { inner })
     }
 
@@ -255,7 +303,7 @@ impl PyDuckDBReader {
         let rust_df = py_to_polars(py, df)?;
         self.inner
             .register(name, rust_df, replace)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+            .map_err(ggsql_err_to_py)
     }
 
     /// Unregister a previously registered table.
@@ -270,9 +318,7 @@ impl PyDuckDBReader {
     /// ValueError
     ///     If the table wasn't registered via this reader or unregistration fails.
     fn unregister(&self, name: &str) -> PyResult<()> {
-        self.inner
-            .unregister(name)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+        self.inner.unregister(name).map_err(ggsql_err_to_py)
     }
 
     /// Execute a SQL query and return the result as a DataFrame.
@@ -292,10 +338,7 @@ impl PyDuckDBReader {
     /// ValueError
     ///     If the SQL is invalid or execution fails.
     fn execute_sql(&self, py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
-        let df = self
-            .inner
-            .execute_sql(sql)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+        let df = self.inner.execute_sql(sql).map_err(ggsql_err_to_py)?;
         polars_to_py(py, &df)
     }
 
@@ -330,7 +373,7 @@ impl PyDuckDBReader {
         self.inner
             .execute(query)
             .map(|s| PySpec { inner: s })
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+            .map_err(ggsql_err_to_py)
     }
 }
 
@@ -391,9 +434,7 @@ impl PyVegaLiteWriter {
     /// >>> writer = VegaLiteWriter()
     /// >>> json_output = writer.render(spec)
     fn render(&self, spec: &PySpec) -> PyResult<String> {
-        self.inner
-            .render(&spec.inner)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+        self.inner.render(&spec.inner).map_err(ggsql_err_to_py)
     }
 }
 
@@ -657,8 +698,7 @@ impl PySpec {
 ///     If validation fails unexpectedly (not for syntax errors, which are captured).
 #[pyfunction]
 fn validate(query: &str) -> PyResult<PyValidated> {
-    let v = rust_validate(query)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+    let v = rust_validate(query).map_err(ggsql_err_to_py)?;
 
     Ok(PyValidated {
         sql: v.sql().to_string(),
@@ -739,7 +779,7 @@ fn execute(query: &str, reader: &Bound<'_, PyAny>) -> PyResult<PySpec> {
     bridge
         .execute(query)
         .map(|s| PySpec { inner: s })
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+        .map_err(ggsql_err_to_py)
 }
 
 // ============================================================================
@@ -748,6 +788,12 @@ fn execute(query: &str, reader: &Bound<'_, PyAny>) -> PyResult<PySpec> {
 
 #[pymodule]
 fn _ggsql(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Exceptions
+    m.add("ParseError", m.py().get_type::<ParseError>())?;
+    m.add("ValidationError", m.py().get_type::<ValidationError>())?;
+    m.add("ReaderError", m.py().get_type::<ReaderError>())?;
+    m.add("WriterError", m.py().get_type::<WriterError>())?;
+
     // Classes
     m.add_class::<PyDuckDBReader>()?;
     m.add_class::<PyVegaLiteWriter>()?;
