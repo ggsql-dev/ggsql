@@ -1,5 +1,5 @@
 ---
-title: "H Line"
+title: "Rule"
 ---
 
 > Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
