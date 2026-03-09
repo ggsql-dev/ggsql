@@ -150,6 +150,17 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
         }
     }
 
+    // Drop any remaining __ggsql_stat_* columns that weren't consumed by remappings.
+    let stat_cols: Vec<String> = df
+        .get_column_names()
+        .into_iter()
+        .filter(|name| naming::is_stat_column(name))
+        .map(|name| name.to_string())
+        .collect();
+    if !stat_cols.is_empty() {
+        df = df.drop_many(stat_cols);
+    }
+
     Ok(df)
 }
 
