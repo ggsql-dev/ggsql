@@ -2510,6 +2510,9 @@ mod tests {
             "Vendored schema does not match upstream at {VEGALITE_SCHEMA}. \
              Re-download with: curl -sL '{VEGALITE_SCHEMA}' > src/writer/vegalite/schema/v6.json",
         );
+    }
+
+    #[test]
     fn test_secondary_channels_have_no_disallowed_properties() {
         // Vega-Lite secondary channels (x2, y2, theta2, radius2) only support:
         // field, aggregate, bandPosition, bin, timeUnit, title, value.
