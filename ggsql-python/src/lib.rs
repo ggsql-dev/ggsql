@@ -212,24 +212,6 @@ impl Reader for PyReaderBridge {
 }
 
 // ============================================================================
-// Native Reader Detection Macro
-// ============================================================================
-
-/// Macro to try native readers and fall back to bridge.
-/// Adding new native readers = add to the macro invocation list.
-macro_rules! try_native_readers {
-    ($query:expr, $reader:expr, $($native_type:ty),*) => {{
-        $(
-            if let Ok(native) = $reader.downcast::<$native_type>() {
-                return native.borrow().inner.execute($query)
-                    .map(|s| PySpec { inner: s })
-                    .map_err(ggsql_err_to_py);
-            }
-        )*
-    }};
-}
-
-// ============================================================================
 // PyDuckDBReader
 // ============================================================================
 
@@ -397,8 +379,16 @@ impl PyDuckDBReader {
 }
 
 impl PyDuckDBReader {
-    /// Register DataFrames from a Python dict. Returns list of registered names for cleanup.
-    /// This is a private Rust helper, not exposed to Python.
+    /// Check whether a table already exists in the reader.
+    fn table_exists(&self, name: &str) -> bool {
+        // A lightweight probe: try to select zero rows from the table.
+        self.inner
+            .execute_sql(&format!("SELECT 1 FROM {name} LIMIT 0"))
+            .is_ok()
+    }
+
+    /// Register DataFrames from a Python dict. Returns list of *newly created*
+    /// table names for cleanup (pre-existing tables are not tracked).
     fn register_data_dict(
         &self,
         py: Python<'_>,
@@ -407,11 +397,14 @@ impl PyDuckDBReader {
         let mut names = Vec::new();
         for (key, value) in data.iter() {
             let name: String = key.extract()?;
+            let existed = self.table_exists(&name);
             let df = py_to_polars(py, &value)?;
             self.inner
                 .register(&name, df, true)
                 .map_err(ggsql_err_to_py)?;
-            names.push(name);
+            if !existed {
+                names.push(name);
+            }
         }
         Ok(names)
     }
@@ -862,6 +855,15 @@ fn execute(py: Python<'_>, query: &str, reader: &Bound<'_, PyAny>, data: Option<
 
 /// Register DataFrames from a Python dict onto a Python reader object.
 /// Returns list of registered names for cleanup.
+/// Check whether a table exists via a Python reader's execute_sql method.
+fn reader_table_exists(reader: &Bound<'_, PyAny>, name: &str) -> bool {
+    reader
+        .call_method1("execute_sql", (format!("SELECT 1 FROM {name} LIMIT 0"),))
+        .is_ok()
+}
+
+/// Register DataFrames from a Python dict onto a Python reader object.
+/// Returns list of *newly created* table names for cleanup.
 fn register_data_on_reader(
     py: Python<'_>,
     reader: &Bound<'_, PyAny>,
@@ -870,10 +872,15 @@ fn register_data_on_reader(
     let mut names = Vec::new();
     for (key, value) in data.iter() {
         let name: String = key.extract()?;
+        let existed = reader_table_exists(reader, &name);
         let df = py_to_polars(py, &value)?;
         let py_df = polars_to_py(py, &df)?;
-        reader.call_method("register", (&name, py_df, true), None)?;
-        names.push(name);
+        let kwargs = PyDict::new(py);
+        kwargs.set_item("replace", true)?;
+        reader.call_method("register", (&name, py_df), Some(&kwargs))?;
+        if !existed {
+            names.push(name);
+        }
     }
     Ok(names)
 }

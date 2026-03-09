@@ -31,7 +31,7 @@ class DuckDBReader:
 
     Raises
     ------
-    ValueError
+    ReaderError
         If the connection string is invalid or the database cannot be opened.
     """
 
@@ -51,7 +51,7 @@ class DuckDBReader:
 
         Raises
         ------
-        ValueError
+        ReaderError
             If the SQL is invalid or execution fails.
         """
         ...
@@ -74,7 +74,7 @@ class DuckDBReader:
 
         Raises
         ------
-        ValueError
+        ReaderError
             If registration fails or the table name is invalid.
         """
         ...
@@ -89,7 +89,7 @@ class DuckDBReader:
 
         Raises
         ------
-        ValueError
+        ReaderError
             If the table was not registered or unregistration fails.
         """
         ...
@@ -122,9 +122,12 @@ class DuckDBReader:
 
         Raises
         ------
-        ValueError
-            If the query syntax is invalid, has no VISUALISE clause, or
-            SQL execution fails.
+        ParseError
+            If the query syntax is invalid.
+        ValidationError
+            If the query has no VISUALISE clause or fails semantic checks.
+        ReaderError
+            If SQL execution fails.
         """
         ...
 
@@ -154,7 +157,7 @@ class VegaLiteWriter:
 
         Raises
         ------
-        ValueError
+        WriterError
             If rendering fails.
         """
         ...
@@ -388,7 +391,7 @@ def validate(query: str) -> Validated:
 
     Raises
     ------
-    ValueError
+    ParseError
         If validation fails unexpectedly (syntax errors are captured in
         the returned ``Validated`` object, not raised).
     """
@@ -425,7 +428,11 @@ def execute(
 
     Raises
     ------
-    ValueError
-        If parsing, validation, or SQL execution fails.
+    ParseError
+        If the query syntax is invalid.
+    ValidationError
+        If semantic validation fails.
+    ReaderError
+        If SQL execution fails.
     """
     ...

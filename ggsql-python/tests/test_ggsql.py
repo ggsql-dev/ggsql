@@ -690,20 +690,20 @@ class TestExecuteWithData:
             data={"temp": df},
         )
         # Table should be cleaned up — querying it should fail
-        with pytest.raises((ggsql.ReaderError, ValueError)):
+        with pytest.raises(ggsql.ReaderError):
             reader.execute_sql("SELECT * FROM temp")
 
     def test_execute_with_data_cleans_up_on_error(self):
         """DataFrames are unregistered even if execution fails."""
         reader = ggsql.DuckDBReader("duckdb://memory")
         df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
-        with pytest.raises((ggsql.ParseError, ggsql.ValidationError, ValueError)):
+        with pytest.raises(ggsql.ParseError):
             reader.execute(
                 "SELECT * FROM temp VISUALISE DRAW not_a_geom",
                 data={"temp": df},
             )
         # Table should still be cleaned up
-        with pytest.raises((ggsql.ReaderError, ValueError)):
+        with pytest.raises(ggsql.ReaderError):
             reader.execute_sql("SELECT * FROM temp")
 
     def test_execute_without_data_still_works(self):
@@ -720,6 +720,24 @@ class TestExecuteWithData:
             data={},
         )
         assert spec.metadata()["rows"] == 1
+
+    def test_execute_with_data_preserves_preexisting_table(self):
+        """data= does not unregister a table that existed before the call."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        existing = pl.DataFrame({"x": [1, 2], "y": [10, 20]})
+        reader.register("mytable", existing)
+
+        # Pass same name via data= — should replace temporarily, then NOT unregister
+        override = pl.DataFrame({"x": [3, 4, 5], "y": [30, 40, 50]})
+        spec = reader.execute(
+            "SELECT * FROM mytable VISUALISE x, y DRAW point",
+            data={"mytable": override},
+        )
+        assert spec.metadata()["rows"] == 3
+
+        # The pre-existing table should still be queryable (not unregistered)
+        result = reader.execute_sql("SELECT * FROM mytable")
+        assert result.shape[0] > 0
 
     def test_module_execute_with_data(self):
         """Module-level execute() also supports data= parameter."""
