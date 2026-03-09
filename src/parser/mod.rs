@@ -444,22 +444,29 @@ mod tests {
             "PLACE layer should have Annotation source"
         );
 
-        // Verify positional aesthetics moved to mappings with internal names
-        // (transform_aesthetics_to_internal runs as part of parse_query)
-        assert!(
-            specs[0].layers[1].mappings.contains_key("pos1"),
-            "x should be transformed to pos1 and moved to mappings"
+        // After parsing, annotation layer parameters stay in parameters
+        // They are only moved to mappings during execution (in process_annotation_layer)
+        // (transform_aesthetics_to_internal runs and transforms x→pos1, y→pos2)
+        assert_eq!(
+            specs[0].layers[1].parameters.get("pos1"),
+            Some(&ParameterValue::Number(5.0)),
+            "x should be transformed to pos1 but remain in parameters at parse time"
         );
-        assert!(
-            specs[0].layers[1].mappings.contains_key("pos2"),
-            "y should be transformed to pos2 and moved to mappings"
+        assert_eq!(
+            specs[0].layers[1].parameters.get("pos2"),
+            Some(&ParameterValue::Number(10.0)),
+            "y should be transformed to pos2 but remain in parameters at parse time"
         );
-
-        // Verify non-positional parameter (label) stays in parameters (with internal name = same)
         assert_eq!(
             specs[0].layers[1].parameters.get("label"),
             Some(&ParameterValue::String("Hello".to_string())),
-            "Non-positional parameters remain in parameters"
+            "label (required) also remains in parameters at parse time"
+        );
+
+        // Mappings should be empty at parse time for annotation layers
+        assert!(
+            specs[0].layers[1].mappings.is_empty(),
+            "Annotation layer mappings should be empty at parse time (populated during execution)"
         );
     }
 }

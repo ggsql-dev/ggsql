@@ -529,7 +529,8 @@ pub fn find_schema_columns_for_aesthetic(
         for aes_name in &aesthetics_to_check {
             if let Some(value) = layer.mappings.get(aes_name) {
                 match value {
-                    AestheticValue::Column { name, .. } | AestheticValue::AnnotationColumn { name } => {
+                    AestheticValue::Column { name, .. }
+                    | AestheticValue::AnnotationColumn { name } => {
                         if let Some(info) = schema.iter().find(|c| c.name == *name) {
                             infos.push(info.clone());
                         }

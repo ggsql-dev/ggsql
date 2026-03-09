@@ -293,10 +293,9 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     // since geom definitions use internal names for their supported/required aesthetics
     spec.transform_aesthetics_to_internal();
 
-    // Process annotation layers: move positional/required parameters to mappings
-    // This must happen AFTER transform_aesthetics_to_internal() so parameter keys are in internal space
-    // Returns error if arrays have mismatched lengths
-    spec.process_annotation_layers()?;
+    // Note: Annotation layer processing (moving parameters to mappings) now happens
+    // during execution in process_annotation_layer(), not during parsing.
+    // This keeps all annotation-specific logic in one place.
 
     Ok(spec)
 }
@@ -508,7 +507,7 @@ fn build_place_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
     let mut layer = build_layer(node, source)?;
 
     // Mark as annotation layer
-    // Array recycling happens later during SQL generation in build_annotation_values_clause()
+    // Array recycling happens later during SQL generation in process_annotation_layer()
     layer.source = Some(DataSource::Annotation);
 
     Ok(layer)

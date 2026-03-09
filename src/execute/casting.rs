@@ -3,9 +3,9 @@
 //! This module handles determining which columns need type casting based on
 //! scale requirements and updating type info accordingly.
 
+use crate::naming;
 use crate::plot::scale::coerce_dtypes;
 use crate::plot::{CastTargetType, Plot, SqlTypeNames};
-use crate::naming;
 use polars::prelude::{DataType, TimeUnit};
 use std::collections::HashMap;
 

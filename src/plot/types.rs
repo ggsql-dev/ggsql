@@ -187,9 +187,7 @@ pub enum AestheticValue {
     /// These columns are generated from user-specified literal values in visual space
     /// (e.g., color => 'red', size => 10) and use identity scales (no transformation).
     /// Positional annotations (x, y) use Column instead since they're in data coordinate space.
-    AnnotationColumn {
-        name: String,
-    },
+    AnnotationColumn { name: String },
     /// Literal value (quoted string, number, or boolean)
     Literal(ParameterValue),
 }
@@ -227,9 +225,7 @@ impl AestheticValue {
 
     /// Create an annotation column mapping (synthesized from PLACE literals)
     pub fn annotation_column(name: impl Into<String>) -> Self {
-        Self::AnnotationColumn {
-            name: name.into(),
-        }
+        Self::AnnotationColumn { name: name.into() }
     }
 
     /// Get column name if this is a column mapping

@@ -802,10 +802,10 @@ pub(super) fn build_encoding_channel(
             name: col,
             original_name,
             is_dummy,
-        } => build_column_encoding(aesthetic, col, original_name, *is_dummy, false, ctx),
+        } => build_column_encoding(aesthetic, col, original_name, *is_dummy, true, ctx),
         AestheticValue::AnnotationColumn { name: col } => {
             // Non-positional annotation columns use identity scale
-            build_column_encoding(aesthetic, col, &None, false, true, ctx)
+            build_column_encoding(aesthetic, col, &None, false, false, ctx)
         }
         AestheticValue::Literal(lit) => build_literal_encoding(aesthetic, lit),
     }
