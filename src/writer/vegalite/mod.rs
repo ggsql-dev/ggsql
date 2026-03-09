@@ -2479,9 +2479,7 @@ mod tests {
         let response = match ureq::get(VEGALITE_SCHEMA).call() {
             Ok(r) => r,
             Err(_) => {
-                eprintln!(
-                    "Skipping vendored schema check: could not reach {VEGALITE_SCHEMA}"
-                );
+                eprintln!("Skipping vendored schema check: could not reach {VEGALITE_SCHEMA}");
                 return;
             }
         };
