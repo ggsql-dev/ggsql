@@ -205,18 +205,6 @@ impl Plot {
         }
     }
 
-    /// Process annotation layers by moving positional and required aesthetics
-    /// from parameters to mappings.
-    ///
-    /// This must be called AFTER transform_aesthetics_to_internal() so that
-    /// parameter keys are already in internal space (pos1, pos2, etc.).
-    ///
-    /// Positional aesthetics need to be in mappings so they go through the same
-    /// transformation pipeline (internal→user space) as data-mapped aesthetics,
-    /// enabling them to participate in scale training and coordinate transformations.
-    ///
-    /// Note: Array recycling (replicating scalars to match array lengths) happens later
-    /// during SQL generation in `process_annotation_layer()`.
     /// Check if the spec has any layers
     pub fn has_layers(&self) -> bool {
         !self.layers.is_empty()
@@ -517,11 +505,11 @@ mod tests {
         assert!(bar.is_supported("pos1")); // Bar accepts optional pos1
         assert_eq!(bar.required(), &[] as &[&str]); // No required aesthetics
 
-        // Text geom
+        // Text geom - requires label
         let text = Geom::text().aesthetics();
         assert!(text.is_supported("label"));
         assert!(text.is_supported("family"));
-        assert_eq!(text.required(), &["pos1", "pos2"]);
+        assert_eq!(text.required(), &["pos1", "pos2", "label"]);
 
         // Statistical geoms only require pos1
         assert_eq!(Geom::histogram().aesthetics().required(), &["pos1"]);

@@ -239,9 +239,6 @@ impl Layer {
     /// happens in Polars after query execution, before the data goes to the writer.
     pub fn update_mappings_for_aesthetic_columns(&mut self) {
         use crate::naming;
-        use crate::plot::aesthetic::is_positional_aesthetic;
-
-        let is_annotation = matches!(self.source, Some(crate::DataSource::Annotation));
 
         for (aesthetic, value) in self.mappings.aesthetics.iter_mut() {
             let aes_col_name = naming::aesthetic_column(aesthetic);
@@ -263,16 +260,9 @@ impl Layer {
                     *name = aes_col_name;
                 }
                 AestheticValue::Literal(_) => {
-                    // Literals become columns with prefixed aesthetic name
-                    // For annotation layers:
-                    // - Positional aesthetics (x, y): use Column (data coordinate space, participate in scales)
-                    // - Non-positional aesthetics (color, size): use AnnotationColumn (visual space, identity scale)
-                    let is_positional = is_positional_aesthetic(aesthetic);
-                    *value = if is_annotation && !is_positional {
-                        AestheticValue::annotation_column(aes_col_name)
-                    } else {
-                        AestheticValue::standard_column(aes_col_name)
-                    };
+                    // Literals become standard columns with prefixed aesthetic name
+                    // Note: literals don't have an original_name to preserve
+                    *value = AestheticValue::standard_column(aes_col_name);
                 }
             }
         }
