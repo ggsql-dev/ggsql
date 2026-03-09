@@ -44,6 +44,9 @@ pub mod duckdb;
 #[cfg(feature = "polars-sql")]
 pub mod polars_sql;
 
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
+
 pub mod connection;
 pub mod data;
 mod spec;
@@ -53,6 +56,9 @@ pub use duckdb::DuckDBReader;
 
 #[cfg(feature = "polars-sql")]
 pub use polars_sql::PolarsReader;
+
+#[cfg(feature = "sqlite")]
+pub use sqlite::SqliteReader;
 
 // ============================================================================
 // Spec - Result of reader.execute()

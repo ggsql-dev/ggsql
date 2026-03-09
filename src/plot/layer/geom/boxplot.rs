@@ -166,16 +166,16 @@ fn boxplot_sql_compute_summary(from: &str, groups: &[String], value: &str, coef:
     format!(
         "SELECT
           *,
-          GREATEST(q1 - {coef} * (q3 - q1), min) AS lower,
-          LEAST(   q3 + {coef} * (q3 - q1), max) AS upper
+          MAX(q1 - {coef} * (q3 - q1), min) AS lower,
+          MIN(q3 + {coef} * (q3 - q1), max) AS upper
         FROM (
           SELECT
             {groups},
             MIN({value}) AS min,
             MAX({value}) AS max,
-            QUANTILE_CONT({value}, 0.25) AS q1,
-            QUANTILE_CONT({value}, 0.50) AS median,
-            QUANTILE_CONT({value}, 0.75) AS q3
+            PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY {value}) AS q1,
+            PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY {value}) AS median,
+            PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY {value}) AS q3
           FROM ({from}) AS __ggsql_qt__
           WHERE {value} IS NOT NULL
           GROUP BY {groups}
@@ -266,10 +266,8 @@ fn boxplot_sql_append_outliers(
         )
         {summary_select}
         UNION ALL
-        (
           SELECT {groups}, type AS {type_name}, value AS {value_name}, NULL AS {value2_name}
           FROM outliers
-        )
         ",
         summary = from,
         outliers = outliers,
@@ -307,15 +305,15 @@ mod tests {
     fn test_sql_compute_summary_basic() {
         let groups = vec!["category".to_string()];
         let result = boxplot_sql_compute_summary("data", &groups, "value", &1.5);
-        assert!(result.contains("QUANTILE_CONT(value, 0.25)"));
-        assert!(result.contains("QUANTILE_CONT(value, 0.50)"));
-        assert!(result.contains("QUANTILE_CONT(value, 0.75)"));
+        assert!(result.contains("PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY value)"));
+        assert!(result.contains("PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY value)"));
+        assert!(result.contains("PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY value)"));
         assert!(result.contains("MIN(value) AS min"));
         assert!(result.contains("MAX(value) AS max"));
         assert!(result.contains("WHERE value IS NOT NULL"));
         assert!(result.contains("GROUP BY category"));
-        assert!(result.contains("GREATEST"));
-        assert!(result.contains("LEAST"));
+        assert!(result.contains("MAX(q1 - 1.5"));
+        assert!(result.contains("MIN(q3 + 1.5"));
     }
 
     #[test]
@@ -323,7 +321,7 @@ mod tests {
         let groups = vec!["cat".to_string(), "region".to_string()];
         let result = boxplot_sql_compute_summary("tbl", &groups, "val", &1.5);
         assert!(result.contains("GROUP BY cat, region"));
-        assert!(result.contains("QUANTILE_CONT(val, 0.25)"));
+        assert!(result.contains("PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY val)"));
     }
 
     #[test]
@@ -331,8 +329,8 @@ mod tests {
         let groups = vec!["pos1".to_string()];
         let result = boxplot_sql_compute_summary("q", &groups, "pos2", &2.5);
         assert!(result.contains("2.5"));
-        assert!(result.contains("GREATEST(q1 - 2.5 * (q3 - q1), min)"));
-        assert!(result.contains("LEAST(   q3 + 2.5 * (q3 - q1), max)"));
+        assert!(result.contains("MAX(q1 - 2.5 * (q3 - q1), min)"));
+        assert!(result.contains("MIN(q3 + 2.5 * (q3 - q1), max)"));
     }
 
     #[test]
@@ -355,16 +353,16 @@ mod tests {
 
         let expected = r#"SELECT
           *,
-          GREATEST(q1 - 1.5 * (q3 - q1), min) AS lower,
-          LEAST(   q3 + 1.5 * (q3 - q1), max) AS upper
+          MAX(q1 - 1.5 * (q3 - q1), min) AS lower,
+          MIN(q3 + 1.5 * (q3 - q1), max) AS upper
         FROM (
           SELECT
             category,
             MIN(price) AS min,
             MAX(price) AS max,
-            QUANTILE_CONT(price, 0.25) AS q1,
-            QUANTILE_CONT(price, 0.50) AS median,
-            QUANTILE_CONT(price, 0.75) AS q3
+            PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY price) AS q1,
+            PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY price) AS median,
+            PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY price) AS q3
           FROM (SELECT * FROM sales) AS __ggsql_qt__
           WHERE price IS NOT NULL
           GROUP BY category
@@ -380,16 +378,16 @@ mod tests {
 
         let expected = r#"SELECT
           *,
-          GREATEST(q1 - 1.5 * (q3 - q1), min) AS lower,
-          LEAST(   q3 + 1.5 * (q3 - q1), max) AS upper
+          MAX(q1 - 1.5 * (q3 - q1), min) AS lower,
+          MIN(q3 + 1.5 * (q3 - q1), max) AS upper
         FROM (
           SELECT
             region, product,
             MIN(revenue) AS min,
             MAX(revenue) AS max,
-            QUANTILE_CONT(revenue, 0.25) AS q1,
-            QUANTILE_CONT(revenue, 0.50) AS median,
-            QUANTILE_CONT(revenue, 0.75) AS q3
+            PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY revenue) AS q1,
+            PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY revenue) AS median,
+            PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY revenue) AS q3
           FROM (SELECT * FROM data) AS __ggsql_qt__
           WHERE revenue IS NOT NULL
           GROUP BY region, product

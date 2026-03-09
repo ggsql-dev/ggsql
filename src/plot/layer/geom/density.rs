@@ -282,7 +282,7 @@ fn silverman_rule(adjust: f64, value_column: &str) -> String {
     // We absorb the adjustment in the 0.9 multiplier of the rule
     let adjust = 0.9 * adjust;
     format!(
-        "{adjust} * LEAST(STDDEV({value}), (QUANTILE_CONT({value}, 0.75) - QUANTILE_CONT({value}, 0.25)) / 1.34) * POWER(COUNT(*), -0.2)",
+        "{adjust} * MIN(SQRT(AVG({value}*{value}) - AVG({value})*AVG({value})), (PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY {value}) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY {value})) / 1.34) * POW(COUNT(*), -0.2)",
         adjust = adjust,
         value = value_column
     )
@@ -340,7 +340,7 @@ fn choose_kde_kernel(parameters: &HashMap<String, ParameterValue>) -> Result<Str
     // Use weighted sum for density computation
     // Weighted: density = (1/h) × Σ(wi × K((x-xi)/h)) / Σwi
     Ok(format!(
-        "SUM(data.weight * ({kernel})) / ANY_VALUE(bandwidth.bw)",
+        "SUM(data.weight * ({kernel})) / MIN(bandwidth.bw)",
         kernel = kernel
     ))
 }
@@ -662,11 +662,11 @@ mod tests {
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
 
-        // Verify exact SQL structure uses QUANTILE_CONT
-        let expected = "WITH
+        // Verify exact SQL structure uses PERCENTILE_CONT
+        let expected = "WITH RECURSIVE
           bandwidth AS (
             SELECT
-              0.9 * LEAST(STDDEV(x), (QUANTILE_CONT(x, 0.75) - QUANTILE_CONT(x, 0.25)) / 1.34) * POWER(COUNT(*), -0.2) AS bw
+              0.9 * MIN(SQRT(AVG(x*x) - AVG(x)*AVG(x)), (PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY x) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY x)) / 1.34) * POW(COUNT(*), -0.2) AS bw
             FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x))
             WHERE x IS NOT NULL
 
@@ -692,11 +692,11 @@ mod tests {
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
 
-        // Verify exact SQL structure uses QUANTILE_CONT with GROUP BY
-        let expected = "WITH
+        // Verify exact SQL structure uses PERCENTILE_CONT with GROUP BY
+        let expected = "WITH RECURSIVE
           bandwidth AS (
             SELECT
-              0.9 * LEAST(STDDEV(x), (QUANTILE_CONT(x, 0.75) - QUANTILE_CONT(x, 0.25)) / 1.34) * POWER(COUNT(*), -0.2) AS bw,
+              0.9 * MIN(SQRT(AVG(x*x) - AVG(x)*AVG(x)), (PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY x) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY x)) / 1.34) * POW(COUNT(*), -0.2) AS bw,
               region
             FROM (SELECT x, region FROM (VALUES (1.0, 'A'), (2.0, 'A'), (3.0, 'B')) AS t(x, region))
             WHERE x IS NOT NULL

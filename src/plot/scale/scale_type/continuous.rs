@@ -153,7 +153,7 @@ impl ScaleTypeTrait for Continuous {
     ///
     /// Supports OOB modes:
     /// - "censor": CASE WHEN col >= min AND col <= max THEN col ELSE NULL END
-    /// - "squish": GREATEST(min, LEAST(col, max))
+    /// - "squish": MAX(min, MIN(col, max))
     /// - "keep": No transformation (returns None)
     ///
     /// Only applies when input_range is explicitly specified via FROM clause.
@@ -197,7 +197,7 @@ impl ScaleTypeTrait for Continuous {
                 column_name, min, column_name, max, column_name
             )),
             OOB_SQUISH => Some(format!(
-                "GREATEST({}, LEAST({}, {}))",
+                "MAX({}, MIN({}, {}))",
                 min, max, column_name
             )),
             _ => None, // "keep" = no transformation
@@ -268,9 +268,9 @@ mod tests {
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
-        // Should generate GREATEST/LEAST for squish
-        assert!(sql.contains("GREATEST"));
-        assert!(sql.contains("LEAST"));
+        // Should generate MAX/MIN for squish
+        assert!(sql.contains("MAX("));
+        assert!(sql.contains("MIN("));
     }
 
     #[test]

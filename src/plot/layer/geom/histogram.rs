@@ -163,9 +163,11 @@ fn stat_histogram(
             w = bin_width
         )
     } else {
-        // Right-closed (a, b]: use CEIL - 1 with GREATEST for min value
+        // Right-closed (a, b]: use CEIL - 1, clamped to 0 minimum
+        // Use CASE instead of MAX(a,b) because this expression appears in GROUP BY
+        // where MAX would be interpreted as the aggregate function
         format!(
-            "(GREATEST(CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1, 0)) * {w} + {min} - {w} * 0.5",
+            "(CASE WHEN CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1 > 0 THEN CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1 ELSE 0 END) * {w} + {min} - {w} * 0.5",
             x = x_col,
             min = min_val,
             w = bin_width

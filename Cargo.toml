@@ -37,8 +37,7 @@ polars-ops = { version = "0.52", features = ["pivot"] }
 duckdb = { version = "1.4", features = ["bundled", "vtab-arrow"] }
 arrow = { version = "56", default-features = false, features = ["ipc"] }
 postgres = "0.19"
-sqlx = { version = "0.8", features = ["postgres"] }
-rusqlite = "0.32"
+rusqlite = { version = "0.38", features = ["bundled", "chrono", "functions", "window"] }
 
 # Writers
 plotters = "0.3"

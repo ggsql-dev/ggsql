@@ -38,7 +38,6 @@ polars-ops.workspace = true
 duckdb = { workspace = true, optional = true }
 arrow = { workspace = true, optional = true }
 postgres = { workspace = true, optional = true }
-sqlx = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
 
 # Writers

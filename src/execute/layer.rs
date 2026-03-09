@@ -518,12 +518,6 @@ where
             if stat_rename_exprs.is_empty() {
                 transformed_query
             } else {
-                let stat_col_names: Vec<String> = stat_columns
-                    .iter()
-                    .map(|s| naming::stat_column(s))
-                    .collect();
-                let exclude_clause = format!("EXCLUDE ({})", stat_col_names.join(", "));
-
                 // If the transformed query uses CTEs (WITH ... SELECT ...),
                 // we can't wrap it in a subquery because Polars SQL doesn't
                 // support CTEs inside subqueries. Instead, split into CTE
@@ -536,16 +530,14 @@ where
                         .and_then(super::cte::split_with_query)
                 {
                     format!(
-                        "{}, __ggsql_stat__ AS ({}) SELECT * {}, {} FROM __ggsql_stat__",
+                        "{}, __ggsql_stat__ AS ({}) SELECT *, {} FROM __ggsql_stat__",
                         cte_prefix,
                         trailing_select,
-                        exclude_clause,
                         stat_rename_exprs.join(", ")
                     )
                 } else {
                     format!(
-                        "SELECT * {}, {} FROM ({}) AS __ggsql_stat__",
-                        exclude_clause,
+                        "SELECT *, {} FROM ({}) AS __ggsql_stat__",
                         stat_rename_exprs.join(", "),
                         transformed_query
                     )
