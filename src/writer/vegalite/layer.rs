@@ -191,6 +191,7 @@ pub trait GeomRenderer: Send + Sync {
         df: &DataFrame,
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
+        _layer: &Layer,
         _context: &RenderContext,
     ) -> Result<PreparedData> {
         let values = if binned_columns.is_empty() {
@@ -270,26 +271,39 @@ impl GeomRenderer for BarRenderer {
         layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
+        use crate::plot::layer::Orientation;
         let width = match layer.parameters.get("width") {
             Some(ParameterValue::Number(w)) => *w,
             _ => 0.9,
         };
 
-        // For dodged bars, use expression-based width with the adjusted width
-        // For non-dodged bars, use band-relative width
-        let width_value = if let Some(adjusted) = layer.adjusted_width {
+        // For horizontal bars, use "height" for band size; for vertical, use "width"
+        let is_horizontal = layer.orientation == Some(Orientation::Transposed);
+
+        // For dodged bars, use expression-based size with the adjusted width
+        // For non-dodged bars, use band-relative size
+        let size_value = if let Some(adjusted) = layer.adjusted_width {
             // Use bandwidth expression for dodged bars
-            json!({"expr": format!("bandwidth('x') * {}", adjusted)})
+            let axis = if is_horizontal { "y" } else { "x" };
+            json!({"expr": format!("bandwidth('{}') * {}", axis, adjusted)})
         } else {
             json!({"band": width})
         };
 
-        layer_spec["mark"] = json!({
-            "type": "bar",
-            "width": width_value,
-            "align": "center",
-            "clip": true
-        });
+        layer_spec["mark"] = if is_horizontal {
+            json!({
+                "type": "bar",
+                "height": size_value,
+                "clip": true
+            })
+        } else {
+            json!({
+                "type": "bar",
+                "width": size_value,
+                "align": "center",
+                "clip": true
+            })
+        };
         Ok(())
     }
 }
@@ -392,6 +406,7 @@ impl GeomRenderer for LinearRenderer {
         df: &DataFrame,
         _data_key: &str,
         _binned_columns: &HashMap<String, Vec<f64>>,
+        _layer: &Layer,
         _context: &RenderContext,
     ) -> Result<PreparedData> {
         // Just convert DataFrame to JSON values
@@ -496,22 +511,37 @@ impl GeomRenderer for LinearRenderer {
 // Ribbon Renderer
 // =============================================================================
 
-/// Renderer for ribbon geom - remaps ymin/ymax to y/y2
+/// Renderer for ribbon geom - remaps ymin/ymax to y/y2 and preserves data order
 pub struct RibbonRenderer;
 
 impl GeomRenderer for RibbonRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        _layer: &Layer,
+        layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        if let Some(ymax) = encoding.remove("ymax") {
-            encoding.insert("y".to_string(), ymax);
+        use crate::plot::layer::Orientation;
+
+        let is_horizontal = layer.orientation == Some(Orientation::Transposed);
+
+        // Remap min/max to primary/secondary based on orientation:
+        // - Aligned (vertical): ymax→y, ymin→y2
+        // - Transposed (horizontal): xmax→x, xmin→x2
+        let (max_key, min_key, target, target2) = if is_horizontal {
+            ("xmax", "xmin", "x", "x2")
+        } else {
+            ("ymax", "ymin", "y", "y2")
+        };
+
+        if let Some(max_val) = encoding.remove(max_key) {
+            encoding.insert(target.to_string(), max_val);
         }
-        if let Some(ymin) = encoding.remove("ymin") {
-            encoding.insert("y2".to_string(), ymin);
+        if let Some(min_val) = encoding.remove(min_key) {
+            encoding.insert(target2.to_string(), min_val);
         }
+
+        // Note: Don't add order encoding for area marks - it interferes with rendering
         Ok(())
     }
 }
@@ -566,21 +596,37 @@ impl GeomRenderer for ViolinRenderer {
     fn modify_spec(
         &self,
         layer_spec: &mut Value,
-        _layer: &Layer,
+        layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
+        use crate::plot::layer::Orientation;
         layer_spec["mark"] = json!({
             "type": "line",
             "filled": true
         });
         let offset_col = naming::aesthetic_column("offset");
 
+        // It'll be implemented as an offset.
+        let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
+
+        // Read orientation from layer (already resolved during execution)
+        let is_horizontal = layer.orientation == Some(Orientation::Transposed);
+
+        // Continuous axis column for order calculation:
+        // - Vertical: pos2 (y-axis has continuous density values)
+        // - Horizontal: pos1 (x-axis has continuous density values)
+        let continuous_col = if is_horizontal {
+            naming::aesthetic_column("pos1")
+        } else {
+            naming::aesthetic_column("pos2")
+        };
+
         // We use an order calculation to create a proper closed shape.
-        // Right side (+ offset), sort by -y (top -> bottom)
-        // Left side (- offset), sort by +y (bottom -> top)
+        // Right side (+ offset), sort by -continuous (top -> bottom)
+        // Left side (- offset), sort by +continuous (bottom -> top)
         let calc_order = format!(
-            "datum.__violin_offset > 0 ? -datum.{y} : datum.{y}",
-            y = naming::aesthetic_column("pos2")
+            "datum.__violin_offset > 0 ? -datum.{} : datum.{}",
+            continuous_col, continuous_col
         );
 
         // Filter threshold to trim very low density regions (removes thin tails)
@@ -594,9 +640,6 @@ impl GeomRenderer for ViolinRenderer {
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-
-        // Mirror the offset on both sides (offset is already scaled by post_process)
-        let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
 
         // Check if pos1offset exists (from dodging) - we'll combine it with violin offset
         let pos1offset_col = naming::aesthetic_column("pos1offset");
@@ -638,41 +681,51 @@ impl GeomRenderer for ViolinRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        _layer: &Layer,
+        layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        // Ensure x is in detail encoding to create separate violins per x category
+        use crate::plot::layer::Orientation;
+
+        // Read orientation from layer (already resolved during execution)
+        let is_horizontal = layer.orientation == Some(Orientation::Transposed);
+
+        // Categorical axis for detail encoding:
+        // - Vertical: x channel (categorical groups on x-axis)
+        // - Horizontal: y channel (categorical groups on y-axis)
+        let categorical_channel = if is_horizontal { "y" } else { "x" };
+
+        // Ensure categorical field is in detail encoding to create separate violins per category
         // This is needed because line marks with filled:true require detail to create separate paths
-        let x_field = encoding
-            .get("x")
+        let categorical_field = encoding
+            .get(categorical_channel)
             .and_then(|x| x.get("field"))
             .and_then(|f| f.as_str())
             .map(|s| s.to_string());
 
-        if let Some(x_field) = x_field {
+        if let Some(cat_field) = categorical_field {
             match encoding.get_mut("detail") {
                 Some(detail) if detail.is_object() => {
-                    // Single field object - check if it's already x, otherwise convert to array
-                    if detail.get("field").and_then(|f| f.as_str()) != Some(&x_field) {
+                    // Single field object - check if it's already the categorical field, otherwise convert to array
+                    if detail.get("field").and_then(|f| f.as_str()) != Some(&cat_field) {
                         let existing = detail.clone();
-                        *detail = json!([existing, {"field": x_field, "type": "nominal"}]);
+                        *detail = json!([existing, {"field": cat_field, "type": "nominal"}]);
                     }
                 }
                 Some(detail) if detail.is_array() => {
-                    // Array - check if x already present, add if not
+                    // Array - check if categorical field already present, add if not
                     let arr = detail.as_array_mut().unwrap();
-                    let has_x = arr
+                    let has_cat = arr
                         .iter()
-                        .any(|d| d.get("field").and_then(|f| f.as_str()) == Some(&x_field));
-                    if !has_x {
-                        arr.push(json!({"field": x_field, "type": "nominal"}));
+                        .any(|d| d.get("field").and_then(|f| f.as_str()) == Some(&cat_field));
+                    if !has_cat {
+                        arr.push(json!({"field": cat_field, "type": "nominal"}));
                     }
                 }
                 None => {
-                    // No detail encoding - add it with x field
+                    // No detail encoding - add it with categorical field
                     encoding.insert(
                         "detail".to_string(),
-                        json!({"field": x_field, "type": "nominal"}),
+                        json!({"field": cat_field, "type": "nominal"}),
                     );
                 }
                 _ => {}
@@ -703,8 +756,12 @@ impl GeomRenderer for ViolinRenderer {
             }
         }
 
+        // Offset channel:
+        // - Vertical: xOffset (offsets left/right from category)
+        // - Horizontal: yOffset (offsets up/down from category)
+        let offset_channel = if is_horizontal { "yOffset" } else { "xOffset" };
         encoding.insert(
-            "xOffset".to_string(),
+            offset_channel.to_string(),
             json!({
                 "field": "__final_offset",
                 "type": "quantitative",
@@ -907,19 +964,37 @@ impl BoxplotRenderer {
         base_key: &str,
         has_outliers: bool,
     ) -> Result<Vec<Value>> {
+        use crate::plot::layer::Orientation;
+
         let mut layers: Vec<Value> = Vec::new();
 
-        let value_col = naming::aesthetic_column("pos2");
-        let value2_col = naming::aesthetic_column("pos2end");
+        // Read orientation from layer (already resolved during execution)
+        let is_horizontal = layer.orientation == Some(Orientation::Transposed);
 
-        let x_col = layer
+        // Value columns depend on orientation (after DataFrame column flip):
+        // - Vertical: values in pos2/pos2end (no flip)
+        // - Horizontal: values in pos1/pos1end (was pos2/pos2end before flip)
+        let (value_col, value2_col) = if is_horizontal {
+            (
+                naming::aesthetic_column("pos1"),
+                naming::aesthetic_column("pos1end"),
+            )
+        } else {
+            (
+                naming::aesthetic_column("pos2"),
+                naming::aesthetic_column("pos2end"),
+            )
+        };
+
+        // Validate x aesthetic exists (required for boxplot)
+        layer
             .mappings
             .get("pos1")
             .and_then(|x| x.column_name())
             .ok_or_else(|| {
                 GgsqlError::WriterError("Boxplot requires 'x' aesthetic mapping".to_string())
             })?;
-        // Validate y aesthetic exists (not used directly but required for boxplot)
+        // Validate y aesthetic exists (required for boxplot)
         layer
             .mappings
             .get("pos2")
@@ -928,8 +1003,6 @@ impl BoxplotRenderer {
                 GgsqlError::WriterError("Boxplot requires 'y' aesthetic mapping".to_string())
             })?;
 
-        // Set orientation
-        let is_horizontal = x_col == value_col;
         let value_var1 = if is_horizontal { "x" } else { "y" };
         let value_var2 = if is_horizontal { "x2" } else { "y2" };
 
@@ -945,8 +1018,9 @@ impl BoxplotRenderer {
 
         // For dodged boxplots, use expression-based width with adjusted_width
         // For non-dodged boxplots, use band-relative width
+        let axis = if is_horizontal { "y" } else { "x" };
         let width_value = if let Some(adjusted) = layer.adjusted_width {
-            json!({"expr": format!("bandwidth('x') * {}", adjusted)})
+            json!({"expr": format!("bandwidth('{}') * {}", axis, adjusted)})
         } else {
             json!({"band": base_width})
         };
@@ -1087,6 +1161,7 @@ impl GeomRenderer for BoxplotRenderer {
         df: &DataFrame,
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
+        _layer: &Layer,
         _context: &RenderContext,
     ) -> Result<PreparedData> {
         let (components, has_outliers) = self.prepare_components(df, binned_columns)?;

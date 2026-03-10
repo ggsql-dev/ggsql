@@ -9,8 +9,8 @@ Boxplots display a summary of a continuous distribution. In the style of Tukey, 
 The following aesthetics are recognised by the boxplot layer.
 
 ### Required
-* `x`: Position on the x-axis
-* `y`: Position on the y-axis
+* Primary axis (e.g. `x`): The categorical variable to group by
+* Secondary axis (e.g. `y`): The continuous variable to summarize
 
 ### Optional
 * `stroke`: The colour of the box contours, whiskers, median line and outliers.
@@ -43,7 +43,10 @@ Observations are considered outliers when they are more extreme than the whisker
 
 ### Default remapping
 
-* `value AS y`: By default the values are displayed along the y-axis.
+* `value AS <secondary axis>`: By default the values are displayed along the secondary axis.
+
+## Orientation
+The boxplot has its categorical groups along the primary axis and the continuous values along the secondary axis. The orientation can be deduced from the scale types or from the mapping. To create a horizontal boxplot, map the categorical variable to `y` and the continuous variable to `x` (assuming a default Cartesian coordinate system).
 
 ### Examples
 
@@ -82,4 +85,12 @@ VISUALISE FROM ggsql:penguins
 DRAW boxplot
   MAPPING species AS x, bill_len AS y
   SETTING coef => 0.1
+```
+
+Create a horizontal boxplot by swapping x and y:
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW boxplot
+  MAPPING species AS y, bill_len AS x
 ```

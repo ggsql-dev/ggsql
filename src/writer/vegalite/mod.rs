@@ -100,7 +100,7 @@ fn prepare_layer_data(
         let renderer = get_renderer(&layer.geom);
 
         // Prepare data using the renderer (handles both standard and composite cases)
-        let prepared = renderer.prepare_data(df, data_key, binned_columns, &context)?;
+        let prepared = renderer.prepare_data(df, data_key, binned_columns, layer, &context)?;
 
         // Add data to individual datasets based on prepared type
         match &prepared {

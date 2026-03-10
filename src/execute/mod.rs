@@ -36,6 +36,84 @@ use crate::reader::Reader;
 use crate::reader::DuckDBReader;
 
 // =============================================================================
+// DataFrame Column Flipping for Orientation
+// =============================================================================
+
+/// Flip positional column names in a DataFrame for Transposed orientation layers.
+///
+/// Swaps column names like `__ggsql_aes_pos1__` ↔ `__ggsql_aes_pos2__` so that
+/// the data matches the flipped mapping names.
+///
+/// This is called after query execution for layers with Transposed orientation,
+/// in coordination with `normalize_mapping_column_names` which updates the mappings.
+fn flip_dataframe_positional_columns(df: DataFrame, aesthetic_ctx: &AestheticContext) -> DataFrame {
+    use polars::prelude::*;
+
+    // Collect all positional column renames needed
+    let mut renames: Vec<(String, String)> = Vec::new();
+
+    for col_name in df.get_column_names() {
+        let col_str = col_name.to_string();
+
+        // Check if this is an aesthetic column (__ggsql_aes_XXX__)
+        if let Some(aesthetic) = naming::extract_aesthetic_name(&col_str) {
+            if is_positional_aesthetic(aesthetic) {
+                let flipped = aesthetic_ctx.flip_positional(aesthetic);
+                if flipped != aesthetic {
+                    let new_col_name = naming::aesthetic_column(&flipped);
+                    renames.push((col_str, new_col_name));
+                }
+            }
+        }
+    }
+
+    if renames.is_empty() {
+        return df;
+    }
+
+    // To swap columns (A ↔ B), we need to:
+    // 1. Rename A to temp
+    // 2. Rename B to A
+    // 3. Rename temp to B
+    // But if both A and B exist, we need to handle them together
+
+    let df_clone = df.clone(); // For fallback if collect fails
+    let mut lazy = df.lazy();
+
+    // Group renames into swap pairs
+    let mut processed: HashSet<String> = HashSet::new();
+    for (from, to) in &renames {
+        if processed.contains(from) {
+            continue;
+        }
+
+        // Check if the reverse rename also exists (it's a swap)
+        let is_swap = renames.iter().any(|(f, t)| f == to && t == from);
+
+        if is_swap {
+            // Swap: use intermediate names to avoid collision
+            let temp_from = format!("{}_temp_swap_", from);
+            let temp_to = format!("{}_temp_swap_", to);
+
+            lazy = lazy
+                .rename([from.as_str()], [temp_from.as_str()], true)
+                .rename([to.as_str()], [temp_to.as_str()], true)
+                .rename([temp_from.as_str()], [to.as_str()], true)
+                .rename([temp_to.as_str()], [from.as_str()], true);
+
+            processed.insert(from.clone());
+            processed.insert(to.clone());
+        } else {
+            // Simple rename (one direction only)
+            lazy = lazy.rename([from.as_str()], [to.as_str()], true);
+            processed.insert(from.clone());
+        }
+    }
+
+    lazy.collect().unwrap_or(df_clone)
+}
+
+// =============================================================================
 // Validation
 // =============================================================================
 
@@ -1024,6 +1102,35 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         }
     }
 
+    // Detect orientation and flip mappings BEFORE building base queries.
+    // This ensures the SQL query uses the correct aesthetic column names.
+    // The flip must happen here (not in apply_layer_transforms) because
+    // build_layer_base_query uses layer.mappings to create SQL like
+    // `column AS __ggsql_aes_pos1__`.
+    {
+        use crate::plot::layer::orientation::{flip_mappings, resolve_orientation, Orientation};
+        let scales = specs[0].scales.clone();
+        let aesthetic_ctx = specs[0].get_aesthetic_context();
+        for (layer_idx, layer) in specs[0].layers.iter_mut().enumerate() {
+            let orientation = resolve_orientation(layer, &scales);
+            layer.orientation = Some(orientation);
+            if orientation == Orientation::Transposed {
+                flip_mappings(layer);
+                // Also flip column names in type_info to match the flipped mappings
+                if layer_idx < layer_type_info.len() {
+                    for (name, _, _) in &mut layer_type_info[layer_idx] {
+                        if let Some(aesthetic) = naming::extract_aesthetic_name(name) {
+                            let flipped = aesthetic_ctx.flip_positional(aesthetic);
+                            if flipped != aesthetic {
+                                *name = naming::aesthetic_column(&flipped);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Build layer base queries using build_layer_base_query()
     // These include: SELECT with aesthetic renames, casts from type_requirements, filters
     // Note: This is Part 1 of the split - base queries that can be used for schema completion
@@ -1084,6 +1191,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             &layer_schemas[idx],
             &scales,
             &type_names,
+            &aesthetic_ctx,
             &execute_query,
         )?;
         layer_queries.push(layer_query);
@@ -1105,31 +1213,33 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     }
 
     // Phase 3: Assign data to layers (clone only when needed)
-    // Key by (query, serialized_remappings) to detect when layers can share data
-    // Layers with identical query AND remappings share data via data_key
-    let mut config_to_key: HashMap<(String, String), String> = HashMap::new();
+    // Key by (query, serialized_remappings, orientation) to detect when layers can share data
+    // Layers with identical query AND remappings AND orientation share data via data_key
+    let mut config_to_key: HashMap<(String, String, bool), String> = HashMap::new();
 
     for (idx, q) in layer_queries.iter().enumerate() {
         let layer = &mut specs[0].layers[idx];
         let remappings_key = serde_json::to_string(&layer.remappings).unwrap_or_default();
-        let config_key = (q.clone(), remappings_key);
+        let needs_flip =
+            layer.orientation == Some(crate::plot::layer::orientation::Orientation::Transposed);
+        let config_key = (q.clone(), remappings_key, needs_flip);
 
         if let Some(existing_key) = config_to_key.get(&config_key) {
-            // Same query AND same remappings - share data
+            // Same query AND same remappings AND same orientation - share data
             layer.data_key = Some(existing_key.clone());
         } else {
-            // Need own data entry (either first occurrence or different remappings)
+            // Need own data entry (either first occurrence or different config)
             let layer_key = naming::layer_key(idx);
             let df = query_to_result.get(q).unwrap().clone();
+
             data_map.insert(layer_key.clone(), df);
             config_to_key.insert(config_key, layer_key.clone());
             layer.data_key = Some(layer_key);
         }
     }
 
-    // Phase 4: Apply remappings and post-process
-    // - Rename stat columns to prefixed aesthetic names (e.g., __ggsql_stat_count → __ggsql_aes_y__)
-    // - Apply geom post_process (e.g., violin offset scaling)
+    // Phase 4: Apply remappings (rename stat columns and add literal columns)
+    // e.g., __ggsql_stat_count → __ggsql_aes_y__, or add __ggsql_aes_pos2end__ = 0.0
     // Note: Prefixed aesthetic names persist through the entire pipeline
     // Track processed keys to avoid duplicate work on shared datasets
     let mut processed_keys: HashSet<String> = HashSet::new();
@@ -1145,6 +1255,18 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                     data_map.insert(key.clone(), df_post_processed);
                 }
             }
+
+            // Flip remappings for Transposed orientation layers.
+            // This must happen AFTER apply_remappings_post_query (which creates columns
+            // with ALIGNED orientation names) but BEFORE update_mappings_for_remappings
+            // (which uses remapping keys to create mapping entries).
+            // Phase 4.5 will then flip the DataFrame columns to match.
+            let needs_flip =
+                l.orientation == Some(crate::plot::layer::orientation::Orientation::Transposed);
+            if needs_flip {
+                crate::plot::layer::orientation::flip_remappings(l);
+            }
+
             // Update layer mappings for all layers (even if data shared)
             l.update_mappings_for_remappings();
         }
@@ -1153,6 +1275,27 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         // This ensures query literals have been converted to columns, and SETTING/defaults
         // are added as new Literal entries that remain as constant values
         l.resolve_aesthetics();
+    }
+
+    // Phase 4.5: Flip DataFrame columns for Transposed orientation layers
+    // This must happen AFTER remappings (Phase 4) because remappings create columns
+    // with ALIGNED orientation names, and the flip converts them to USER orientation.
+    // All positional columns (stat-produced and literal) are flipped together.
+    let mut flipped_keys: HashSet<String> = HashSet::new();
+    for layer in specs[0].layers.iter() {
+        let needs_flip =
+            layer.orientation == Some(crate::plot::layer::orientation::Orientation::Transposed);
+        if needs_flip {
+            if let Some(ref key) = layer.data_key {
+                if flipped_keys.insert(key.clone()) {
+                    // First time flipping this data key
+                    if let Some(df) = data_map.remove(key) {
+                        let flipped_df = flip_dataframe_positional_columns(df, &aesthetic_ctx);
+                        data_map.insert(key.clone(), flipped_df);
+                    }
+                }
+            }
+        }
     }
 
     // Create scales for aesthetics added by stat transforms (e.g., y from histogram)

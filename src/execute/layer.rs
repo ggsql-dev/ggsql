@@ -337,6 +337,7 @@ pub fn build_layer_base_query(
 /// * `schema` - The layer's schema (with min/max from base_query)
 /// * `scales` - All resolved scales
 /// * `type_names` - SQL type names for the database backend
+/// * `aesthetic_ctx` - Aesthetic context for name transformations
 /// * `execute_query` - Function to execute queries (needed for some stat transforms)
 ///
 /// # Returns
@@ -348,15 +349,23 @@ pub fn apply_layer_transforms<F>(
     schema: &Schema,
     scales: &[Scale],
     type_names: &SqlTypeNames,
+    aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     execute_query: &F,
 ) -> Result<String>
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
+    use crate::plot::layer::orientation::{flip_mappings, flip_remappings, Orientation};
+
     // Clone order_by early to avoid borrow conflicts
     let order_by = layer.order_by.clone();
 
+    // Orientation detection and initial flip was already done in mod.rs before
+    // build_layer_base_query. We just check if we need to flip back after stat.
+    let needs_flip = layer.orientation == Some(Orientation::Transposed);
+
     // Build the aesthetic-named schema for stat transforms
+    // Note: Mappings were already flipped in mod.rs if needed, so schema reflects normalized orientation
     let aesthetic_schema: Schema = build_aesthetic_schema(layer, schema);
 
     // Collect literal aesthetic column names BEFORE conversion to Column values.
@@ -418,8 +427,17 @@ where
         execute_query,
     )?;
 
+    // Flip user remappings BEFORE merging defaults for Transposed orientation.
+    // User remappings are in user orientation (e.g., `count AS x` for horizontal histogram).
+    // We flip them to aligned orientation so they're uniform with defaults.
+    // At the end, we flip everything back together.
+    if needs_flip {
+        flip_remappings(layer);
+    }
+
     // Apply literal default remappings from geom defaults (e.g., y2 => 0.0 for bar baseline).
     // These apply regardless of stat transform, but only if user hasn't overridden them.
+    // Defaults are always in aligned orientation.
     for (aesthetic, default_value) in layer.geom.default_remappings() {
         // Only process literal values here (Column values are handled in Transformed branch)
         if !matches!(default_value, DefaultAestheticValue::Column(_)) {
@@ -555,7 +573,22 @@ where
         StatResult::Identity => query,
     };
 
-    // Apply ORDER BY
+    // Flip mappings back after stat transforms if we flipped them earlier
+    // Now pos1/pos2 map to the user's intended x/y positions
+    // Note: We only flip mappings here, not remappings. Remappings are flipped
+    // later in mod.rs after apply_remappings_post_query creates the columns,
+    // so that Phase 4.5 can flip those columns along with everything else.
+    if needs_flip {
+        flip_mappings(layer);
+
+        // Normalize mapping column names to match their aesthetic keys.
+        // After flip_mappings, pos1 might point to __ggsql_aes_pos2__ (and vice versa).
+        // We update the column names so pos1 → __ggsql_aes_pos1__, etc.
+        // The DataFrame columns will be renamed correspondingly in mod.rs.
+        normalize_mapping_column_names(layer, aesthetic_ctx);
+    }
+
+    // Apply explicit ORDER BY if provided
     let final_query = if let Some(ref o) = order_by {
         format!("{} ORDER BY {}", final_query, o.as_str())
     } else {
@@ -563,4 +596,58 @@ where
     };
 
     Ok(final_query)
+}
+
+/// Normalize mapping column names to match their aesthetic keys after flip-back.
+///
+/// After `flip_mappings`, the mapping values (column names) may not match the keys.
+/// For example, pos1 might point to `__ggsql_aes_pos2__`.
+/// This function updates the column names so pos1 → `__ggsql_aes_pos1__`, etc.
+///
+/// This should be called after flip_mappings during flip-back.
+/// The DataFrame columns should be renamed correspondingly using `flip_dataframe_columns`.
+fn normalize_mapping_column_names(
+    layer: &mut Layer,
+    aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
+) {
+    // Collect the aesthetics to update (to avoid borrowing issues)
+    let aesthetics_to_update: Vec<String> = layer
+        .mappings
+        .aesthetics
+        .keys()
+        .filter(|aes| crate::plot::aesthetic::is_positional_aesthetic(aes))
+        .cloned()
+        .collect();
+
+    for aesthetic in aesthetics_to_update {
+        if let Some(value) = layer.mappings.aesthetics.get_mut(&aesthetic) {
+            let expected_col = naming::aesthetic_column(&aesthetic);
+            match value {
+                AestheticValue::Column {
+                    name,
+                    original_name,
+                    ..
+                } => {
+                    // The current column name might be wrong (e.g., __ggsql_aes_pos2__ for pos1)
+                    // We need to flip it to match the aesthetic key
+                    let current_col_aesthetic =
+                        naming::extract_aesthetic_name(name).unwrap_or_default();
+                    let flipped_aesthetic = aesthetic_ctx.flip_positional(current_col_aesthetic);
+
+                    // If flipping results in the correct aesthetic, update the column name
+                    if flipped_aesthetic == aesthetic {
+                        *name = expected_col;
+                    }
+                    // Preserve original_name for axis labels
+                    if original_name.is_none() {
+                        *original_name = Some(aesthetic.clone());
+                    }
+                }
+                AestheticValue::Literal(_) => {
+                    // Literals become columns with the expected name
+                    *value = AestheticValue::standard_column(expected_col);
+                }
+            }
+        }
+    }
 }
