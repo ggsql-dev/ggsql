@@ -1063,9 +1063,7 @@ mod tests {
             .unwrap();
 
         let spec = reader
-            .execute(
-                "SELECT * FROM box_data VISUALISE DRAW boxplot MAPPING grp AS x, value AS y",
-            )
+            .execute("SELECT * FROM box_data VISUALISE DRAW boxplot MAPPING grp AS x, value AS y")
             .unwrap();
 
         assert!(spec.layer_data(0).is_some());

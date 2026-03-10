@@ -285,7 +285,13 @@ fn density_sql_bandwidth(
     )
 }
 
-fn silverman_rule(adjust: f64, value_column: &str, from: &str, groups: &[String], dialect: &dyn SqlDialect) -> String {
+fn silverman_rule(
+    adjust: f64,
+    value_column: &str,
+    from: &str,
+    groups: &[String],
+    dialect: &dyn SqlDialect,
+) -> String {
     // The query computes Silverman's rule of thumb (R's `stats::bw.nrd0()`).
     // We absorb the adjustment in the 0.9 multiplier of the rule
     let adjust = 0.9 * adjust;
@@ -379,7 +385,14 @@ fn build_data_cte(value: &str, weight: Option<&str>, from: &str, group_by: &[Str
     )
 }
 
-fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: usize, dialect: &dyn SqlDialect) -> String {
+fn build_grid_cte(
+    groups: &[String],
+    from: &str,
+    min: f64,
+    max: f64,
+    n_points: usize,
+    dialect: &dyn SqlDialect,
+) -> String {
     let has_groups = !groups.is_empty();
     let n_points = n_points - 1; // GENERATE_SERIES gives on point for free
     let diff = (max - min).abs();
@@ -509,8 +522,8 @@ fn compute_density(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::AnsiDialect;
     use crate::reader::duckdb::DuckDBReader;
+    use crate::reader::AnsiDialect;
     use crate::reader::Reader;
 
     #[test]

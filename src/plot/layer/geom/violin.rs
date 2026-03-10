@@ -91,7 +91,14 @@ impl GeomTrait for Violin {
         execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
     ) -> Result<StatResult> {
-        stat_violin(query, aesthetics, group_by, parameters, execute_query, dialect)
+        stat_violin(
+            query,
+            aesthetics,
+            group_by,
+            parameters,
+            execute_query,
+            dialect,
+        )
     }
 
     /// Post-process the violin DataFrame to scale offset to [0, 0.5 * width].
@@ -201,9 +208,9 @@ fn stat_violin(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::AnsiDialect;
     use crate::plot::AestheticValue;
     use crate::reader::duckdb::DuckDBReader;
+    use crate::reader::AnsiDialect;
     use crate::reader::Reader;
 
     // ==================== Helper Functions ====================
@@ -257,8 +264,15 @@ mod tests {
 
         let execute = |sql: &str| reader.execute_sql(sql);
 
-        let result = stat_violin(query, &aesthetics, &groups, &parameters, &execute, &AnsiDialect)
-            .expect("stat_violin should succeed");
+        let result = stat_violin(
+            query,
+            &aesthetics,
+            &groups,
+            &parameters,
+            &execute,
+            &AnsiDialect,
+        )
+        .expect("stat_violin should succeed");
 
         // Verify the result is a transformed stat result
         match result {
@@ -322,8 +336,15 @@ mod tests {
 
         let execute = |sql: &str| reader.execute_sql(sql);
 
-        let result = stat_violin(query, &aesthetics, &groups, &parameters, &execute, &AnsiDialect)
-            .expect("stat_violin should succeed");
+        let result = stat_violin(
+            query,
+            &aesthetics,
+            &groups,
+            &parameters,
+            &execute,
+            &AnsiDialect,
+        )
+        .expect("stat_violin should succeed");
 
         // Verify the result is a transformed stat result
         match result {

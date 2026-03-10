@@ -191,6 +191,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Apply statistical transformation to the layer query.
     ///
     /// The default implementation returns identity (no transformation).
+    #[allow(clippy::too_many_arguments)]
     fn apply_stat_transform(
         &self,
         _query: &str,
@@ -402,6 +403,7 @@ impl Geom {
     }
 
     /// Apply stat transform
+    #[allow(clippy::too_many_arguments)]
     pub fn apply_stat_transform(
         &self,
         query: &str,
