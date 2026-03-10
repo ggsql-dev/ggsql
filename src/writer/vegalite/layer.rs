@@ -1263,6 +1263,7 @@ mod tests {
         use crate::naming;
 
         let renderer = ViolinRenderer;
+        let context = RenderContext::new(&[]);
 
         let layer = Layer::new(crate::plot::Geom::violin());
         let mut layer_spec = json!({
@@ -1273,7 +1274,9 @@ mod tests {
             }
         });
 
-        renderer.modify_spec(&mut layer_spec, &layer).unwrap();
+        renderer
+            .modify_spec(&mut layer_spec, &layer, &context)
+            .unwrap();
 
         // Verify transforms include mirroring (violin_offsets)
         let transforms = layer_spec["transform"].as_array().unwrap();
@@ -1318,6 +1321,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn test_render_context_get_extent() {
         use crate::plot::{ArrayElement, Scale};
 
