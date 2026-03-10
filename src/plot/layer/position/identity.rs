@@ -22,12 +22,12 @@ impl PositionTrait for Identity {
 
     fn apply_adjustment(
         &self,
-        df: &DataFrame,
+        df: DataFrame,
         _layer: &Layer,
         _spec: &Plot,
     ) -> Result<(DataFrame, Option<f64>)> {
         // Identity returns data unchanged
-        Ok((df.clone(), None))
+        Ok((df, None))
     }
 }
 
@@ -50,7 +50,7 @@ mod tests {
         let layer = Layer::new(crate::plot::layer::Geom::point());
         let spec = Plot::new();
 
-        let (result, width) = identity.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, width) = identity.apply_adjustment(df, &layer, &spec).unwrap();
 
         assert_eq!(result.height(), 3);
         assert!(width.is_none());

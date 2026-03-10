@@ -2,17 +2,17 @@
 title: Dodge
 ---
 
-> Positions are set within the [`DRAW` clause](../../clause/draw.qmd), using the `SETTING`subclause. Read the documentation for this clause for a thorough description of how to use it.
+> Positions are set within the [`DRAW` clause](../../clause/draw.qmd), using the `SETTING` subclause. Read the documentation for this clause for a thorough description of how to use it.
 
-The dodge adjustment is intended to move entities that share the same position on a discrete scale side by side so they don't overlap. It is most often used for boxplots and violin plots but can also be used in e.g. bar plots as an alternative to [stacking](stack.qmd).
+The dodge adjustment is intended to move entities that share the same position on a discrete scale side by side so they don't overlap. It is most often used for boxplots and violin plots, but can also be used in e.g. bar plots as an alternative to [stacking](stack.qmd).
 
-## Scale requirements
-Dodge doesn't have specific requirements to the position scale type of the plot but will only affect discrete scales (including binned and ordinal). If only one scale is discrete the dodging happens in the scale direction. If both scales are discrete the dodging happens as a 2D grid.
+## Position scale requirements
+Dodge doesn't have specific requirements to the scale type of the plot, but will only affect discrete scales (including binned and ordinal). If only one scale is discrete, the dodging happens in that scale's direction. If both scales are discrete, the dodging happens as a 2D grid.
 
 ## Settings
 Apart from the settings of the layer type, setting `position => 'dodge'` will allow these additional settings:
 
-* `width`: The total width the dodging will occupy as a proportion of the space available on the scale. Defaults to 0.9
+* `width`: The total width the dodging will occupy as a proportion of the space available on the scale. Defaults to 0.9 but any defaults from the layer will take precedence.
 
 ## Examples
 

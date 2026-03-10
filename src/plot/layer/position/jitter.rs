@@ -14,7 +14,10 @@
 //! - `uniform` (default): uniform random distribution across the width
 //! - `normal`: normal/Gaussian distribution with ~95% of points within the width
 
-use super::{compute_group_indices, is_continuous_scale, Layer, PositionTrait, PositionType};
+use super::{
+    compute_dodge_offsets, compute_group_indices, is_continuous_scale, Layer, PositionTrait,
+    PositionType,
+};
 use crate::plot::types::{DefaultParam, DefaultParamValue, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
@@ -144,21 +147,9 @@ fn quantile_cont(sorted: &[f64], p: f64) -> f64 {
 /// Narrow distributions will have higher peaks than wide distributions.
 fn compute_densities(values: &[f64], bandwidth: f64) -> Vec<f64> {
     let n = values.len() as f64;
-    let norm_factor = 1.0 / (bandwidth * n * (2.0 * std::f64::consts::PI).sqrt());
-
-    values
-        .iter()
-        .map(|&xi| {
-            // Sum kernel contributions from all points
-            let density: f64 = values
-                .iter()
-                .map(|&xj| {
-                    let u = (xi - xj) / bandwidth;
-                    (-0.5 * u * u).exp()
-                })
-                .sum();
-            density * norm_factor
-        })
+    compute_intensities(values, bandwidth)
+        .into_iter()
+        .map(|i| i / n)
         .collect()
 }
 
@@ -310,11 +301,108 @@ impl PositionTrait for Jitter {
 
     fn apply_adjustment(
         &self,
-        df: &DataFrame,
+        df: DataFrame,
         layer: &Layer,
         spec: &Plot,
     ) -> Result<(DataFrame, Option<f64>)> {
         Ok((apply_jitter(df, layer, spec)?, None))
+    }
+}
+
+/// Compute density/intensity scales for density-based jitter distribution.
+///
+/// Returns a Vec of scale factors (0 to 1) for each row, where higher values
+/// indicate denser regions that should have wider jitter spread.
+///
+/// For density distribution: scales are normalized per-group (area = 1 per group).
+/// For intensity distribution: scales are normalized globally (larger groups have higher peaks).
+fn compute_density_scales(
+    df: &DataFrame,
+    layer: &Layer,
+    pos1_continuous: bool,
+    use_intensity: bool,
+    dodge: bool,
+    explicit_bandwidth: Option<f64>,
+    adjust: f64,
+) -> Result<Option<Vec<f64>>> {
+    // Identify axes
+    let continuous_col = if pos1_continuous { "pos1" } else { "pos2" };
+    let discrete_col = if pos1_continuous { "pos2" } else { "pos1" };
+    let continuous_col_name = naming::aesthetic_column(continuous_col);
+    let discrete_col_name = naming::aesthetic_column(discrete_col);
+
+    // Extract values from the continuous axis
+    let values: Vec<f64> = df
+        .column(&continuous_col_name)
+        .map_err(|_| {
+            GgsqlError::InternalError(format!(
+                "Missing {} column for density jitter",
+                continuous_col
+            ))
+        })?
+        .cast(&DataType::Float64)
+        .map_err(|_| {
+            GgsqlError::InternalError(format!(
+                "{} must be numeric for density jitter",
+                continuous_col
+            ))
+        })?
+        .f64()
+        .map_err(|_| {
+            GgsqlError::InternalError(format!(
+                "{} must be numeric for density jitter",
+                continuous_col
+            ))
+        })?
+        .into_iter()
+        .map(|v| v.unwrap_or(0.0))
+        .collect();
+
+    // Build density grouping columns: discrete axis + relevant partition_by columns
+    // This matches how violin computes density per group
+    let mut density_group_cols = vec![discrete_col_name.clone()];
+    for col in &layer.partition_by {
+        if density_group_cols.contains(col) {
+            continue;
+        }
+        // When dodge is false, only include facet variables (not color/fill groups)
+        // Facet variables have predictable names: __ggsql_aes_facet1__, __ggsql_aes_facet2__
+        if !dodge && !col.contains("_facet") {
+            continue;
+        }
+        density_group_cols.push(col.clone());
+    }
+
+    // Compute density grouping
+    let density_group_info = compute_group_indices(df, &density_group_cols)?;
+
+    // Compute density/intensity scales per group with global normalization
+    if let Some(info) = density_group_info {
+        Ok(Some(compute_grouped_scales(
+            &values,
+            &info.indices,
+            info.n_groups,
+            explicit_bandwidth,
+            adjust,
+            use_intensity,
+        )))
+    } else {
+        // Single group - compute global density/intensity
+        let bandwidth = explicit_bandwidth
+            .map(|bw| bw * adjust)
+            .unwrap_or_else(|| silverman_bandwidth(&values, adjust));
+        let raw = if use_intensity {
+            compute_intensities(&values, bandwidth)
+        } else {
+            compute_densities(&values, bandwidth)
+        };
+        // Normalize to [0, 1]
+        let max_val = raw.iter().fold(0.0_f64, |a, &b| a.max(b));
+        if max_val > 0.0 {
+            Ok(Some(raw.iter().map(|v| v / max_val).collect()))
+        } else {
+            Ok(Some(vec![1.0; values.len()]))
+        }
     }
 }
 
@@ -336,9 +424,9 @@ impl PositionTrait for Jitter {
 /// - `uniform`: uniform random distribution across the width (default)
 /// - `normal`: Gaussian distribution with ~95% of points within the width
 /// - `density`: scales jitter width by local density (requires exactly one continuous axis)
-fn apply_jitter(df: &DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame> {
+fn apply_jitter(df: DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame> {
     // Check which axes should be jittered (discrete axes)
-    // Since infer_scale_types_from_data() runs before position adjustments,
+    // Since create_missing_scales_post_stat() runs before position adjustments,
     // scale types are always known, so we use explicit discrete checks.
     let jitter_pos1 = is_continuous_scale(spec, "pos1") == Some(false);
     let jitter_pos2 = is_continuous_scale(spec, "pos2") == Some(false);
@@ -379,22 +467,16 @@ fn apply_jitter(df: &DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame>
     let pos2_continuous = !jitter_pos2;
     let use_density_scaling = distribution == JitterDistribution::Density
         || distribution == JitterDistribution::Intensity;
-    if use_density_scaling {
-        let continuous_count = [pos1_continuous, pos2_continuous]
-            .iter()
-            .filter(|&&b| b)
-            .count();
-        if continuous_count != 1 {
-            let dist_name = if distribution == JitterDistribution::Intensity {
-                "intensity"
-            } else {
-                "density"
-            };
-            return Err(GgsqlError::ValidationError(format!(
-                "Jitter distribution '{}' requires exactly one continuous axis",
-                dist_name
-            )));
-        }
+    if use_density_scaling && (pos1_continuous == pos2_continuous) {
+        let dist_name = if distribution == JitterDistribution::Intensity {
+            "intensity"
+        } else {
+            "density"
+        };
+        return Err(GgsqlError::ValidationError(format!(
+            "Jitter distribution '{}' requires exactly one continuous axis",
+            dist_name
+        )));
     }
 
     let mut rng = rand::thread_rng();
@@ -402,7 +484,7 @@ fn apply_jitter(df: &DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame>
 
     // Compute group info for dodge-first behavior
     let group_info = if dodge {
-        compute_group_indices(df, &layer.partition_by)?
+        compute_group_indices(&df, &layer.partition_by)?
     } else {
         None
     };
@@ -431,90 +513,18 @@ fn apply_jitter(df: &DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame>
         })
         .unwrap_or(1.0);
 
-    // For density/intensity distribution, compute scales along the continuous axis
-    // IMPORTANT: Density must be computed per group, matching how violin computes density.
-    // Groups are determined by: discrete axis (e.g., species) + partition_by (e.g., color)
+    // Compute density scales if using density/intensity distribution
     let use_intensity = distribution == JitterDistribution::Intensity;
     let density_scales = if use_density_scaling {
-        // Identify axes
-        let continuous_col = if pos1_continuous { "pos1" } else { "pos2" };
-        let discrete_col = if pos1_continuous { "pos2" } else { "pos1" };
-        let continuous_col_name = naming::aesthetic_column(continuous_col);
-        let discrete_col_name = naming::aesthetic_column(discrete_col);
-
-        // Extract values from the continuous axis
-        let values: Vec<f64> = df
-            .column(&continuous_col_name)
-            .map_err(|_| {
-                GgsqlError::InternalError(format!(
-                    "Missing {} column for density jitter",
-                    continuous_col
-                ))
-            })?
-            .cast(&DataType::Float64)
-            .map_err(|_| {
-                GgsqlError::InternalError(format!(
-                    "{} must be numeric for density jitter",
-                    continuous_col
-                ))
-            })?
-            .f64()
-            .map_err(|_| {
-                GgsqlError::InternalError(format!(
-                    "{} must be numeric for density jitter",
-                    continuous_col
-                ))
-            })?
-            .into_iter()
-            .map(|v| v.unwrap_or(0.0))
-            .collect();
-
-        // Build density grouping columns: discrete axis + relevant partition_by columns
-        // This matches how violin computes density per group
-        let mut density_group_cols = vec![discrete_col_name.clone()];
-        for col in &layer.partition_by {
-            if density_group_cols.contains(col) {
-                continue;
-            }
-            // When dodge is false, only include facet variables (not color/fill groups)
-            // Facet variables have predictable names: __ggsql_aes_facet1__, __ggsql_aes_facet2__
-            if !dodge && !col.contains("_facet") {
-                continue;
-            }
-            density_group_cols.push(col.clone());
-        }
-
-        // Compute density grouping
-        let density_group_info = compute_group_indices(df, &density_group_cols)?;
-
-        // Compute density/intensity scales per group with global normalization
-        if let Some(info) = density_group_info {
-            Some(compute_grouped_scales(
-                &values,
-                &info.indices,
-                info.n_groups,
-                explicit_bandwidth,
-                adjust,
-                use_intensity,
-            ))
-        } else {
-            // Single group - compute global density/intensity
-            let bandwidth = explicit_bandwidth
-                .map(|bw| bw * adjust)
-                .unwrap_or_else(|| silverman_bandwidth(&values, adjust));
-            let raw = if use_intensity {
-                compute_intensities(&values, bandwidth)
-            } else {
-                compute_densities(&values, bandwidth)
-            };
-            // Normalize to [0, 1]
-            let max_val = raw.iter().fold(0.0_f64, |a, &b| a.max(b));
-            if max_val > 0.0 {
-                Some(raw.iter().map(|v| v / max_val).collect())
-            } else {
-                Some(vec![1.0; values.len()])
-            }
-        }
+        compute_density_scales(
+            &df,
+            layer,
+            pos1_continuous,
+            use_intensity,
+            dodge,
+            explicit_bandwidth,
+            adjust,
+        )?
     } else {
         None
     };
@@ -522,139 +532,91 @@ fn apply_jitter(df: &DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame>
     let pos1offset_col = naming::aesthetic_column("pos1offset");
     let pos2offset_col = naming::aesthetic_column("pos2offset");
 
-    let mut result = df.clone().lazy();
+    let mut result = df.lazy();
 
-    // For 1D jitter (only one axis is discrete), use linear dodge layout
-    // For 2D jitter (both axes discrete), use grid layout like dodge does
-    if jitter_pos1 && jitter_pos2 && n_groups > 1 {
-        // 2D grid dodge + jitter
-        let grid_size = (n_groups as f64).sqrt().ceil() as usize;
-        let grid_adjusted_width = width / grid_size as f64;
-        let center_offset = (grid_size as f64 - 1.0) / 2.0;
-
+    // Compute dodge centers if we have groups to dodge
+    let dodge_offsets = if n_groups > 1 {
         let indices = group_indices.unwrap();
-
-        // Pre-generate jitter values for both axes
-        let jitter1: Vec<f64> = (0..indices.len())
-            .map(|_| distribution.sample(&mut rng, grid_adjusted_width))
-            .collect();
-        let jitter2: Vec<f64> = (0..indices.len())
-            .map(|_| distribution.sample(&mut rng, grid_adjusted_width))
-            .collect();
-
-        // Compute pos1 offsets: dodge center + jitter
-        let pos1_offsets: Vec<f64> = indices
-            .iter()
-            .zip(jitter1.iter())
-            .map(|(&idx, &jitter)| {
-                let col_idx = idx % grid_size;
-                let dodge_center = (col_idx as f64 - center_offset) * grid_adjusted_width;
-                dodge_center + jitter
-            })
-            .collect();
-
-        // Compute pos2 offsets: dodge center + jitter
-        let pos2_offsets: Vec<f64> = indices
-            .iter()
-            .zip(jitter2.iter())
-            .map(|(&idx, &jitter)| {
-                let row_idx = idx / grid_size;
-                let dodge_center = (row_idx as f64 - center_offset) * grid_adjusted_width;
-                dodge_center + jitter
-            })
-            .collect();
-
-        result = result.with_column(
-            lit(Series::new(pos1offset_col.clone().into(), pos1_offsets)).alias(&pos1offset_col),
-        );
-        result = result.with_column(
-            lit(Series::new(pos2offset_col.clone().into(), pos2_offsets)).alias(&pos2offset_col),
-        );
+        Some(compute_dodge_offsets(
+            indices,
+            n_groups,
+            width,
+            jitter_pos1,
+            jitter_pos2,
+        ))
     } else {
-        // 1D jitter (or no dodge)
-        let center_offset = (n_groups as f64 - 1.0) / 2.0;
+        None
+    };
 
-        // Add pos1offset if pos1 is discrete
-        if jitter_pos1 {
-            let offsets: Vec<f64> = if let Some(indices) = group_indices {
-                // Pre-generate jitter values
-                let jitters: Vec<f64> = (0..indices.len())
-                    .map(|_| distribution.sample(&mut rng, effective_width))
-                    .collect();
-                // Dodge + jitter: deterministic dodge center + random jitter (with density scaling)
-                indices
+    // Helper to generate jitter with optional density scaling
+    let make_jitter =
+        |rng: &mut rand::rngs::ThreadRng, jitter_width: f64, count: usize| -> Vec<f64> {
+            (0..count)
+                .map(|i| {
+                    let jitter = distribution.sample(rng, jitter_width);
+                    if let Some(ref scales) = density_scales {
+                        jitter * scales[i]
+                    } else {
+                        jitter
+                    }
+                })
+                .collect()
+        };
+
+    // Add pos1offset if pos1 is discrete
+    if jitter_pos1 {
+        let jitter_width = dodge_offsets
+            .as_ref()
+            .map(|d| d.adjusted_width)
+            .unwrap_or(width);
+        let jitters = make_jitter(&mut rng, jitter_width, n_rows);
+
+        let offsets: Vec<f64> = if let Some(ref dodge) = dodge_offsets {
+            if let Some(ref centers) = dodge.pos1 {
+                // Dodge + jitter
+                centers
                     .iter()
                     .zip(jitters.iter())
-                    .enumerate()
-                    .map(|(i, (&idx, &jitter))| {
-                        let dodge_center = (idx as f64 - center_offset) * effective_width;
-                        // Scale jitter by density if using density distribution
-                        let scaled_jitter = if let Some(ref scales) = density_scales {
-                            jitter * scales[i]
-                        } else {
-                            jitter
-                        };
-                        dodge_center + scaled_jitter
-                    })
+                    .map(|(c, j)| c + j)
                     .collect()
             } else {
-                // Pure jitter (with density scaling)
-                (0..n_rows)
-                    .map(|i| {
-                        let jitter = distribution.sample(&mut rng, width);
-                        if let Some(ref scales) = density_scales {
-                            jitter * scales[i]
-                        } else {
-                            jitter
-                        }
-                    })
-                    .collect()
-            };
-            result = result.with_column(
-                lit(Series::new(pos1offset_col.clone().into(), offsets)).alias(&pos1offset_col),
-            );
-        }
+                jitters
+            }
+        } else {
+            jitters
+        };
 
-        // Add pos2offset if pos2 is discrete
-        if jitter_pos2 {
-            let offsets: Vec<f64> = if let Some(indices) = group_indices {
-                // Pre-generate jitter values
-                let jitters: Vec<f64> = (0..indices.len())
-                    .map(|_| distribution.sample(&mut rng, effective_width))
-                    .collect();
-                // Dodge + jitter: deterministic dodge center + random jitter (with density scaling)
-                indices
+        result = result.with_column(
+            lit(Series::new(pos1offset_col.clone().into(), offsets)).alias(&pos1offset_col),
+        );
+    }
+
+    // Add pos2offset if pos2 is discrete
+    if jitter_pos2 {
+        let jitter_width = dodge_offsets
+            .as_ref()
+            .map(|d| d.adjusted_width)
+            .unwrap_or(width);
+        let jitters = make_jitter(&mut rng, jitter_width, n_rows);
+
+        let offsets: Vec<f64> = if let Some(ref dodge) = dodge_offsets {
+            if let Some(ref centers) = dodge.pos2 {
+                // Dodge + jitter
+                centers
                     .iter()
                     .zip(jitters.iter())
-                    .enumerate()
-                    .map(|(i, (&idx, &jitter))| {
-                        let dodge_center = (idx as f64 - center_offset) * effective_width;
-                        // Scale jitter by density if using density distribution
-                        let scaled_jitter = if let Some(ref scales) = density_scales {
-                            jitter * scales[i]
-                        } else {
-                            jitter
-                        };
-                        dodge_center + scaled_jitter
-                    })
+                    .map(|(c, j)| c + j)
                     .collect()
             } else {
-                // Pure jitter (with density scaling)
-                (0..n_rows)
-                    .map(|i| {
-                        let jitter = distribution.sample(&mut rng, width);
-                        if let Some(ref scales) = density_scales {
-                            jitter * scales[i]
-                        } else {
-                            jitter
-                        }
-                    })
-                    .collect()
-            };
-            result = result.with_column(
-                lit(Series::new(pos2offset_col.clone().into(), offsets)).alias(&pos2offset_col),
-            );
-        }
+                jitters
+            }
+        } else {
+            jitters
+        };
+
+        result = result.with_column(
+            lit(Series::new(pos2offset_col.clone().into(), offsets)).alias(&pos2offset_col),
+        );
     }
 
     result
@@ -729,7 +691,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, width) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, width) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Verify pos1offset column was created
         assert!(
@@ -781,7 +743,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, _) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         let offset = result
             .column("__ggsql_aes_pos1offset__")
@@ -812,7 +774,7 @@ mod tests {
         spec.scales.push(make_continuous_scale("pos1"));
         spec.scales.push(make_discrete_scale("pos2"));
 
-        let (result, _) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Verify pos1offset column was NOT created
         assert!(
@@ -854,7 +816,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_discrete_scale("pos2"));
 
-        let (result, _) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Verify both offset columns were created
         assert!(
@@ -879,7 +841,7 @@ mod tests {
         spec.scales.push(make_continuous_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, _) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Verify neither offset column was created
         assert!(
@@ -907,7 +869,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, _) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         let offset = result
             .column("__ggsql_aes_pos1offset__")
@@ -941,7 +903,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, _) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         let offset = result
             .column("__ggsql_aes_pos1offset__")
@@ -993,7 +955,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, _) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         let offset = result
             .column("__ggsql_aes_pos1offset__")
@@ -1064,7 +1026,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, _) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         let offset = result
             .column("__ggsql_aes_pos1offset__")
@@ -1140,7 +1102,7 @@ mod tests {
         let mut spec = Plot::new();
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_discrete_scale("pos2"));
-        let result = jitter.apply_adjustment(&df, &layer, &spec);
+        let result = jitter.apply_adjustment(df.clone(), &layer, &spec);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -1151,7 +1113,7 @@ mod tests {
         let mut spec = Plot::new();
         spec.scales.push(make_continuous_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
-        let result = jitter.apply_adjustment(&df, &layer, &spec);
+        let result = jitter.apply_adjustment(df.clone(), &layer, &spec);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -1162,7 +1124,7 @@ mod tests {
         let mut spec = Plot::new();
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
-        let result = jitter.apply_adjustment(&df, &layer, &spec);
+        let result = jitter.apply_adjustment(df, &layer, &spec);
         assert!(result.is_ok());
     }
 
@@ -1209,7 +1171,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, _) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         let offset = result
             .column("__ggsql_aes_pos1offset__")
@@ -1271,7 +1233,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, _) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Verify offsets were created and are within expected bounds
         let offset = result
@@ -1388,7 +1350,7 @@ mod tests {
         let mut spec = Plot::new();
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_discrete_scale("pos2"));
-        let result = jitter.apply_adjustment(&df, &layer, &spec);
+        let result = jitter.apply_adjustment(df.clone(), &layer, &spec);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -1399,7 +1361,7 @@ mod tests {
         let mut spec = Plot::new();
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
-        let result = jitter.apply_adjustment(&df, &layer, &spec);
+        let result = jitter.apply_adjustment(df, &layer, &spec);
         assert!(result.is_ok());
     }
 
@@ -1443,7 +1405,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, _) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         let offset = result
             .column("__ggsql_aes_pos1offset__")
@@ -1502,7 +1464,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, _) = jitter.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Verify offsets were created
         let offset = result
@@ -1557,7 +1519,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let result = jitter.apply_adjustment(&df, &layer, &spec);
+        let result = jitter.apply_adjustment(df, &layer, &spec);
         assert!(result.is_ok(), "Should succeed with explicit bandwidth");
     }
 
@@ -1604,7 +1566,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let result = jitter.apply_adjustment(&df, &layer, &spec);
+        let result = jitter.apply_adjustment(df, &layer, &spec);
         assert!(result.is_ok(), "Should succeed with adjust parameter");
     }
 

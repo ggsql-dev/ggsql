@@ -2,18 +2,18 @@
 title: Stack
 ---
 
-> Positions are set within the [`DRAW` clause](../../clause/draw.qmd), using the `SETTING`subclause. Read the documentation for this clause for a thorough description of how to use it.
+> Positions are set within the [`DRAW` clause](../../clause/draw.qmd), using the `SETTING` subclause. Read the documentation for this clause for a thorough description of how to use it.
 
 The stack position adjustment works by stacking objects on top of each other. It makes the most sense for layer types where their height is the primary encoding (i.e. they naturally extend from 0). Stack is the default position for bar and area plots
 
-## Scale requirements
-Stack requires a continuous position scale with a range mapping (e.g. either `y` + `yend` or `ymin` + `ymax`) and all ranges be positive with a baseline of zero. The axis that satisfies this will be used as the stacking direction
+## Position scale requirements
+Stack requires a continuous scale with a range mapping (e.g. either `y` + `yend` or `ymin` + `ymax`) and requires all ranges to be positive with a baseline of zero. The axis that satisfies this will be used as the stacking direction
 
 ## Settings
 Apart from the settings of the layer type, setting `position => 'stack'` will allow these additional settings:
 
 * `center`: Should the full stack be centered around 0. Can be used in conjunction with area layers to create steamgraphs. Default to `false`
-* `total`: Sets a value each stack height should be normalised to. Defaults to `null` (no normalisation)
+* `total`: Sets a total value to which each stack height is normalised. Setting this value leads to 'fill' behaviour. Defaults to `null` (no normalisation)
 
 ## Examples
 

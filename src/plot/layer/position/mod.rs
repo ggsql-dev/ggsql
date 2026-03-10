@@ -32,6 +32,78 @@ pub fn is_continuous_scale(spec: &Plot, aesthetic: &str) -> Option<bool> {
         .map(|st| st.scale_type_kind() == ScaleTypeKind::Continuous)
 }
 
+/// Result of computing dodge offsets for position adjustment.
+pub struct DodgeOffsets {
+    /// Offset for pos1 axis (None if not dodging pos1)
+    pub pos1: Option<Vec<f64>>,
+    /// Offset for pos2 axis (None if not dodging pos2)
+    pub pos2: Option<Vec<f64>>,
+    /// Adjusted element width after dodging
+    pub adjusted_width: f64,
+    /// Scale factor for existing offset columns (grid_size for 2D, n_groups for 1D)
+    pub offset_scale: f64,
+}
+
+/// Compute dodge offsets for each row based on group indices.
+///
+/// This is the shared logic used by both dodge and jitter position adjustments.
+/// For 2D (both axes discrete), arranges groups in a square grid.
+/// For 1D (one axis discrete), arranges groups linearly.
+pub fn compute_dodge_offsets(
+    indices: &[usize],
+    n_groups: usize,
+    width: f64,
+    dodge_pos1: bool,
+    dodge_pos2: bool,
+) -> DodgeOffsets {
+    // For 2D, use grid layout; for 1D, use linear layout
+    let divisor = if dodge_pos1 && dodge_pos2 {
+        (n_groups as f64).sqrt().ceil() as usize
+    } else {
+        n_groups
+    };
+    let divisor_f64 = divisor as f64;
+    let adjusted_width = width / divisor_f64;
+    let center_offset = (divisor_f64 - 1.0) / 2.0;
+
+    // Helper to compute offsets given a function to extract position from index
+    let compute_offsets = |pos_fn: fn(usize, usize) -> usize| -> Vec<f64> {
+        indices
+            .iter()
+            .map(|&idx| (pos_fn(idx, divisor) as f64 - center_offset) * adjusted_width)
+            .collect()
+    };
+
+    let pos1 = if dodge_pos1 {
+        let pos_fn: fn(usize, usize) -> usize = if dodge_pos2 {
+            |idx, div| idx % div // 2D: column position
+        } else {
+            |idx, _| idx // 1D: direct index
+        };
+        Some(compute_offsets(pos_fn))
+    } else {
+        None
+    };
+
+    let pos2 = if dodge_pos2 {
+        let pos_fn: fn(usize, usize) -> usize = if dodge_pos1 {
+            |idx, div| idx / div // 2D: row position
+        } else {
+            |idx, _| idx // 1D: direct index
+        };
+        Some(compute_offsets(pos_fn))
+    } else {
+        None
+    };
+
+    DodgeOffsets {
+        pos1,
+        pos2,
+        adjusted_width,
+        offset_scale: divisor_f64,
+    }
+}
+
 // Re-export position implementations
 pub use dodge::{compute_group_indices, Dodge, GroupIndices};
 pub use identity::Identity;
@@ -96,7 +168,7 @@ pub trait PositionTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// (for position types like dodge that modify element width)
     fn apply_adjustment(
         &self,
-        df: &DataFrame,
+        df: DataFrame,
         layer: &Layer,
         spec: &Plot,
     ) -> Result<(DataFrame, Option<f64>)>;
@@ -108,6 +180,12 @@ pub trait PositionTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 /// the complexity of trait objects.
 #[derive(Clone)]
 pub struct Position(Arc<dyn PositionTrait>);
+
+impl PartialEq for Position {
+    fn eq(&self, other: &Self) -> bool {
+        self.position_type() == other.position_type()
+    }
+}
 
 impl Position {
     /// Create an Identity position (no adjustment)
@@ -168,7 +246,7 @@ impl Position {
     /// Apply the position adjustment
     pub fn apply_adjustment(
         &self,
-        df: &DataFrame,
+        df: DataFrame,
         layer: &Layer,
         spec: &Plot,
     ) -> Result<(DataFrame, Option<f64>)> {
@@ -211,14 +289,6 @@ impl std::fmt::Display for Position {
         write!(f, "{}", self.0)
     }
 }
-
-impl PartialEq for Position {
-    fn eq(&self, other: &Self) -> bool {
-        self.position_type() == other.position_type()
-    }
-}
-
-impl Eq for Position {}
 
 impl FromStr for Position {
     type Err = std::convert::Infallible;
@@ -266,16 +336,6 @@ mod tests {
 
         let dodge = Position::dodge();
         assert_eq!(dodge.position_type(), PositionType::Dodge);
-    }
-
-    #[test]
-    fn test_position_equality() {
-        let p1 = Position::identity();
-        let p2 = Position::identity();
-        let p3 = Position::stack();
-
-        assert_eq!(p1, p2);
-        assert_ne!(p1, p3);
     }
 
     #[test]

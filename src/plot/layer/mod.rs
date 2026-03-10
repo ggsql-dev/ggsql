@@ -173,8 +173,12 @@ impl Layer {
 
     /// Apply default parameter values for any params not specified by user.
     ///
-    /// Call this during execution to ensure all stat params have values.
+    /// Call this during execution to ensure all geom and position params have values.
+    /// Geom defaults are applied first, then position defaults, so geom defaults take
+    /// precedence. For example, if a geom defines width => 0.8 and the position (dodge)
+    /// defines width => 0.9, the geom's 0.8 is used.
     pub fn apply_default_params(&mut self) {
+        // Apply geom defaults first (higher priority)
         for param in self.geom.default_params() {
             if !self.parameters.contains_key(param.name) {
                 let value = match &param.default {
@@ -186,14 +190,8 @@ impl Layer {
                 self.parameters.insert(param.name.to_string(), value);
             }
         }
-    }
 
-    /// Apply default position parameter values for any params not specified by user.
-    ///
-    /// This is called AFTER apply_default_params() so geom defaults take precedence
-    /// over position defaults. For example, if a geom defines width => 0.8 and the
-    /// position (dodge) defines width => 0.9, the geom's 0.8 is used.
-    pub fn apply_default_position_params(&mut self) {
+        // Apply position defaults second (lower priority, won't override geom defaults)
         for param in self.position.default_params() {
             if !self.parameters.contains_key(param.name) {
                 let value = match &param.default {

@@ -1075,9 +1075,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         }
 
         // Apply default parameter values (e.g., bins=30 for histogram)
-        // Geom defaults have higher priority than position defaults
         l.apply_default_params();
-        l.apply_default_position_params();
 
         // Apply stat transforms and ORDER BY (Part 2)
         let layer_query = layer::apply_layer_transforms(
@@ -1161,14 +1159,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // This must happen after build_layer_query() which applies stat transforms
     // and modifies layer.mappings with new aesthetics like y → __ggsql_stat_count__
     for spec in &mut specs {
-        scale::create_missing_scales_post_stat(spec);
-    }
-
-    // Infer scale types from data for newly created scales
-    // This must happen before position adjustments so dodge/stack can correctly
-    // identify continuous vs discrete axes (e.g., stat-generated count columns)
-    for spec in &mut specs {
-        scale::infer_scale_types_from_data(spec, &data_map)?;
+        scale::create_missing_scales_post_stat(spec, &data_map)?;
     }
 
     // Apply position adjustments (stack, dodge) to layer data

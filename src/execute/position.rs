@@ -32,7 +32,7 @@ pub fn apply_position_adjustments(
             continue;
         };
 
-        let Some(df) = data_map.get(&key) else {
+        let Some(df) = data_map.remove(&key) else {
             continue;
         };
 

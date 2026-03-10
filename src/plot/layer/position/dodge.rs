@@ -6,7 +6,7 @@
 //! - If only pos2 is discrete → dodge vertically (pos2offset)
 //! - If both are discrete → 2D grid dodge (both offsets, arranged in a grid)
 
-use super::{is_continuous_scale, Layer, PositionTrait, PositionType};
+use super::{compute_dodge_offsets, is_continuous_scale, Layer, PositionTrait, PositionType};
 use crate::plot::types::{DefaultParam, DefaultParamValue, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
@@ -112,7 +112,7 @@ impl PositionTrait for Dodge {
 
     fn apply_adjustment(
         &self,
-        df: &DataFrame,
+        df: DataFrame,
         layer: &Layer,
         spec: &Plot,
     ) -> Result<(DataFrame, Option<f64>)> {
@@ -138,7 +138,7 @@ impl PositionTrait for Dodge {
 /// Also returns the adjusted bar width (original width / n_groups for 1D, or
 /// original width / grid_size for 2D).
 fn apply_dodge_with_width(
-    df: &DataFrame,
+    df: DataFrame,
     layer: &Layer,
     spec: &Plot,
 ) -> Result<(DataFrame, Option<f64>)> {
@@ -147,27 +147,27 @@ fn apply_dodge_with_width(
     let pos2offset_col = naming::aesthetic_column("pos2offset");
 
     // Check which axes should be dodged (discrete axes)
-    // Since infer_scale_types_from_data() runs before position adjustments,
+    // Since create_missing_scales_post_stat() runs before position adjustments,
     // scale types are always known, so we use explicit discrete checks.
     let dodge_pos1 = is_continuous_scale(spec, "pos1") == Some(false);
     let dodge_pos2 = is_continuous_scale(spec, "pos2") == Some(false);
 
     // If neither is discrete, nothing to dodge
     if !dodge_pos1 && !dodge_pos2 {
-        return Ok((df.clone(), None));
+        return Ok((df, None));
     }
 
     // Compute group indices
-    let group_info = match compute_group_indices(df, &layer.partition_by)? {
+    let group_info = match compute_group_indices(&df, &layer.partition_by)? {
         Some(info) => info,
-        None => return Ok((df.clone(), None)),
+        None => return Ok((df, None)),
     };
 
     let GroupIndices { n_groups, indices } = group_info;
 
     if n_groups <= 1 {
         // Only one group - no dodging needed
-        return Ok((df.clone(), None));
+        return Ok((df, None));
     }
 
     // Get the default bar width from layer parameters (or use 0.9 as default)
@@ -183,94 +183,34 @@ fn apply_dodge_with_width(
     // Check if layer has an existing offset column (e.g., violin density offset)
     let has_offset_col = df.column(&offset_col).is_ok();
 
-    let mut lf = df.clone().lazy();
+    // Compute dodge offsets using shared logic
+    let offsets = compute_dodge_offsets(&indices, n_groups, bar_width, dodge_pos1, dodge_pos2);
 
-    // Compute offsets based on which axes are being dodged
-    let adjusted_width = if dodge_pos1 && dodge_pos2 {
-        // 2D grid arrangement: arrange groups in a square grid
-        let grid_size = (n_groups as f64).sqrt().ceil() as usize;
-        let adjusted_width = bar_width / grid_size as f64;
-        let center_offset = (grid_size as f64 - 1.0) / 2.0;
+    let mut lf = df.lazy();
 
-        // Compute grid positions for each group
-        let pos1_offsets: Vec<f64> = indices
-            .iter()
-            .map(|&idx| {
-                let col_idx = idx % grid_size;
-                (col_idx as f64 - center_offset) * adjusted_width
-            })
-            .collect();
-        let pos2_offsets: Vec<f64> = indices
-            .iter()
-            .map(|&idx| {
-                let row_idx = idx / grid_size;
-                (row_idx as f64 - center_offset) * adjusted_width
-            })
-            .collect();
-
+    // Apply the computed offsets
+    if let Some(pos1_offsets) = offsets.pos1 {
         lf = lf.with_column(
             lit(Series::new(pos1offset_col.clone().into(), pos1_offsets)).alias(&pos1offset_col),
         );
+    }
+    if let Some(pos2_offsets) = offsets.pos2 {
         lf = lf.with_column(
             lit(Series::new(pos2offset_col.clone().into(), pos2_offsets)).alias(&pos2offset_col),
         );
+    }
 
-        // If offset column exists (e.g., violin), scale it by grid_size
-        if has_offset_col {
-            lf = lf.with_column((col(&offset_col) / lit(grid_size as f64)).alias(&offset_col));
-        }
-
-        adjusted_width
-    } else if dodge_pos1 {
-        // Horizontal dodge only (original behavior)
-        let n_groups_f64 = n_groups as f64;
-        let adjusted_width = bar_width / n_groups_f64;
-        let center_offset = (n_groups_f64 - 1.0) / 2.0;
-
-        let pos1_offsets: Vec<f64> = indices
-            .iter()
-            .map(|&idx| (idx as f64 - center_offset) * adjusted_width)
-            .collect();
-
-        lf = lf.with_column(
-            lit(Series::new(pos1offset_col.clone().into(), pos1_offsets)).alias(&pos1offset_col),
-        );
-
-        // If offset column exists (e.g., violin), scale it by n_groups
-        if has_offset_col {
-            lf = lf.with_column((col(&offset_col) / lit(n_groups_f64)).alias(&offset_col));
-        }
-
-        adjusted_width
-    } else {
-        // Vertical dodge only (dodge_pos2 is true)
-        let n_groups_f64 = n_groups as f64;
-        let adjusted_width = bar_width / n_groups_f64;
-        let center_offset = (n_groups_f64 - 1.0) / 2.0;
-
-        let pos2_offsets: Vec<f64> = indices
-            .iter()
-            .map(|&idx| (idx as f64 - center_offset) * adjusted_width)
-            .collect();
-
-        lf = lf.with_column(
-            lit(Series::new(pos2offset_col.clone().into(), pos2_offsets)).alias(&pos2offset_col),
-        );
-
-        // If offset column exists (e.g., violin), scale it by n_groups
-        if has_offset_col {
-            lf = lf.with_column((col(&offset_col) / lit(n_groups_f64)).alias(&offset_col));
-        }
-
-        adjusted_width
-    };
+    // If offset column exists (e.g., violin), scale it by the offset scale factor
+    if has_offset_col {
+        lf = lf.with_column((col(&offset_col) / lit(offsets.offset_scale)).alias(&offset_col));
+    }
 
     // Collect the result
     let final_df = lf.collect().map_err(|e| {
         GgsqlError::InternalError(format!("Dodge position adjustment failed: {}", e))
     })?;
 
-    Ok((final_df, Some(adjusted_width)))
+    Ok((final_df, Some(offsets.adjusted_width)))
 }
 
 #[cfg(test)]
@@ -341,7 +281,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, width) = dodge.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, width) = dodge.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Verify pos1offset column was created
         assert!(
@@ -399,7 +339,7 @@ mod tests {
         spec.scales.push(make_continuous_scale("pos1"));
         spec.scales.push(make_discrete_scale("pos2"));
 
-        let (result, width) = dodge.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, width) = dodge.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Verify pos1offset column was NOT created
         assert!(
@@ -457,7 +397,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_discrete_scale("pos2"));
 
-        let (result, width) = dodge.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, width) = dodge.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Verify both offset columns were created
         assert!(
@@ -556,7 +496,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_discrete_scale("pos2"));
 
-        let (result, width) = dodge.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, width) = dodge.apply_adjustment(df, &layer, &spec).unwrap();
 
         // With 4 groups in 2D mode, grid_size = ceil(sqrt(4)) = 2
         // This gives a 2x2 grid layout:
@@ -619,7 +559,7 @@ mod tests {
         spec.scales.push(make_continuous_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, width) = dodge.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, width) = dodge.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Verify neither offset column was created
         assert!(
@@ -650,7 +590,7 @@ mod tests {
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, width) = dodge.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, width) = dodge.apply_adjustment(df, &layer, &spec).unwrap();
 
         let offset = result
             .column("__ggsql_aes_pos1offset__")

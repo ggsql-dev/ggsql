@@ -52,7 +52,7 @@ impl PositionTrait for Stack {
 
     fn apply_adjustment(
         &self,
-        df: &DataFrame,
+        df: DataFrame,
         layer: &Layer,
         spec: &Plot,
     ) -> Result<(DataFrame, Option<f64>)> {
@@ -91,11 +91,11 @@ enum StackDirection {
 /// Check if an axis is stackable.
 ///
 /// An axis is stackable if:
-/// 1. It has a continuous scale (scale type is always known after infer_scale_types_from_data)
+/// 1. It has a continuous scale (scale type is always known after create_missing_scales_post_stat)
 /// 2. It has a pos/posend pair (e.g., pos2/pos2end) or posmin/posmax pair
 /// 3. Every row has a zero baseline in one of the range columns
 fn is_axis_stackable(spec: &Plot, layer: &Layer, df: &DataFrame, axis: &str) -> bool {
-    // Must be continuous (scale type always known after infer_scale_types_from_data)
+    // Must be continuous (scale type always known after create_missing_scales_post_stat)
     if is_continuous_scale(spec, axis) != Some(true) {
         return false;
     }
@@ -110,10 +110,6 @@ fn is_axis_stackable(spec: &Plot, layer: &Layer, df: &DataFrame, axis: &str) -> 
     let max_aesthetic = format!("{}max", axis);
     let has_minmax_pair =
         layer.mappings.contains_key(&min_aesthetic) && layer.mappings.contains_key(&max_aesthetic);
-
-    if !has_end_pair && !has_minmax_pair {
-        return false;
-    }
 
     // Check that each row has zero baseline in one of the range columns
     if has_end_pair {
@@ -164,7 +160,7 @@ fn determine_stack_direction(spec: &Plot, layer: &Layer, df: &DataFrame) -> Opti
     match (pos1_stackable, pos2_stackable) {
         (false, true) => Some(StackDirection::Vertical),
         (true, false) => Some(StackDirection::Horizontal),
-        _ => Some(StackDirection::Vertical), // Default
+        _ => None,
     }
 }
 
@@ -178,9 +174,11 @@ fn determine_stack_direction(spec: &Plot, layer: &Layer, df: &DataFrame) -> Opti
 /// - Normal: standard stacking from 0
 /// - Fill: normalized to sum to 1 (100% stacked)
 /// - Center: centered around 0 (streamgraph style)
-fn apply_stack(df: &DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Result<DataFrame> {
+fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Result<DataFrame> {
     // Determine stacking direction
-    let direction = determine_stack_direction(spec, layer, df).unwrap_or(StackDirection::Vertical);
+    let Some(direction) = determine_stack_direction(spec, layer, &df) else {
+        return Ok(df);
+    };
 
     // Set up column names based on direction
     let (stack_col, stack_end_col, group_col) = match direction {
@@ -198,7 +196,7 @@ fn apply_stack(df: &DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> R
 
     // Check if required columns exist
     if df.column(&stack_col).is_err() {
-        return Ok(df.clone());
+        return Ok(df);
     }
 
     // Stacking currently only supports non-negative values
@@ -227,7 +225,7 @@ fn apply_stack(df: &DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> R
     }
 
     // Convert to lazy for transformations
-    let lf = df.clone().lazy();
+    let lf = df.lazy();
 
     // Sort by group column and partition_by columns to ensure consistent stacking order
     // This ensures that within each group (e.g., x position), the stacking order is
@@ -245,114 +243,63 @@ fn apply_stack(df: &DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> R
     // The cumsum naturally stacks across the grouping column values
 
     // Treat NA heights as 0 for stacking
-    let lf = lf.with_column(col(&stack_col).fill_null(lit(0.0)).alias(&stack_col));
-
-    match mode {
-        StackMode::Normal => {
-            let stack_expr = col(&stack_col)
+    // Compute cumulative sums (shared by all modes)
+    let lf = lf
+        .with_column(col(&stack_col).fill_null(lit(0.0)).alias(&stack_col))
+        .with_column(
+            col(&stack_col)
                 .cum_sum(false)
                 .over([col(&group_col)])
-                .alias(&stack_col);
-
-            let stack_end_expr = col(&stack_col)
+                .alias("__cumsum__"),
+        )
+        .with_column(
+            col(&stack_col)
                 .cum_sum(false)
                 .shift(lit(1))
                 .fill_null(lit(0.0))
                 .over([col(&group_col)])
-                .alias(&stack_end_col);
+                .alias("__cumsum_lag__"),
+        );
 
-            lf.with_columns([stack_expr, stack_end_expr])
-                .collect()
-                .map_err(|e| {
-                    GgsqlError::InternalError(format!("Stack position adjustment failed: {}", e))
-                })
-        }
+    // Apply mode-specific transformation
+    let (stack_expr, stack_end_expr, temp_cols): (Expr, Expr, Vec<&str>) = match mode {
+        StackMode::Normal => (
+            col("__cumsum__").alias(&stack_col),
+            col("__cumsum_lag__").alias(&stack_end_col),
+            vec!["__cumsum__", "__cumsum_lag__"],
+        ),
         StackMode::Fill(target) => {
-            // Normalize by total sum within each group, then scale to target
-            let lf = lf
-                .with_column(
-                    col(&stack_col)
-                        .sum()
-                        .over([col(&group_col)])
-                        .alias("__total__"),
-                )
-                .with_column(
-                    col(&stack_col)
-                        .cum_sum(false)
-                        .over([col(&group_col)])
-                        .alias("__cumsum__"),
-                )
-                .with_column(
-                    col(&stack_col)
-                        .cum_sum(false)
-                        .shift(lit(1))
-                        .fill_null(lit(0.0))
-                        .over([col(&group_col)])
-                        .alias("__cumsum_lag__"),
-                );
-
-            let stack_expr = (col("__cumsum__") / col("__total__") * lit(target)).alias(&stack_col);
-            let stack_end_expr =
-                (col("__cumsum_lag__") / col("__total__") * lit(target)).alias(&stack_end_col);
-
-            let result = lf
-                .with_columns([stack_expr, stack_end_expr])
-                .collect()
-                .map_err(|e| {
-                    GgsqlError::InternalError(format!("Stack position adjustment failed: {}", e))
-                })?;
-
-            result
-                .drop("__total__")
-                .and_then(|df| df.drop("__cumsum__"))
-                .and_then(|df| df.drop("__cumsum_lag__"))
-                .map_err(|e| {
-                    GgsqlError::InternalError(format!("Failed to drop temp column: {}", e))
-                })
+            let total = col(&stack_col).sum().over([col(&group_col)]);
+            (
+                (col("__cumsum__") / total.clone() * lit(target)).alias(&stack_col),
+                (col("__cumsum_lag__") / total * lit(target)).alias(&stack_end_col),
+                vec!["__cumsum__", "__cumsum_lag__"],
+            )
         }
         StackMode::Center => {
-            // Center around 0 by subtracting half the total
-            let lf = lf
-                .with_column(
-                    (col(&stack_col).sum() / lit(2.0))
-                        .over([col(&group_col)])
-                        .alias("__half_total__"),
-                )
-                .with_column(
-                    col(&stack_col)
-                        .cum_sum(false)
-                        .over([col(&group_col)])
-                        .alias("__cumsum__"),
-                )
-                .with_column(
-                    col(&stack_col)
-                        .cum_sum(false)
-                        .shift(lit(1))
-                        .fill_null(lit(0.0))
-                        .over([col(&group_col)])
-                        .alias("__cumsum_lag__"),
-                );
-
-            let stack_expr = (col("__cumsum__") - col("__half_total__")).alias(&stack_col);
-            let stack_end_expr =
-                (col("__cumsum_lag__") - col("__half_total__")).alias(&stack_end_col);
-
-            let result = lf
-                .with_columns([stack_expr, stack_end_expr])
-                .collect()
-                .map_err(|e| {
-                    GgsqlError::InternalError(format!("Stack position adjustment failed: {}", e))
-                })?;
-
-            result
-                .drop("__half_total__")
-                .and_then(|df| df.drop("__cumsum__"))
-                .and_then(|df| df.drop("__cumsum_lag__"))
-                .map_err(|e| {
-                    GgsqlError::InternalError(format!("Failed to drop temp column: {}", e))
-                })
+            let half_total = col(&stack_col).sum().over([col(&group_col)]) / lit(2.0);
+            (
+                (col("__cumsum__") - half_total.clone()).alias(&stack_col),
+                (col("__cumsum_lag__") - half_total).alias(&stack_end_col),
+                vec!["__cumsum__", "__cumsum_lag__"],
+            )
         }
+    };
+
+    let mut result = lf
+        .with_columns([stack_expr, stack_end_expr])
+        .collect()
+        .map_err(|e| {
+            GgsqlError::InternalError(format!("Stack position adjustment failed: {}", e))
+        })?;
+
+    for col_name in temp_cols {
+        result = result
+            .drop(col_name)
+            .map_err(|e| GgsqlError::InternalError(format!("Failed to drop temp column: {}", e)))?;
     }
+
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -406,7 +353,7 @@ mod tests {
         let layer = make_test_layer();
         let spec = Plot::new();
 
-        let (result, width) = stack.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, width) = stack.apply_adjustment(df, &layer, &spec).unwrap();
 
         assert!(width.is_none());
         let pos2_col = result.column("__ggsql_aes_pos2__").unwrap();
@@ -434,18 +381,19 @@ mod tests {
     fn test_stack_center_parameter() {
         let stack = Stack;
         let df = make_test_df();
-        let spec = Plot::new();
+        let mut spec = Plot::new();
+        spec.scales.push(make_continuous_scale("pos2"));
 
         // Test default (center = false) - should stack from 0
         let layer = make_test_layer();
-        let (result_normal, _) = stack.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result_normal, _) = stack.apply_adjustment(df.clone(), &layer, &spec).unwrap();
 
         // Test with center = true - should center around 0
         let mut layer_centered = make_test_layer();
         layer_centered
             .parameters
             .insert("center".to_string(), ParameterValue::Boolean(true));
-        let (result_centered, _) = stack.apply_adjustment(&df, &layer_centered, &spec).unwrap();
+        let (result_centered, _) = stack.apply_adjustment(df, &layer_centered, &spec).unwrap();
 
         // Normal stacking should have pos2end starting at 0
         let pos2end_normal = result_normal.column("__ggsql_aes_pos2end__").unwrap();
@@ -490,7 +438,7 @@ mod tests {
         let mut spec = Plot::new();
         spec.scales.push(make_continuous_scale("pos2"));
 
-        let (result, _) = stack.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = stack.apply_adjustment(df, &layer, &spec).unwrap();
 
         // pos2 should be modified (stacked)
         assert!(result.column("__ggsql_aes_pos2__").is_ok());
@@ -539,7 +487,7 @@ mod tests {
         spec.scales.push(make_continuous_scale("pos1"));
         spec.scales.push(make_discrete_scale("pos2"));
 
-        let (result, _) = stack.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = stack.apply_adjustment(df, &layer, &spec).unwrap();
 
         // pos1 should be modified (stacked horizontally)
         assert!(
@@ -567,7 +515,8 @@ mod tests {
     fn test_stack_total_parameter() {
         let stack = Stack;
         let df = make_test_df();
-        let spec = Plot::new();
+        let mut spec = Plot::new();
+        spec.scales.push(make_continuous_scale("pos2"));
 
         // Test with total = 100 (percentage stacking)
         let mut layer = make_test_layer();
@@ -575,7 +524,7 @@ mod tests {
             .parameters
             .insert("total".to_string(), ParameterValue::Number(100.0));
 
-        let (result, _) = stack.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = stack.apply_adjustment(df, &layer, &spec).unwrap();
 
         // pos2 should sum to 100 within each group (A and B)
         let pos2_col = result.column("__ggsql_aes_pos2__").unwrap();
@@ -598,7 +547,8 @@ mod tests {
     fn test_stack_total_parameter_arbitrary_value() {
         let stack = Stack;
         let df = make_test_df();
-        let spec = Plot::new();
+        let mut spec = Plot::new();
+        spec.scales.push(make_continuous_scale("pos2"));
 
         // Test with total = 1 (normalized to 1, like old stack_fill behavior)
         let mut layer = make_test_layer();
@@ -606,7 +556,7 @@ mod tests {
             .parameters
             .insert("total".to_string(), ParameterValue::Number(1.0));
 
-        let (result, _) = stack.apply_adjustment(&df, &layer, &spec).unwrap();
+        let (result, _) = stack.apply_adjustment(df, &layer, &spec).unwrap();
 
         let pos2_col = result.column("__ggsql_aes_pos2__").unwrap();
         let pos2_vals: Vec<f64> = pos2_col.f64().unwrap().into_iter().flatten().collect();
@@ -656,8 +606,9 @@ mod tests {
         };
         layer.partition_by = vec!["__ggsql_aes_fill__".to_string()];
 
-        let spec = Plot::new();
-        let (result, _) = stack.apply_adjustment(&df, &layer, &spec).unwrap();
+        let mut spec = Plot::new();
+        spec.scales.push(make_continuous_scale("pos2"));
+        let (result, _) = stack.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Get pos2 values - should have no nulls after stacking
         let pos2_col = result.column("__ggsql_aes_pos2__").unwrap();
@@ -717,8 +668,9 @@ mod tests {
         };
         layer.partition_by = vec!["__ggsql_aes_fill__".to_string()];
 
-        let spec = Plot::new();
-        let (result, _) = stack.apply_adjustment(&df, &layer, &spec).unwrap();
+        let mut spec = Plot::new();
+        spec.scales.push(make_continuous_scale("pos2"));
+        let (result, _) = stack.apply_adjustment(df, &layer, &spec).unwrap();
 
         // After sorting by pos1 then fill, the order should be:
         // A-X(10), A-Y(20), A-Z(30) -> cumsum: 10, 30, 60

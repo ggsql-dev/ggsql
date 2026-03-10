@@ -253,16 +253,6 @@ impl GeomRenderer for RibbonRenderer {
 }
 
 // =============================================================================
-// Area Renderer
-// =============================================================================
-
-/// Renderer for area geom - uses DefaultRenderer behavior
-/// Stacking is handled by the position infrastructure via `position => 'stack'`
-pub struct AreaRenderer;
-
-impl GeomRenderer for AreaRenderer {}
-
-// =============================================================================
 // Polygon Renderer
 // =============================================================================
 
@@ -750,13 +740,11 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     match geom.geom_type() {
         GeomType::Path => Box::new(PathRenderer),
         GeomType::Bar => Box::new(BarRenderer),
-        GeomType::Area => Box::new(AreaRenderer),
         GeomType::Ribbon => Box::new(RibbonRenderer),
         GeomType::Polygon => Box::new(PolygonRenderer),
         GeomType::Boxplot => Box::new(BoxplotRenderer),
-        GeomType::Density => Box::new(AreaRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
-        // All other geoms (Point, Line, Tile, etc.) use the default renderer
+        // All other geoms (Point, Line, Area, Density, Tile, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
 }
