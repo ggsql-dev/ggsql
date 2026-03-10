@@ -22,17 +22,24 @@ impl GeomTrait for ErrorBar {
                 ("pos1min", DefaultAestheticValue::Null),
                 ("pos1max", DefaultAestheticValue::Null),
                 ("stroke", DefaultAestheticValue::String("black")),
-                ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
-            name: "position",
-            default: DefaultParamValue::String("identity"),
-        }]
+        &[
+            DefaultParam {
+                name: "position",
+                default: DefaultParamValue::String("identity"),
+            },
+            DefaultParam {
+                name: "width",
+                default: DefaultParamValue::Number(10.0),
+            },
+        ]
     }
 }
 

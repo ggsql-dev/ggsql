@@ -1,21 +1,21 @@
-//! AbLine geom implementation
+//! Linear geom implementation
 
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 
-/// AbLine geom - lines with slope and intercept
+/// Linear geom - lines with coefficient and intercept
 #[derive(Debug, Clone, Copy)]
-pub struct AbLine;
+pub struct Linear;
 
-impl GeomTrait for AbLine {
+impl GeomTrait for Linear {
     fn geom_type(&self) -> GeomType {
-        GeomType::AbLine
+        GeomType::Linear
     }
 
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("slope", DefaultAestheticValue::Required),
+                ("coef", DefaultAestheticValue::Required),
                 ("intercept", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
@@ -24,17 +24,10 @@ impl GeomTrait for AbLine {
             ],
         }
     }
-
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
-            name: "position",
-            default: DefaultParamValue::String("identity"),
-        }]
-    }
 }
 
-impl std::fmt::Display for AbLine {
+impl std::fmt::Display for Linear {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "abline")
+        write!(f, "linear")
     }
 }
