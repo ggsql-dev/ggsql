@@ -83,6 +83,9 @@ fn prepare_layer_data(
     let mut layer_renderers: Vec<Box<dyn GeomRenderer>> = Vec::new();
     let mut prepared_data: Vec<PreparedData> = Vec::new();
 
+    // Build context once for all layers
+    let context = layer::RenderContext::new(&spec.scales);
+
     for (layer_idx, layer) in spec.layers.iter().enumerate() {
         let data_key = &layer_data_keys[layer_idx];
         let df = data.get(data_key).ok_or_else(|| {
@@ -97,7 +100,7 @@ fn prepare_layer_data(
         let renderer = get_renderer(&layer.geom);
 
         // Prepare data using the renderer (handles both standard and composite cases)
-        let prepared = renderer.prepare_data(df, data_key, binned_columns, layer)?;
+        let prepared = renderer.prepare_data(df, data_key, binned_columns, layer, &context)?;
 
         // Add data to individual datasets based on prepared type
         match &prepared {
@@ -153,6 +156,9 @@ fn build_layers(
 ) -> Result<Vec<Value>> {
     let mut layers = Vec::new();
 
+    // Build context once for all layers
+    let context = layer::RenderContext::new(&spec.scales);
+
     for (layer_idx, layer) in spec.layers.iter().enumerate() {
         let data_key = &layer_data_keys[layer_idx];
         let df = data.get(data_key).unwrap();
@@ -187,7 +193,7 @@ fn build_layers(
         layer_spec["encoding"] = Value::Object(encoding);
 
         // Apply geom-specific spec modifications via renderer
-        renderer.modify_spec(&mut layer_spec, layer)?;
+        renderer.modify_spec(&mut layer_spec, layer, &context)?;
 
         // Finalize the layer (may expand into multiple layers for composite geoms)
         let final_layers = renderer.finalize(layer_spec, layer, data_key, prepared)?;
@@ -271,6 +277,17 @@ fn build_layer_encoding(
             channel_name = "fillOpacity".to_string();
         }
 
+        // Secondary positional channels (x2, y2, theta2, radius2) only support
+        // field/datum/value in Vega-Lite — not type, scale, axis, or title
+        if matches!(channel_name.as_str(), "x2" | "y2" | "theta2" | "radius2") {
+            let secondary_encoding = match value {
+                AestheticValue::Column { name: col, .. } => json!({"field": col}),
+                AestheticValue::Literal(lit) => json!({"value": lit.to_json()}),
+            };
+            encoding.insert(channel_name, secondary_encoding);
+            continue;
+        }
+
         let channel_encoding = build_encoding_channel(aesthetic, value, &mut enc_ctx)?;
         encoding.insert(channel_name, channel_encoding);
 
@@ -293,7 +310,8 @@ fn build_layer_encoding(
 
     // Apply geom-specific encoding modifications via renderer
     let renderer = get_renderer(&layer.geom);
-    renderer.modify_encoding(&mut encoding, layer)?;
+    let context = layer::RenderContext::new(&spec.scales);
+    renderer.modify_encoding(&mut encoding, layer, &context)?;
 
     Ok(encoding)
 }
@@ -340,26 +358,30 @@ fn apply_faceting(
 
             vl_spec["facet"] = facet_def;
 
-            // Move layer into spec (data reference stays at top level)
+            // Move layer + width/height into inner spec (FacetSpec disallows
+            // top-level width/height in VL v6)
             let mut spec_inner = json!({});
             if let Some(layer) = vl_spec.get("layer") {
                 spec_inner["layer"] = layer.clone();
             }
+            if let Some(w) = vl_spec.get("width").cloned() {
+                spec_inner["width"] = w;
+            }
+            if let Some(h) = vl_spec.get("height").cloned() {
+                spec_inner["height"] = h;
+            }
 
             vl_spec["spec"] = spec_inner;
-            vl_spec.as_object_mut().unwrap().remove("layer");
+            let obj = vl_spec.as_object_mut().unwrap();
+            obj.remove("layer");
+            obj.remove("width");
+            obj.remove("height");
 
-            // Apply scale resolution
             apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
-
-            // Apply additional properties (columns for wrap)
             apply_facet_properties(vl_spec, &facet.properties, true);
         }
         FacetLayout::Grid { row: _, column: _ } => {
             let mut facet_spec = serde_json::Map::new();
-
-            // Row facet: use internal aesthetic column "facet1"
-            // Vega-Lite requires "row" key in the facet object
             let row_aes_col = naming::aesthetic_column("facet1");
             if facet_df.column(&row_aes_col).is_ok() {
                 let row_scale = scales.iter().find(|s| s.aesthetic == "facet1");
@@ -388,19 +410,25 @@ fn apply_faceting(
 
             vl_spec["facet"] = Value::Object(facet_spec);
 
-            // Move layer into spec (data reference stays at top level)
+            // Move layer + width/height into inner spec (same as wrap above)
             let mut spec_inner = json!({});
             if let Some(layer) = vl_spec.get("layer") {
                 spec_inner["layer"] = layer.clone();
             }
+            if let Some(w) = vl_spec.get("width").cloned() {
+                spec_inner["width"] = w;
+            }
+            if let Some(h) = vl_spec.get("height").cloned() {
+                spec_inner["height"] = h;
+            }
 
             vl_spec["spec"] = spec_inner;
-            vl_spec.as_object_mut().unwrap().remove("layer");
+            let obj = vl_spec.as_object_mut().unwrap();
+            obj.remove("layer");
+            obj.remove("width");
+            obj.remove("height");
 
-            // Apply scale resolution
             apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
-
-            // Apply additional properties (not columns for grid)
             apply_facet_properties(vl_spec, &facet.properties, false);
         }
     }
@@ -847,19 +875,21 @@ fn apply_facet_properties(
     }
 }
 
+/// Vega-Lite schema URL. Update this, the vendored schema file, and
+/// the `include_str!` path in `VL_SCHEMA` when bumping versions.
+const VEGALITE_SCHEMA: &str = "https://vega.github.io/schema/vega-lite/v6.json";
+
 /// Vega-Lite JSON writer
 ///
 /// Generates Vega-Lite v6 specifications from ggsql specs and data.
 pub struct VegaLiteWriter {
-    /// Vega-Lite schema version
     schema: String,
 }
 
 impl VegaLiteWriter {
-    /// Create a new Vega-Lite writer with default settings
     pub fn new() -> Self {
         Self {
-            schema: "https://vega.github.io/schema/vega-lite/v6.json".to_string(),
+            schema: VEGALITE_SCHEMA.to_string(),
         }
     }
 
@@ -1060,12 +1090,100 @@ mod tests {
     use crate::plot::{Labels, Layer, ParameterValue};
     use crate::Geom;
     use polars::prelude::*;
+    use serde_json::Value;
     use std::collections::HashMap;
+    use std::sync::LazyLock;
 
     // Re-export test functions from submodules
     use super::data::find_bin_for_value;
     use super::encoding::infer_field_type;
     use super::layer::geom_to_mark;
+
+    fn sanitize_def_name(s: &str) -> String {
+        s.chars()
+            .map(|c| match c {
+                '<' | '>' | '(' | ')' | '|' | '[' | ']' | '"' | ' ' | '{' | '}' => '_',
+                _ => c,
+            })
+            .collect()
+    }
+
+    fn rewrite_refs(val: &mut Value) {
+        match val {
+            Value::Object(obj) => {
+                if let Some(Value::String(s)) = obj.get_mut("$ref") {
+                    if let Some(defname) = s.strip_prefix("#/definitions/") {
+                        let sanitized = sanitize_def_name(defname);
+                        if sanitized != defname {
+                            *s = format!("#/definitions/{}", sanitized);
+                        }
+                    }
+                }
+                for v in obj.values_mut() {
+                    rewrite_refs(v);
+                }
+            }
+            Value::Array(arr) => arr.iter_mut().for_each(rewrite_refs),
+            _ => {}
+        }
+    }
+
+    /// The VL v6 schema uses TypeScript-style generics in definition names (e.g.,
+    /// `MarkPropDef<(Gradient|string|null)>`) which are invalid in `$ref` URIs.
+    /// Rename those definitions and rewrite their `$ref` references.
+    fn sanitize_vegalite_schema(schema: &mut Value) {
+        let defs = match schema
+            .get_mut("definitions")
+            .and_then(|d| d.as_object_mut())
+        {
+            Some(d) => d,
+            None => return,
+        };
+
+        let substitutions: Vec<(String, String)> = defs
+            .keys()
+            .filter(|k| sanitize_def_name(k) != **k)
+            .map(|k| (k.clone(), sanitize_def_name(k)))
+            .collect();
+
+        if substitutions.is_empty() {
+            return;
+        }
+
+        for (orig, sanitized) in &substitutions {
+            if let Some(val) = defs.remove(orig.as_str()) {
+                defs.insert(sanitized.clone(), val);
+            }
+        }
+
+        rewrite_refs(schema);
+    }
+
+    static VL_SCHEMA: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
+        let mut schema: Value =
+            serde_json::from_str(include_str!("schema/v6.json")).expect("invalid schema JSON");
+        sanitize_vegalite_schema(&mut schema);
+        jsonschema::options()
+            .with_draft(jsonschema::Draft::Draft7)
+            .should_validate_formats(false)
+            .build(&schema)
+            .expect("invalid JSON Schema")
+    });
+
+    fn assert_valid_vegalite(json_str: &str) {
+        let spec: Value = serde_json::from_str(json_str).expect("invalid JSON");
+        let errors: Vec<String> = VL_SCHEMA
+            .iter_errors(&spec)
+            .map(|e| format!("  - {} (at {})", e, e.instance_path()))
+            .collect();
+        if !errors.is_empty() {
+            panic!(
+                "Vega-Lite schema validation failed ({} errors):\n{}",
+                errors.len(),
+                errors.join("\n")
+            );
+        }
+    }
 
     /// Helper to wrap a DataFrame in a data map for testing (uses layer 0 key)
     fn wrap_data(df: DataFrame) -> HashMap<String, DataFrame> {
@@ -1287,6 +1405,7 @@ mod tests {
         // Generate Vega-Lite JSON
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify structure (uses layer array with inline data)
@@ -1332,6 +1451,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         assert_eq!(vl_spec["title"], "My Chart");
@@ -1367,6 +1487,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["value"], "red");
@@ -1497,6 +1618,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data_for_layers(df, 2)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Should have layer array with 2 layers
@@ -1606,6 +1728,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that labelExpr contains VL's range-style format
@@ -1701,6 +1824,7 @@ mod tests {
         let result = writer.write(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
+        assert_valid_vegalite(&json_str);
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         // Single-layer spec uses layer array structure
@@ -1729,6 +1853,7 @@ mod tests {
         let result = writer.write(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
+        assert_valid_vegalite(&json_str);
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         let encoding = &json["layer"][0]["encoding"];
@@ -1772,6 +1897,7 @@ mod tests {
         let result = writer.write(&spec, &wrap_data(df));
         assert!(result.is_ok());
         let json_str = result.unwrap();
+        assert_valid_vegalite(&json_str);
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         let encoding = &json["layer"][0]["encoding"];
@@ -1811,6 +1937,7 @@ mod tests {
         let result = writer.write(&spec, &wrap_data(df));
         assert!(result.is_ok());
         let json_str = result.unwrap();
+        assert_valid_vegalite(&json_str);
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         // Point has linetype => Null, should not appear in encoding
@@ -1835,6 +1962,7 @@ mod tests {
         let result = writer.write(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
+        assert_valid_vegalite(&json_str);
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         let encoding = &json["layer"][0]["encoding"];
@@ -1854,6 +1982,7 @@ mod tests {
         let result = writer.write(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
+        assert_valid_vegalite(&json_str);
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         let encoding = &json["layer"][0]["encoding"];
@@ -2163,6 +2292,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify resolve.scale is set to independent for both axes
@@ -2246,6 +2376,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify only y scale is independent
@@ -2326,6 +2457,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify NO resolve.scale (fixed scales don't need it)
@@ -2344,5 +2476,104 @@ mod tests {
             has_domain,
             "x encoding SHOULD have domain when using fixed scales"
         );
+    }
+
+    #[test]
+    fn test_schema_validation_catches_invalid_spec() {
+        let writer = VegaLiteWriter::new();
+        let mut spec = build_spec(Geom::point());
+        let df = simple_df();
+        transform_spec(&mut spec);
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
+
+        let invalid = r#"{"$schema": "https://vega.github.io/schema/vega-lite/v6.json", "mark": "not_a_mark"}"#;
+        let result = std::panic::catch_unwind(|| assert_valid_vegalite(invalid));
+        assert!(result.is_err(), "invalid spec should fail validation");
+    }
+
+    #[test]
+    fn test_vendored_schema_matches_upstream() {
+        let response = match ureq::get(VEGALITE_SCHEMA).call() {
+            Ok(r) => r,
+            Err(_) => {
+                eprintln!("Skipping vendored schema check: could not reach {VEGALITE_SCHEMA}");
+                return;
+            }
+        };
+        let body = response.into_body().read_to_string().unwrap();
+        let upstream: Value = serde_json::from_str(&body).unwrap();
+        let vendored: Value =
+            serde_json::from_str(include_str!("schema/v6.json")).expect("invalid schema JSON");
+        assert_eq!(
+            upstream, vendored,
+            "Vendored schema does not match upstream at {VEGALITE_SCHEMA}. \
+             Re-download with: curl -sL '{VEGALITE_SCHEMA}' > src/writer/vegalite/schema/v6.json",
+        );
+    }
+
+    #[test]
+    fn test_secondary_channels_have_no_disallowed_properties() {
+        // Vega-Lite secondary channels (x2, y2, theta2, radius2) only support:
+        // field, aggregate, bandPosition, bin, timeUnit, title, value.
+        // Properties like type, scale, and axis must NOT be emitted.
+        let writer = VegaLiteWriter::new();
+
+        // Segment geom requires pos1end and pos2end as column mappings,
+        // which map to x2 and y2 in Vega-Lite.
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::segment())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x1".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y1".to_string()),
+            )
+            .with_aesthetic(
+                "xend".to_string(),
+                AestheticValue::standard_column("x2".to_string()),
+            )
+            .with_aesthetic(
+                "yend".to_string(),
+                AestheticValue::standard_column("y2".to_string()),
+            );
+        spec.layers.push(layer);
+
+        let df = df! {
+            "x1" => &[0, 1],
+            "y1" => &[0, 1],
+            "x2" => &[1, 2],
+            "y2" => &[1, 2],
+        }
+        .unwrap();
+
+        transform_spec(&mut spec);
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        for channel in ["x2", "y2"] {
+            for layer in vl_spec["layer"].as_array().unwrap() {
+                if let Some(enc) = layer.get("encoding").and_then(|e| e.get(channel)) {
+                    assert!(
+                        enc.get("field").is_some(),
+                        "{channel} should have 'field': {enc}"
+                    );
+                    assert!(
+                        enc.get("type").is_none(),
+                        "{channel} should not have 'type': {enc}"
+                    );
+                    assert!(
+                        enc.get("scale").is_none(),
+                        "{channel} should not have 'scale': {enc}"
+                    );
+                    assert!(
+                        enc.get("axis").is_none(),
+                        "{channel} should not have 'axis': {enc}"
+                    );
+                }
+            }
+        }
     }
 }
