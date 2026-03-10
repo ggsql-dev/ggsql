@@ -495,9 +495,9 @@ mod tests {
         assert!(text.is_supported("family"));
         assert_eq!(text.required(), &["pos1", "pos2"]);
 
-        // Statistical geoms require a positional aesthetic (pos_ = either pos1 or pos2)
-        assert_eq!(Geom::histogram().aesthetics().required(), &["pos_"]);
-        assert_eq!(Geom::density().aesthetics().required(), &["pos_"]);
+        // Statistical geoms require a positional aesthetic (bidirectional: accepts pos1 or pos2)
+        assert_eq!(Geom::histogram().aesthetics().required(), &["pos1"]);
+        assert_eq!(Geom::density().aesthetics().required(), &["pos1"]);
 
         // Ribbon requires pos2min/pos2max
         assert_eq!(

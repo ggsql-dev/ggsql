@@ -2,6 +2,7 @@
 //!
 //! These types are used by all geom implementations and are shared across the module.
 
+use crate::plot::aesthetic::parse_positional;
 use crate::{plot::types::DefaultAestheticValue, Mappings};
 
 // Re-export shared types from the central location
@@ -28,22 +29,14 @@ impl DefaultAesthetics {
 
     /// Get supported aesthetic names (excludes Delayed, for MAPPING validation)
     ///
-    /// Note: `pos_` is expanded to both `pos1` and `pos2` for orientation-agnostic geoms.
+    /// Returns the literal names from defaults. For bidirectional positional checking,
+    /// use `is_supported()` which handles pos1/pos2 equivalence.
     pub fn supported(&self) -> Vec<&'static str> {
-        let mut result = Vec::new();
-        for (name, value) in self.defaults {
-            if matches!(value, DefaultAestheticValue::Delayed) {
-                continue;
-            }
-            // Expand pos_ to both pos1 and pos2
-            if *name == "pos_" {
-                result.push("pos1");
-                result.push("pos2");
-            } else {
-                result.push(*name);
-            }
-        }
-        result
+        self.defaults
+            .iter()
+            .filter(|(_, value)| !matches!(value, DefaultAestheticValue::Delayed))
+            .map(|(name, _)| *name)
+            .collect()
     }
 
     /// Get required aesthetic names (those marked as Required)
@@ -62,18 +55,28 @@ impl DefaultAesthetics {
 
     /// Check if an aesthetic is supported (not Delayed)
     ///
-    /// Note: If `pos_` is in defaults, both `pos1` and `pos2` are considered supported.
+    /// Positional aesthetics are bidirectional: if pos1* is supported, pos2* is also
+    /// considered supported (and vice versa).
     pub fn is_supported(&self, name: &str) -> bool {
-        self.defaults.iter().any(|(n, value)| {
-            if matches!(value, DefaultAestheticValue::Delayed) {
-                return false;
-            }
-            // pos_ supports both pos1 and pos2
-            if *n == "pos_" && (name == "pos1" || name == "pos2") {
-                return true;
-            }
-            *n == name
-        })
+        // Check for direct match first
+        let direct_match = self
+            .defaults
+            .iter()
+            .any(|(n, value)| !matches!(value, DefaultAestheticValue::Delayed) && *n == name);
+        if direct_match {
+            return true;
+        }
+
+        // Check for bidirectional positional match
+        if let Some((slot, suffix)) = parse_positional(name) {
+            let other_slot = if slot == 1 { 2 } else { 1 };
+            let equivalent = format!("pos{}{}", other_slot, suffix);
+            return self.defaults.iter().any(|(n, value)| {
+                !matches!(value, DefaultAestheticValue::Delayed) && *n == equivalent
+            });
+        }
+
+        false
     }
 
     /// Check if an aesthetic exists (including Delayed)

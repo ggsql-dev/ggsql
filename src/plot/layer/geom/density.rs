@@ -27,9 +27,8 @@ impl GeomTrait for Density {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                // pos_ means either pos1 or pos2 (orientation-agnostic)
-                // User maps x for vertical density, y for horizontal
-                ("pos_", DefaultAestheticValue::Required),
+                // pos1 for values to estimate density of (bidirectional: accepts pos1 or pos2)
+                ("pos1", DefaultAestheticValue::Required),
                 ("weight", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),

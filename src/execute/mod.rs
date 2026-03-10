@@ -1097,11 +1097,23 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     {
         use crate::plot::layer::orientation::{flip_mappings, resolve_orientation, Orientation};
         let scales = specs[0].scales.clone();
-        for layer in &mut specs[0].layers {
+        let aesthetic_ctx = specs[0].get_aesthetic_context();
+        for (layer_idx, layer) in specs[0].layers.iter_mut().enumerate() {
             let orientation = resolve_orientation(layer, &scales);
             layer.orientation = Some(orientation);
             if orientation == Orientation::Transposed {
                 flip_mappings(layer);
+                // Also flip column names in type_info to match the flipped mappings
+                if layer_idx < layer_type_info.len() {
+                    for (name, _, _) in &mut layer_type_info[layer_idx] {
+                        if let Some(aesthetic) = naming::extract_aesthetic_name(name) {
+                            let flipped = aesthetic_ctx.flip_positional(aesthetic);
+                            if flipped != aesthetic {
+                                *name = naming::aesthetic_column(&flipped);
+                            }
+                        }
+                    }
+                }
             }
         }
     }

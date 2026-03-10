@@ -402,6 +402,33 @@ pub fn is_positional_aesthetic(name: &str) -> bool {
     false
 }
 
+/// Parse a positional aesthetic name to extract its slot number and suffix.
+///
+/// Returns `Some((slot, suffix))` for positional aesthetics:
+/// - `pos1` → (1, "")
+/// - `pos2min` → (2, "min")
+/// - `pos1end` → (1, "end")
+///
+/// Returns `None` for non-positional aesthetics.
+pub fn parse_positional(name: &str) -> Option<(u8, &str)> {
+    if !name.starts_with("pos") {
+        return None;
+    }
+    let rest = &name[3..];
+    let slot_char = rest.chars().next()?;
+    let slot = slot_char.to_digit(10)? as u8;
+    let suffix = &rest[1..];
+    Some((slot, suffix))
+}
+
+/// Remap a positional aesthetic to a different slot.
+///
+/// E.g., `remap_positional_slot("pos1min", 2)` → "pos2min"
+pub fn remap_positional_slot(name: &str, new_slot: u8) -> Option<String> {
+    let (_, suffix) = parse_positional(name)?;
+    Some(format!("pos{}{}", new_slot, suffix))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -610,5 +637,47 @@ mod tests {
         assert_eq!(ctx.primary_internal_positional("pos1min"), Some("pos1"));
         assert_eq!(ctx.primary_internal_positional("pos2end"), Some("pos2"));
         assert_eq!(ctx.primary_internal_positional("color"), Some("color"));
+    }
+
+    #[test]
+    fn test_parse_positional() {
+        // Primary positional
+        assert_eq!(parse_positional("pos1"), Some((1, "")));
+        assert_eq!(parse_positional("pos2"), Some((2, "")));
+
+        // Variants with suffixes
+        assert_eq!(parse_positional("pos1min"), Some((1, "min")));
+        assert_eq!(parse_positional("pos2max"), Some((2, "max")));
+        assert_eq!(parse_positional("pos1end"), Some((1, "end")));
+
+        // Non-positional
+        assert_eq!(parse_positional("color"), None);
+        assert_eq!(parse_positional("x"), None);
+        assert_eq!(parse_positional("xmin"), None);
+    }
+
+    #[test]
+    fn test_remap_positional_slot() {
+        // Remap slot 1 → slot 2
+        assert_eq!(remap_positional_slot("pos1", 2), Some("pos2".to_string()));
+        assert_eq!(
+            remap_positional_slot("pos1min", 2),
+            Some("pos2min".to_string())
+        );
+        assert_eq!(
+            remap_positional_slot("pos1end", 2),
+            Some("pos2end".to_string())
+        );
+
+        // Remap slot 2 → slot 1
+        assert_eq!(remap_positional_slot("pos2", 1), Some("pos1".to_string()));
+        assert_eq!(
+            remap_positional_slot("pos2max", 1),
+            Some("pos1max".to_string())
+        );
+
+        // Non-positional returns None
+        assert_eq!(remap_positional_slot("color", 1), None);
+        assert_eq!(remap_positional_slot("x", 2), None);
     }
 }

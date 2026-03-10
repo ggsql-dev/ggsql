@@ -179,9 +179,14 @@ fn detect_from_scales(
     let pos2_continuous = pos2_scale.is_some_and(is_continuous_scale);
 
     // Rule 2: Both continuous - range mapping axis is secondary
+    // Range mappings include min/max pairs and primary/end pairs
     if pos1_continuous && pos2_continuous {
-        let has_pos1_range = mappings.contains_key("pos1min") || mappings.contains_key("pos1max");
-        let has_pos2_range = mappings.contains_key("pos2min") || mappings.contains_key("pos2max");
+        let has_pos1_range = mappings.contains_key("pos1min")
+            || mappings.contains_key("pos1max")
+            || mappings.contains_key("pos1end");
+        let has_pos2_range = mappings.contains_key("pos2min")
+            || mappings.contains_key("pos2max")
+            || mappings.contains_key("pos2end");
 
         if has_pos1_range && !has_pos2_range {
             return Orientation::Transposed;
@@ -231,8 +236,8 @@ fn is_discrete_scale(scale: &Scale) -> bool {
 /// - pos1end ↔ pos2end
 /// - pos1offset ↔ pos2offset
 ///
-/// This is called before stat transforms for Transposed orientation layers,
-/// so stats always see "aligned" orientation. After stat transforms,
+/// This is called before stat transforms for Secondary orientation layers,
+/// so stats always see "standard" orientation. After stat transforms,
 /// this is called again to flip back to the correct output positions.
 pub fn flip_mappings(layer: &mut Layer) {
     let pairs = [
@@ -493,7 +498,7 @@ mod tests {
 
     #[test]
     fn test_resolve_orientation_ribbon_both_continuous_pos1_range() {
-        // Ribbon with both continuous scales and pos1 range → Transposed
+        // Ribbon with both continuous scales and pos1 range → Secondary
         let mut layer = Layer::new(Geom::ribbon());
         layer.mappings.insert(
             "pos2".to_string(),
@@ -522,7 +527,7 @@ mod tests {
 
     #[test]
     fn test_resolve_orientation_ribbon_pos1_continuous_pos2_discrete() {
-        // Ribbon with pos1 continuous, pos2 discrete → Transposed
+        // Ribbon with pos1 continuous, pos2 discrete → Secondary
         let mut layer = Layer::new(Geom::ribbon());
         layer.mappings.insert(
             "pos1".to_string(),
@@ -547,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_resolve_orientation_ribbon_pos1_discrete_pos2_continuous() {
-        // Ribbon with pos1 discrete, pos2 continuous → Aligned
+        // Ribbon with pos1 discrete, pos2 continuous → Primary
         let mut layer = Layer::new(Geom::ribbon());
         layer.mappings.insert(
             "pos1".to_string(),
@@ -560,6 +565,67 @@ mod tests {
 
         let mut scale1 = Scale::new("pos1");
         scale1.scale_type = Some(ScaleType::discrete());
+        let mut scale2 = Scale::new("pos2");
+        scale2.scale_type = Some(ScaleType::continuous());
+        let scales = vec![scale1, scale2];
+
+        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+    }
+
+    #[test]
+    fn test_resolve_orientation_ribbon_pos1_range_with_scales() {
+        // Ribbon with pos2 mapping and pos1 range (xmin/xmax) with continuous scales → Transposed
+        // This covers: DRAW ribbon MAPPING Date AS y, Temp AS xmax, 0.0 AS xmin
+        // Rule 2: Both continuous, pos1 has range → Transposed
+        let mut layer = Layer::new(Geom::ribbon());
+        layer.mappings.insert(
+            "pos2".to_string(),
+            AestheticValue::standard_column("Date".to_string()),
+        );
+        layer.mappings.insert(
+            "pos1min".to_string(),
+            AestheticValue::Literal(crate::plot::ParameterValue::Number(0.0)),
+        );
+        layer.mappings.insert(
+            "pos1max".to_string(),
+            AestheticValue::standard_column("Temp".to_string()),
+        );
+
+        // Scales are created and typed by execute pipeline
+        let mut scale1 = Scale::new("pos1");
+        scale1.scale_type = Some(ScaleType::continuous());
+        let mut scale2 = Scale::new("pos2");
+        scale2.scale_type = Some(ScaleType::continuous());
+        let scales = vec![scale1, scale2];
+
+        assert_eq!(
+            resolve_orientation(&layer, &scales),
+            Orientation::Transposed
+        );
+    }
+
+    #[test]
+    fn test_resolve_orientation_ribbon_pos2_range_with_scales() {
+        // Ribbon with pos1 mapping and pos2 range (ymin/ymax) with continuous scales → Aligned
+        // This covers: DRAW ribbon MAPPING Date AS x, Temp AS ymax, 0.0 AS ymin
+        // Rule 2: Both continuous, pos2 has range (or neither) → Aligned
+        let mut layer = Layer::new(Geom::ribbon());
+        layer.mappings.insert(
+            "pos1".to_string(),
+            AestheticValue::standard_column("Date".to_string()),
+        );
+        layer.mappings.insert(
+            "pos2min".to_string(),
+            AestheticValue::Literal(crate::plot::ParameterValue::Number(0.0)),
+        );
+        layer.mappings.insert(
+            "pos2max".to_string(),
+            AestheticValue::standard_column("Temp".to_string()),
+        );
+
+        // Scales are created and typed by execute pipeline
+        let mut scale1 = Scale::new("pos1");
+        scale1.scale_type = Some(ScaleType::continuous());
         let mut scale2 = Scale::new("pos2");
         scale2.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale1, scale2];

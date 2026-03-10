@@ -533,21 +533,30 @@ impl GeomRenderer for RibbonRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        _layer: &Layer,
+        layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        if let Some(ymax) = encoding.remove("ymax") {
-            encoding.insert("y".to_string(), ymax);
+        use crate::plot::layer::Orientation;
+
+        let is_horizontal = layer.orientation == Some(Orientation::Transposed);
+
+        // Remap min/max to primary/secondary based on orientation:
+        // - Aligned (vertical): ymax→y, ymin→y2
+        // - Transposed (horizontal): xmax→x, xmin→x2
+        let (max_key, min_key, target, target2) = if is_horizontal {
+            ("xmax", "xmin", "x", "x2")
+        } else {
+            ("ymax", "ymin", "y", "y2")
+        };
+
+        if let Some(max_val) = encoding.remove(max_key) {
+            encoding.insert(target.to_string(), max_val);
         }
-        if let Some(ymin) = encoding.remove("ymin") {
-            encoding.insert("y2".to_string(), ymin);
+        if let Some(min_val) = encoding.remove(min_key) {
+            encoding.insert(target2.to_string(), min_val);
         }
-        // Use row index field to preserve natural data order
-        // (we've already ordered in SQL via apply_layer_transforms)
-        encoding.insert(
-            "order".to_string(),
-            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
-        );
+
+        // Note: Don't add order encoding for area marks - it interferes with rendering
         Ok(())
     }
 }
