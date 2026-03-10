@@ -154,7 +154,7 @@ impl ScaleTypeTrait for Continuous {
     ///
     /// Supports OOB modes:
     /// - "censor": CASE WHEN col >= min AND col <= max THEN col ELSE NULL END
-    /// - "squish": MAX(min, MIN(col, max))
+    /// - "squish": GREATEST(min, LEAST(col, max))
     /// - "keep": No transformation (returns None)
     ///
     /// Only applies when input_range is explicitly specified via FROM clause.

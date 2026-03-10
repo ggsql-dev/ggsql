@@ -268,7 +268,7 @@ fn density_sql_bandwidth(
             SELECT
               {rule} AS bw{comma}
               {groups_str}
-            FROM ({from}) AS _qt
+            FROM ({from}) AS __ggsql_qt__
             WHERE {value} IS NOT NULL
             {group_by}
           )",
@@ -391,11 +391,10 @@ fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: u
     if !has_groups {
         return format!(
             "{seq}, grid AS (
-          SELECT {min} + ({seq_name}.n * {diff} / {n_points}) AS x
-          FROM {seq_name}
+          SELECT {min} + (__ggsql_seq__.n * {diff} / {n_points}) AS x
+          FROM __ggsql_seq__
         )",
             seq = seq,
-            seq_name = crate::naming::SERIES_SEQ,
             min = min,
             diff = diff,
             n_points = n_points
@@ -407,12 +406,11 @@ fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: u
         "{seq}, grid AS (
           SELECT
             {groups},
-            {min} + ({seq_name}.n * {diff} / {n_points}) AS x
-          FROM {seq_name}
+            {min} + (__ggsql_seq__.n * {diff} / {n_points}) AS x
+          FROM __ggsql_seq__
           CROSS JOIN (SELECT DISTINCT {groups} FROM ({from})) AS groups
         )",
         seq = seq,
-        seq_name = crate::naming::SERIES_SEQ,
         groups = groups,
         diff = diff,
         min = min,

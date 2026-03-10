@@ -25,17 +25,16 @@ pub fn sql_least(exprs: &[&str]) -> String {
 /// deep recursion: only recurses ~cbrt(n) times, then cross-joins three
 /// copies to cover the full range.
 pub fn sql_generate_series(n: usize) -> String {
-    use crate::naming::{SERIES_BASE, SERIES_SEQ};
     let base_size = (n as f64).cbrt().ceil() as usize;
     let base_sq = base_size * base_size;
     let base_max = base_size - 1;
     format!(
-        "{SERIES_BASE}(n) AS (\
-           SELECT 0 UNION ALL SELECT n + 1 FROM {SERIES_BASE} WHERE n < {base_max}\
+        "__ggsql_base__(n) AS (\
+           SELECT 0 UNION ALL SELECT n + 1 FROM __ggsql_base__ WHERE n < {base_max}\
          ),\
-         {SERIES_SEQ}(n) AS (\
+         __ggsql_seq__(n) AS (\
            SELECT CAST(a.n * {base_sq} + b.n * {base_size} + c.n AS REAL) AS n \
-           FROM {SERIES_BASE} a, {SERIES_BASE} b, {SERIES_BASE} c \
+           FROM __ggsql_base__ a, __ggsql_base__ b, __ggsql_base__ c \
            WHERE a.n * {base_sq} + b.n * {base_size} + c.n < {n}\
          )"
     )
@@ -49,7 +48,7 @@ pub fn sql_generate_series(n: usize) -> String {
 pub fn sql_percentile(column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
     let group_filter = groups
         .iter()
-        .map(|g| format!("AND _pct.{g} IS NOT DISTINCT FROM _qt.{g}"))
+        .map(|g| format!("AND __ggsql_pct__.{g} IS NOT DISTINCT FROM __ggsql_qt__.{g}"))
         .collect::<Vec<_>>()
         .join(" ");
 
@@ -65,7 +64,7 @@ pub fn sql_percentile(column: &str, fraction: f64, from: &str, groups: &[String]
         FROM (\
           SELECT {column} AS __val, \
                  NTILE(4) OVER (ORDER BY {column}) AS __tile \
-          FROM ({from}) AS _pct \
+          FROM ({from}) AS __ggsql_pct__ \
           WHERE {column} IS NOT NULL {group_filter}\
         ))"
     )
@@ -113,16 +112,28 @@ mod tests {
     fn test_generate_series_small() {
         let sql = sql_generate_series(8);
         // base_size = ceil(8^(1/3)) = 2, base_sq = 4, base_max = 1
-        assert!(sql.contains("WHERE n < 1"), "base CTE should recurse up to base_max=1");
-        assert!(sql.contains("a.n * 4 + b.n * 2 + c.n"), "cross-join arithmetic");
-        assert!(sql.contains("a.n * 4 + b.n * 2 + c.n < 8"), "seq CTE filters to n");
+        assert!(
+            sql.contains("WHERE n < 1"),
+            "base CTE should recurse up to base_max=1"
+        );
+        assert!(
+            sql.contains("a.n * 4 + b.n * 2 + c.n"),
+            "cross-join arithmetic"
+        );
+        assert!(
+            sql.contains("a.n * 4 + b.n * 2 + c.n < 8"),
+            "seq CTE filters to n"
+        );
     }
 
     #[test]
     fn test_generate_series_exact_cube() {
         let sql = sql_generate_series(27);
         // base_size = ceil(27^(1/3)) = 3, base_sq = 9, base_max = 2
-        assert!(sql.contains("WHERE n < 2"), "base CTE should recurse up to base_max=2");
+        assert!(
+            sql.contains("WHERE n < 2"),
+            "base CTE should recurse up to base_max=2"
+        );
         assert!(sql.contains("a.n * 9 + b.n * 3 + c.n < 27"));
     }
 
@@ -158,7 +169,7 @@ mod tests {
         assert!(sql.contains("__tile = 3"));
         assert!(sql.contains("NTILE(4)"));
         assert!(sql.contains("val AS __val"));
-        assert!(sql.contains("FROM (SELECT * FROM t) AS _pct"));
+        assert!(sql.contains("FROM (SELECT * FROM t) AS __ggsql_pct__"));
         assert!(!sql.contains("IS NOT DISTINCT FROM"));
     }
 
@@ -166,8 +177,8 @@ mod tests {
     fn test_percentile_with_groups() {
         let groups = vec!["region".to_string(), "year".to_string()];
         let sql = sql_percentile("price", 0.25, "SELECT * FROM sales", &groups);
-        assert!(sql.contains("_pct.region IS NOT DISTINCT FROM _qt.region"));
-        assert!(sql.contains("_pct.year IS NOT DISTINCT FROM _qt.year"));
+        assert!(sql.contains("__ggsql_pct__.region IS NOT DISTINCT FROM __ggsql_qt__.region"));
+        assert!(sql.contains("__ggsql_pct__.year IS NOT DISTINCT FROM __ggsql_qt__.year"));
     }
 
     #[test]

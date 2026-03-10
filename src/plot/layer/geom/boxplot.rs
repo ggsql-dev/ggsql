@@ -182,10 +182,10 @@ fn boxplot_sql_compute_summary(from: &str, groups: &[String], value: &str, coef:
             {q1} AS q1,
             {median} AS median,
             {q3} AS q3
-          FROM ({from}) AS _qt
+          FROM ({from}) AS __ggsql_qt__
           WHERE {value} IS NOT NULL
           GROUP BY {groups}
-        ) AS _fn",
+        ) AS __ggsql_fn__",
         lower_expr = lower_expr,
         upper_expr = upper_expr,
         groups = groups_str,
@@ -382,10 +382,10 @@ mod tests {
             {q1} AS q1,
             {median} AS median,
             {q3} AS q3
-          FROM (SELECT * FROM sales) AS _qt
+          FROM (SELECT * FROM sales) AS __ggsql_qt__
           WHERE price IS NOT NULL
           GROUP BY category
-        ) AS _fn"#
+        ) AS __ggsql_fn__"#
         );
 
         assert_eq!(result, expected);
@@ -412,10 +412,10 @@ mod tests {
             {q1} AS q1,
             {median} AS median,
             {q3} AS q3
-          FROM (SELECT * FROM data) AS _qt
+          FROM (SELECT * FROM data) AS __ggsql_qt__
           WHERE revenue IS NOT NULL
           GROUP BY region, product
-        ) AS _fn"#
+        ) AS __ggsql_fn__"#
         );
 
         assert_eq!(result, expected);
