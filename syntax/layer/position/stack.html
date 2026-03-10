@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.27">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Stack – ggsql</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<link href="../../../assets/icon.svg" rel="icon" type="image/svg+xml">
+<script src="../../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../../site_libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-8caf6eaa0938078aad3b4e3e78d03e50.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-391dc9eaa9d5ee7385b50e8209b8eefe.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-8caf6eaa0938078aad3b4e3e78d03e50.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap-a5939c2ae72a7b0c79969b5f3e255c36.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark-94b57c8b454cc9c3df3757d9a61d1e94.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-a5939c2ae72a7b0c79969b5f3e255c36.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+<script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
+
+
+<meta property="og:title" content="Stack – ggsql">
+<meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
+<meta property="og:image" content="https://ggsql.org/syntax/layer/position/assets/logo.png">
+<meta property="og:site_name" content="ggsql">
+<meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
+handle is made up of the classic database silo icon and is coloured in a
+gradient teal.
+">
+<meta name="twitter:title" content="Stack – ggsql">
+<meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
+<meta name="twitter:image" content="https://ggsql.org/syntax/layer/position/assets/logo.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
+handle is made up of the classic database silo icon and is coloured in a
+gradient teal.
+">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="../../../index.html" class="navbar-brand navbar-brand-logo">
+    <img src="../../../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../../../assets/icon.svg" alt="" class="navbar-logo dark-content">
+    </a>
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">ggsql</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../installation.html"> 
+<span class="menu-text">Installing ggsql</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-syntax" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Syntax</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-syntax">    
+        <li>
+    <a class="dropdown-item" href="../../../syntax/index.html">
+ <span class="dropdown-text">Overview</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/visualise.html">
+ <span class="dropdown-text"><code>VISUALISE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/draw.html">
+ <span class="dropdown-text"><code>DRAW</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/scale.html">
+ <span class="dropdown-text"><code>SCALE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/facet.html">
+ <span class="dropdown-text"><code>FACET</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/project.html">
+ <span class="dropdown-text"><code>PROJECT</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/label.html">
+ <span class="dropdown-text"><code>LABEL</code></span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../../../examples.html"> 
+<span class="menu-text">Examples</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+    <div class="dropdown">
+      <a href="" title="" id="quarto-navigation-tool-dropdown-0" class="quarto-navigation-tool dropdown-toggle px-1" data-bs-toggle="dropdown" aria-expanded="false" role="link" aria-label=""><i class="bi bi-github"></i></a>
+      <ul class="dropdown-menu" aria-labelledby="quarto-navigation-tool-dropdown-0">
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql">
+            Source Code
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql/issues">
+            Report a Bug
+            </a>
+          </li>
+      </ul>
+    </div>
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Layers</li><li class="breadcrumb-item"><a href="../../../syntax/layer/position/dodge.html">Position adjustment</a></li><li class="breadcrumb-item"><a href="../../../syntax/layer/position/stack.html">Stack</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+  <div id="quarto-announcement" data-announcement-id="5ba53bd994f13c27f80364dba6b56481" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in early development and all functionality are subject to change</p>
+</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header sidebar-header-stacked">
+      <a href="../../../index.html" class="sidebar-logo-link">
+      <img src="../../../assets/logo.png" alt="" class="sidebar-logo light-content py-0 d-lg-inline d-none">
+      <img src="../../../assets/logo.png" alt="" class="sidebar-logo dark-content py-0 d-lg-inline d-none">
+      </a>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Overview</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Main clauses</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/visualise.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>VISUALISE</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/draw.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>DRAW</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/scale.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>SCALE</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/facet.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>FACET</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/project.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>PROJECT</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/label.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>LABEL</code></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Layers</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="false">
+ <span class="menu-text">Types</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth2 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/area.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Area</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/bar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Bar</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/boxplot.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Boxplot</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/density.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Density</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/errorbar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Errorbar</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/histogram.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Histogram</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/line.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Line</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/linear.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Linear line</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/path.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Path</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/point.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Point</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/polygon.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Polygon</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/ribbon.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Ribbon</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/rule.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Rule</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/segment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Segment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/type/violin.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Violin</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+          <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true">
+ <span class="menu-text">Position adjustment</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/position/dodge.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Dodge</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/position/identity.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Identity</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/position/jitter.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Jitter</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/layer/position/stack.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Stack</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" role="navigation" aria-expanded="true">
+ <span class="menu-text">Scales</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-5" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="false">
+ <span class="menu-text">Types</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-6" class="collapse list-unstyled sidebar-section depth2 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/type/binned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Binned</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/type/continuous.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Continuous</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/type/discrete.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Discrete</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/type/identity.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Identity</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/type/ordinal.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Ordinal</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+          <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-7" role="navigation" aria-expanded="false">
+ <span class="menu-text">Aesthetics</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-7" role="navigation" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-7" class="collapse list-unstyled sidebar-section depth2 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/aesthetic/0_position.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Position</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/aesthetic/1_color.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Fill and Stroke</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/aesthetic/2_opacity.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Opacity</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/aesthetic/linetype.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Linetype</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/aesthetic/linewidth.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Linewidth</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/aesthetic/shape.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Shape</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/aesthetic/size.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Size</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/scale/aesthetic/Z_faceting.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Faceting</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-8" role="navigation" aria-expanded="true">
+ <span class="menu-text">Coordinate systems</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-8" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-8" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/coord/cartesian.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Cartesian</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/coord/polar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Polar</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#position-scale-requirements" id="toc-position-scale-requirements" class="nav-link active" data-scroll-target="#position-scale-requirements">Position scale requirements</a></li>
+  <li><a href="#settings" id="toc-settings" class="nav-link" data-scroll-target="#settings">Settings</a></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Layers</li><li class="breadcrumb-item"><a href="../../../syntax/layer/position/dodge.html">Position adjustment</a></li><li class="breadcrumb-item"><a href="../../../syntax/layer/position/stack.html">Stack</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">Stack</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<blockquote class="blockquote">
+<p>Positions are set within the <a href="../../../syntax/clause/draw.html"><code>DRAW</code> clause</a>, using the <code>SETTING</code> subclause. Read the documentation for this clause for a thorough description of how to use it.</p>
+</blockquote>
+<p>The stack position adjustment works by stacking objects on top of each other. It makes the most sense for layer types where their height is the primary encoding (i.e.&nbsp;they naturally extend from 0). Stack is the default position for bar and area plots</p>
+<section id="position-scale-requirements" class="level2">
+<h2 class="anchored" data-anchor-id="position-scale-requirements">Position scale requirements</h2>
+<p>Stack requires a continuous scale with a range mapping (e.g.&nbsp;either <code>y</code> + <code>yend</code> or <code>ymin</code> + <code>ymax</code>) and requires all ranges to be positive with a baseline of zero. The axis that satisfies this will be used as the stacking direction</p>
+</section>
+<section id="settings" class="level2">
+<h2 class="anchored" data-anchor-id="settings">Settings</h2>
+<p>Apart from the settings of the layer type, setting <code>position =&gt; 'stack'</code> will allow these additional settings:</p>
+<ul>
+<li><code>center</code>: Should the full stack be centered around 0. Can be used in conjunction with area layers to create steamgraphs. Default to <code>false</code></li>
+<li><code>total</code>: Sets a total value to which each stack height is normalised. Setting this value leads to ‘fill’ behaviour. Defaults to <code>null</code> (no normalisation)</li>
+</ul>
+</section>
+<section id="examples" class="level2">
+<h2 class="anchored" data-anchor-id="examples">Examples</h2>
+<p>Stack is the default for bar and area</p>
+<div id="13911b30" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Day <span class="kw">AS</span> <span class="at">x</span>, Wind <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">area</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> Month AS <span class="at">fill</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">FILTER</span> Day <span class="op">&lt;=</span> <span class="dv">30</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">ORDINAL</span> <span class="at">fill</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<div id="vis-1773134749463"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":7.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":16.0,"__ggsql_aes_pos2end__":7.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":20.1,"__ggsql_aes_pos2end__":16.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":27.0,"__ggsql_aes_pos2end__":20.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":33.9,"__ggsql_aes_pos2end__":27.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":17.7,"__ggsql_aes_pos2end__":8.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":26.9,"__ggsql_aes_pos2end__":17.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":40.7,"__ggsql_aes_pos2end__":26.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":45.8,"__ggsql_aes_pos2end__":40.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":12.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":28.700000000000003,"__ggsql_aes_pos2end__":12.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":37.900000000000006,"__ggsql_aes_pos2end__":28.700000000000003,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":37.900000000000006,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":48.1,"__ggsql_aes_pos2end__":45.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":20.7,"__ggsql_aes_pos2end__":11.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":31.6,"__ggsql_aes_pos2end__":20.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":38.5,"__ggsql_aes_pos2end__":31.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":43.1,"__ggsql_aes_pos2end__":38.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":14.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":22.9,"__ggsql_aes_pos2end__":14.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":27.5,"__ggsql_aes_pos2end__":22.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":34.9,"__ggsql_aes_pos2end__":27.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":42.3,"__ggsql_aes_pos2end__":34.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":14.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":29.200000000000003,"__ggsql_aes_pos2end__":14.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":40.1,"__ggsql_aes_pos2end__":29.200000000000003,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":44.7,"__ggsql_aes_pos2end__":40.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":60.2,"__ggsql_aes_pos2end__":44.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":8.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":18.299999999999997,"__ggsql_aes_pos2end__":8.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":23.4,"__ggsql_aes_pos2end__":18.299999999999997,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":27.4,"__ggsql_aes_pos2end__":23.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":38.3,"__ggsql_aes_pos2end__":27.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":13.8,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":20.700000000000003,"__ggsql_aes_pos2end__":13.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":27.000000000000004,"__ggsql_aes_pos2end__":20.700000000000003,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":37.3,"__ggsql_aes_pos2end__":27.000000000000004,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":47.60000000000001,"__ggsql_aes_pos2end__":37.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":20.1,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":33.900000000000006,"__ggsql_aes_pos2end__":20.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":39.60000000000001,"__ggsql_aes_pos2end__":33.900000000000006,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":47.60000000000001,"__ggsql_aes_pos2end__":39.60000000000001,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":58.50000000000001,"__ggsql_aes_pos2end__":47.60000000000001,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":8.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":20.1,"__ggsql_aes_pos2end__":8.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":27.5,"__ggsql_aes_pos2end__":20.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":36.1,"__ggsql_aes_pos2end__":27.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":45.8,"__ggsql_aes_pos2end__":36.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":6.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":17.8,"__ggsql_aes_pos2end__":6.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":26.4,"__ggsql_aes_pos2end__":17.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":37.9,"__ggsql_aes_pos2end__":26.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":52.8,"__ggsql_aes_pos2end__":37.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":18.9,"__ggsql_aes_pos2end__":9.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":33.2,"__ggsql_aes_pos2end__":18.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":44.7,"__ggsql_aes_pos2end__":33.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":60.2,"__ggsql_aes_pos2end__":44.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":9.2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":17.2,"__ggsql_aes_pos2end__":9.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":32.1,"__ggsql_aes_pos2end__":17.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":43.6,"__ggsql_aes_pos2end__":32.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":49.9,"__ggsql_aes_pos2end__":43.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":10.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":24.700000000000003,"__ggsql_aes_pos2end__":10.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":39.6,"__ggsql_aes_pos2end__":24.700000000000003,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":49.3,"__ggsql_aes_pos2end__":39.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":60.2,"__ggsql_aes_pos2end__":49.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":13.2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":24.7,"__ggsql_aes_pos2end__":13.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":39.0,"__ggsql_aes_pos2end__":24.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":50.5,"__ggsql_aes_pos2end__":39.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":62.0,"__ggsql_aes_pos2end__":50.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":26.4,"__ggsql_aes_pos2end__":11.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":33.3,"__ggsql_aes_pos2end__":26.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":43.599999999999994,"__ggsql_aes_pos2end__":33.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":50.49999999999999,"__ggsql_aes_pos2end__":43.599999999999994,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":12.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":32.7,"__ggsql_aes_pos2end__":12.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":43.0,"__ggsql_aes_pos2end__":32.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":49.3,"__ggsql_aes_pos2end__":43.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":63.099999999999994,"__ggsql_aes_pos2end__":49.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":18.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":27.6,"__ggsql_aes_pos2end__":18.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":33.9,"__ggsql_aes_pos2end__":27.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":41.3,"__ggsql_aes_pos2end__":33.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":51.599999999999994,"__ggsql_aes_pos2end__":41.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":23.0,"__ggsql_aes_pos2end__":11.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":28.1,"__ggsql_aes_pos2end__":23.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":39.0,"__ggsql_aes_pos2end__":28.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":49.3,"__ggsql_aes_pos2end__":39.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":20.0,"__ggsql_aes_pos2end__":9.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":31.5,"__ggsql_aes_pos2end__":20.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":41.8,"__ggsql_aes_pos2end__":31.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":49.8,"__ggsql_aes_pos2end__":41.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":16.0,"__ggsql_aes_pos2end__":9.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":22.9,"__ggsql_aes_pos2end__":16.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":38.4,"__ggsql_aes_pos2end__":22.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":51.0,"__ggsql_aes_pos2end__":38.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":16.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":18.3,"__ggsql_aes_pos2end__":16.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":28.0,"__ggsql_aes_pos2end__":18.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":42.3,"__ggsql_aes_pos2end__":28.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":51.5,"__ggsql_aes_pos2end__":42.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":14.3,"__ggsql_aes_pos2end__":9.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":25.799999999999997,"__ggsql_aes_pos2end__":14.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":38.4,"__ggsql_aes_pos2end__":25.799999999999997,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":48.7,"__ggsql_aes_pos2end__":38.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":12.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":18.3,"__ggsql_aes_pos2end__":12.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":26.9,"__ggsql_aes_pos2end__":18.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":36.599999999999994,"__ggsql_aes_pos2end__":26.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":46.89999999999999,"__ggsql_aes_pos2end__":36.599999999999994,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":16.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":24.6,"__ggsql_aes_pos2end__":16.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":32.6,"__ggsql_aes_pos2end__":24.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":36.0,"__ggsql_aes_pos2end__":32.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":52.6,"__ggsql_aes_pos2end__":36.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":14.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":22.9,"__ggsql_aes_pos2end__":14.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":31.5,"__ggsql_aes_pos2end__":22.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":39.5,"__ggsql_aes_pos2end__":31.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":46.4,"__ggsql_aes_pos2end__":39.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":18.3,"__ggsql_aes_pos2end__":8.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":30.3,"__ggsql_aes_pos2end__":18.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":36.0,"__ggsql_aes_pos2end__":30.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":49.2,"__ggsql_aes_pos2end__":36.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":12.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":23.5,"__ggsql_aes_pos2end__":12.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":30.9,"__ggsql_aes_pos2end__":23.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":40.599999999999994,"__ggsql_aes_pos2end__":30.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":54.89999999999999,"__ggsql_aes_pos2end__":40.599999999999994,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":14.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":29.8,"__ggsql_aes_pos2end__":14.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":37.2,"__ggsql_aes_pos2end__":29.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":39.5,"__ggsql_aes_pos2end__":37.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":47.5,"__ggsql_aes_pos2end__":39.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":5.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":13.7,"__ggsql_aes_pos2end__":5.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":21.1,"__ggsql_aes_pos2end__":13.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":27.4,"__ggsql_aes_pos2end__":21.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":38.900000000000006,"__ggsql_aes_pos2end__":27.4,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == '5' ? '5' : datum.label == '9' ? '9' : datum.label == '8' ? '8' : datum.label == '6' ? '6' : datum.label == '7' ? '7' : datum.label"},"scale":{"domain":[5.0,6.0,7.0,8.0,9.0],"range":["#021326","#1a5f8e","#408a7f","#86c168","#fcf3d8"]},"title":"Month","type":"ordinal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '10' ? '10' : datum.label == '0' ? '0' : datum.label == '20' ? '20' : datum.label == '30' ? '30' : datum.label","values":[0.0,10.0,20.0,30.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[-0.4500000000000002,31.45],"zero":false},"title":"Day","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '20' ? '20' : datum.label == '0' ? '0' : datum.label == '60' ? '60' : datum.label == '40' ? '40' : datum.label","values":[0.0,20.0,40.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-3.155,66.255],"zero":false},"stack":null,"title":"Wind","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__","stack":null}},"mark":{"clip":true,"type":"area"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1773134749463';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>Turn it off to see the effect (stacking is nonsensical for wind measurements)</p>
+<div id="cdbd3a9f" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Day <span class="kw">AS</span> <span class="at">x</span>, Wind <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">area</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> Month AS <span class="at">fill</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'identity'</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">FILTER</span> Day <span class="op">&lt;=</span> <span class="dv">30</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">ORDINAL</span> <span class="at">fill</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div id="vis-1773134749485"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":7.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":12.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":14.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":14.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":8.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":13.8,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":20.1,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":8.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":6.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":9.2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":10.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":13.2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":12.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":18.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":16.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":12.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":16.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":14.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":12.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":14.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":5.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":8.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":16.1,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":9.2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":8.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":14.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":6.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":13.8,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":10.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":9.2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":13.8,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":14.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":20.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":9.2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":10.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":6.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":1.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":4.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":6.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":10.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":14.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":4.1,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":9.2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":9.2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":10.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":4.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":10.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":5.1,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":6.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":5.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":7.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":8.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":14.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":14.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":14.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":14.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":6.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":10.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":6.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":5.1,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":6.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":8.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":8.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":12.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":7.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":7.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":7.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":6.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":13.8,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":7.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":6.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":7.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":4.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":4.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":10.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":8.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":10.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":6.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":7.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":10.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":10.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":15.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":14.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":12.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":3.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":5.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":2.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":6.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":6.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":5.1,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":2.8,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":4.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":7.4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":15.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":10.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":10.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":10.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":14.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":15.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":6.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":10.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":6.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":13.8,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":10.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":10.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":12.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":9.2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":10.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":10.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":16.6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":6.9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":13.2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":14.3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == '9' ? '9' : datum.label == '6' ? '6' : datum.label == '7' ? '7' : datum.label == '8' ? '8' : datum.label == '5' ? '5' : datum.label"},"scale":{"domain":[5.0,6.0,7.0,8.0,9.0],"range":["#021326","#1a5f8e","#408a7f","#86c168","#fcf3d8"]},"title":"Month","type":"ordinal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '20' ? '20' : datum.label == '30' ? '30' : datum.label == '0' ? '0' : datum.label == '10' ? '10' : datum.label","values":[0.0,10.0,20.0,30.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[-0.4500000000000002,31.45],"zero":false},"title":"Day","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '20' ? '20' : datum.label == '5' ? '5' : datum.label == '10' ? '10' : datum.label == '0' ? '0' : datum.label == '15' ? '15' : datum.label","values":[0.0,5.0,10.0,15.0,20.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-1.035,21.735],"zero":false},"stack":null,"title":"Wind","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__","stack":null}},"mark":{"clip":true,"type":"area"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1773134749485';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>Set <code>center =&gt; true</code> to create a steamgraph</p>
+<div id="5550b418" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Day <span class="kw">AS</span> <span class="at">x</span>, Wind <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">area</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> Month AS <span class="at">fill</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> center <span class="op">=&gt;</span> true</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">FILTER</span> Day <span class="op">&lt;=</span> <span class="dv">30</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">ORDINAL</span> <span class="at">fill</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<div id="vis-1773134749507"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":-9.55,"__ggsql_aes_pos2end__":-16.95,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":-0.9499999999999992,"__ggsql_aes_pos2end__":-9.55,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":3.150000000000002,"__ggsql_aes_pos2end__":-0.9499999999999992,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":10.05,"__ggsql_aes_pos2end__":3.150000000000002,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":16.95,"__ggsql_aes_pos2end__":10.05,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":-14.900000000000002,"__ggsql_aes_pos2end__":-22.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":-5.200000000000003,"__ggsql_aes_pos2end__":-14.900000000000002,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":3.999999999999997,"__ggsql_aes_pos2end__":-5.200000000000003,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":17.8,"__ggsql_aes_pos2end__":3.999999999999997,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":22.9,"__ggsql_aes_pos2end__":17.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":-11.45,"__ggsql_aes_pos2end__":-24.05,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":4.650000000000002,"__ggsql_aes_pos2end__":-11.45,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":13.850000000000003,"__ggsql_aes_pos2end__":4.650000000000002,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":21.250000000000004,"__ggsql_aes_pos2end__":13.850000000000003,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":24.05,"__ggsql_aes_pos2end__":21.250000000000004,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":-10.05,"__ggsql_aes_pos2end__":-21.55,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":-0.8500000000000014,"__ggsql_aes_pos2end__":-10.05,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":10.05,"__ggsql_aes_pos2end__":-0.8500000000000014,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":16.95,"__ggsql_aes_pos2end__":10.05,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":21.55,"__ggsql_aes_pos2end__":16.95,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":-6.849999999999998,"__ggsql_aes_pos2end__":-21.15,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":1.75,"__ggsql_aes_pos2end__":-6.849999999999998,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":6.350000000000001,"__ggsql_aes_pos2end__":1.75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":13.75,"__ggsql_aes_pos2end__":6.350000000000001,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":21.15,"__ggsql_aes_pos2end__":13.75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":-15.2,"__ggsql_aes_pos2end__":-30.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":-0.8999999999999986,"__ggsql_aes_pos2end__":-15.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":10.0,"__ggsql_aes_pos2end__":-0.8999999999999986,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":14.6,"__ggsql_aes_pos2end__":10.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":30.1,"__ggsql_aes_pos2end__":14.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":-10.55,"__ggsql_aes_pos2end__":-19.15,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":-0.8500000000000014,"__ggsql_aes_pos2end__":-10.55,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":4.25,"__ggsql_aes_pos2end__":-0.8500000000000014,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":8.25,"__ggsql_aes_pos2end__":4.25,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":19.15,"__ggsql_aes_pos2end__":8.25,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":-10.000000000000004,"__ggsql_aes_pos2end__":-23.800000000000004,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":-3.1000000000000014,"__ggsql_aes_pos2end__":-10.000000000000004,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":3.1999999999999993,"__ggsql_aes_pos2end__":-3.1000000000000014,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":13.5,"__ggsql_aes_pos2end__":3.1999999999999993,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":23.800000000000004,"__ggsql_aes_pos2end__":13.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":-9.150000000000002,"__ggsql_aes_pos2end__":-29.250000000000004,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":4.650000000000002,"__ggsql_aes_pos2end__":-9.150000000000002,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":10.350000000000003,"__ggsql_aes_pos2end__":4.650000000000002,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":18.350000000000005,"__ggsql_aes_pos2end__":10.350000000000003,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":29.250000000000004,"__ggsql_aes_pos2end__":18.350000000000005,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":-14.3,"__ggsql_aes_pos2end__":-22.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":-2.799999999999997,"__ggsql_aes_pos2end__":-14.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":4.600000000000001,"__ggsql_aes_pos2end__":-2.799999999999997,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":13.200000000000005,"__ggsql_aes_pos2end__":4.600000000000001,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":22.9,"__ggsql_aes_pos2end__":13.200000000000005,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":-19.5,"__ggsql_aes_pos2end__":-26.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":-8.599999999999998,"__ggsql_aes_pos2end__":-19.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":0.0,"__ggsql_aes_pos2end__":-8.599999999999998,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":11.5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":26.4,"__ggsql_aes_pos2end__":11.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":-20.4,"__ggsql_aes_pos2end__":-30.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":-11.200000000000005,"__ggsql_aes_pos2end__":-20.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":3.1000000000000014,"__ggsql_aes_pos2end__":-11.200000000000005,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":14.6,"__ggsql_aes_pos2end__":3.1000000000000014,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":30.1,"__ggsql_aes_pos2end__":14.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":-15.75,"__ggsql_aes_pos2end__":-24.95,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":-7.75,"__ggsql_aes_pos2end__":-15.75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":7.150000000000002,"__ggsql_aes_pos2end__":-7.75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":18.65,"__ggsql_aes_pos2end__":7.150000000000002,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":24.95,"__ggsql_aes_pos2end__":18.65,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":-19.199999999999996,"__ggsql_aes_pos2end__":-30.1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":-5.399999999999995,"__ggsql_aes_pos2end__":-19.199999999999996,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":9.500000000000004,"__ggsql_aes_pos2end__":-5.399999999999995,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":19.2,"__ggsql_aes_pos2end__":9.500000000000004,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":30.1,"__ggsql_aes_pos2end__":19.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":-17.8,"__ggsql_aes_pos2end__":-31.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":-6.300000000000001,"__ggsql_aes_pos2end__":-17.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":-6.300000000000001,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":19.5,"__ggsql_aes_pos2end__":8.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":31.0,"__ggsql_aes_pos2end__":19.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":-13.749999999999996,"__ggsql_aes_pos2end__":-25.249999999999996,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":1.150000000000002,"__ggsql_aes_pos2end__":-13.749999999999996,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":8.05,"__ggsql_aes_pos2end__":1.150000000000002,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":18.35,"__ggsql_aes_pos2end__":8.05,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":25.249999999999996,"__ggsql_aes_pos2end__":18.35,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":-19.549999999999997,"__ggsql_aes_pos2end__":-31.549999999999997,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":1.1500000000000057,"__ggsql_aes_pos2end__":-19.549999999999997,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":11.450000000000005,"__ggsql_aes_pos2end__":1.1500000000000057,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":17.75,"__ggsql_aes_pos2end__":11.450000000000005,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":31.549999999999997,"__ggsql_aes_pos2end__":17.75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":-7.399999999999999,"__ggsql_aes_pos2end__":-25.799999999999997,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":1.8000000000000007,"__ggsql_aes_pos2end__":-7.399999999999999,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":8.100000000000001,"__ggsql_aes_pos2end__":1.8000000000000007,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":15.5,"__ggsql_aes_pos2end__":8.100000000000001,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":25.799999999999997,"__ggsql_aes_pos2end__":15.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":-13.15,"__ggsql_aes_pos2end__":-24.65,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":-1.6499999999999986,"__ggsql_aes_pos2end__":-13.15,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":3.450000000000003,"__ggsql_aes_pos2end__":-1.6499999999999986,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":14.35,"__ggsql_aes_pos2end__":3.450000000000003,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":24.65,"__ggsql_aes_pos2end__":14.35,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":-15.2,"__ggsql_aes_pos2end__":-24.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":-4.899999999999999,"__ggsql_aes_pos2end__":-15.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":6.600000000000001,"__ggsql_aes_pos2end__":-4.899999999999999,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":16.9,"__ggsql_aes_pos2end__":6.600000000000001,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":24.9,"__ggsql_aes_pos2end__":16.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":-15.8,"__ggsql_aes_pos2end__":-25.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":-9.5,"__ggsql_aes_pos2end__":-15.8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":-2.6000000000000014,"__ggsql_aes_pos2end__":-9.5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":12.9,"__ggsql_aes_pos2end__":-2.6000000000000014,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":25.5,"__ggsql_aes_pos2end__":12.9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":-9.15,"__ggsql_aes_pos2end__":-25.75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":-7.449999999999999,"__ggsql_aes_pos2end__":-9.15,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":2.25,"__ggsql_aes_pos2end__":-7.449999999999999,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":16.549999999999997,"__ggsql_aes_pos2end__":2.25,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":25.75,"__ggsql_aes_pos2end__":16.549999999999997,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":-14.650000000000002,"__ggsql_aes_pos2end__":-24.35,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":-10.050000000000002,"__ggsql_aes_pos2end__":-14.650000000000002,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":1.4499999999999955,"__ggsql_aes_pos2end__":-10.050000000000002,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":14.049999999999995,"__ggsql_aes_pos2end__":1.4499999999999955,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":24.35,"__ggsql_aes_pos2end__":14.049999999999995,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":-11.449999999999996,"__ggsql_aes_pos2end__":-23.449999999999996,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":-5.149999999999995,"__ggsql_aes_pos2end__":-11.449999999999996,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":3.450000000000003,"__ggsql_aes_pos2end__":-5.149999999999995,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":13.15,"__ggsql_aes_pos2end__":3.450000000000003,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":23.449999999999996,"__ggsql_aes_pos2end__":13.15,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":-9.7,"__ggsql_aes_pos2end__":-26.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":-1.6999999999999993,"__ggsql_aes_pos2end__":-9.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":6.300000000000001,"__ggsql_aes_pos2end__":-1.6999999999999993,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":9.7,"__ggsql_aes_pos2end__":6.300000000000001,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":26.3,"__ggsql_aes_pos2end__":9.7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":-8.299999999999999,"__ggsql_aes_pos2end__":-23.2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":-0.3000000000000007,"__ggsql_aes_pos2end__":-8.299999999999999,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":8.3,"__ggsql_aes_pos2end__":-0.3000000000000007,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":16.3,"__ggsql_aes_pos2end__":8.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":23.2,"__ggsql_aes_pos2end__":16.3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":-16.6,"__ggsql_aes_pos2end__":-24.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":-6.300000000000001,"__ggsql_aes_pos2end__":-16.6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":5.699999999999999,"__ggsql_aes_pos2end__":-6.300000000000001,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":11.4,"__ggsql_aes_pos2end__":5.699999999999999,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":24.6,"__ggsql_aes_pos2end__":11.4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":-15.449999999999996,"__ggsql_aes_pos2end__":-27.449999999999996,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":-3.949999999999996,"__ggsql_aes_pos2end__":-15.449999999999996,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":3.450000000000003,"__ggsql_aes_pos2end__":-3.949999999999996,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":13.15,"__ggsql_aes_pos2end__":3.450000000000003,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":27.449999999999996,"__ggsql_aes_pos2end__":13.15,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":-8.85,"__ggsql_aes_pos2end__":-23.75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":6.050000000000001,"__ggsql_aes_pos2end__":-8.85,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":13.450000000000005,"__ggsql_aes_pos2end__":6.050000000000001,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":15.75,"__ggsql_aes_pos2end__":13.450000000000005,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":23.75,"__ggsql_aes_pos2end__":15.75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":-13.750000000000004,"__ggsql_aes_pos2end__":-19.450000000000003,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":-5.7500000000000036,"__ggsql_aes_pos2end__":-13.750000000000004,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":1.6499999999999986,"__ggsql_aes_pos2end__":-5.7500000000000036,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":7.949999999999999,"__ggsql_aes_pos2end__":1.6499999999999986,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":19.450000000000003,"__ggsql_aes_pos2end__":7.949999999999999,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == '8' ? '8' : datum.label == '6' ? '6' : datum.label == '7' ? '7' : datum.label == '9' ? '9' : datum.label == '5' ? '5' : datum.label"},"scale":{"domain":[5.0,6.0,7.0,8.0,9.0],"range":["#021326","#1a5f8e","#408a7f","#86c168","#fcf3d8"]},"title":"Month","type":"ordinal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '20' ? '20' : datum.label == '10' ? '10' : datum.label == '30' ? '30' : datum.label","values":[0.0,10.0,20.0,30.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[-0.4500000000000002,31.45],"zero":false},"title":"Day","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '20' ? '20' : datum.label == '0' ? '0' : datum.label == '-20' ? '-20' : datum.label","values":[-20.0,0.0,20.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-34.705,34.705],"zero":false},"stack":null,"title":"Wind","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__","stack":null}},"mark":{"clip":true,"type":"area"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1773134749507';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>Use <code>total</code> to see the percentage contribution from each group</p>
+<div id="3c2d4bd1" class="cell" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Day <span class="kw">AS</span> <span class="at">x</span>, Wind <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">area</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> Month AS <span class="at">fill</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> total <span class="op">=&gt;</span> <span class="dv">100</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">FILTER</span> Day <span class="op">&lt;=</span> <span class="dv">30</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">ORDINAL</span> <span class="at">fill</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<div id="vis-1773134749529"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":21.828908554572273,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":47.1976401179941,"__ggsql_aes_pos2end__":21.828908554572273,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":59.29203539823009,"__ggsql_aes_pos2end__":47.1976401179941,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":79.64601769911505,"__ggsql_aes_pos2end__":59.29203539823009,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":1,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":79.64601769911505,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":17.46724890829694,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":38.64628820960698,"__ggsql_aes_pos2end__":17.46724890829694,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":58.73362445414846,"__ggsql_aes_pos2end__":38.64628820960698,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":88.8646288209607,"__ggsql_aes_pos2end__":58.73362445414846,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":2,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":88.8646288209607,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":26.19542619542619,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":59.66735966735968,"__ggsql_aes_pos2end__":26.19542619542619,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":78.7941787941788,"__ggsql_aes_pos2end__":59.66735966735968,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":94.1787941787942,"__ggsql_aes_pos2end__":78.7941787941788,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":3,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":94.1787941787942,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":26.68213457076566,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":48.02784222737819,"__ggsql_aes_pos2end__":26.68213457076566,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":73.31786542923435,"__ggsql_aes_pos2end__":48.02784222737819,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":89.32714617169373,"__ggsql_aes_pos2end__":73.31786542923435,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":4,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":89.32714617169373,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":33.806146572104026,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":54.1371158392435,"__ggsql_aes_pos2end__":33.806146572104026,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":65.01182033096927,"__ggsql_aes_pos2end__":54.1371158392435,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":82.50591016548464,"__ggsql_aes_pos2end__":65.01182033096927,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":5,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":82.50591016548464,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":24.750830564784053,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":48.50498338870432,"__ggsql_aes_pos2end__":24.750830564784053,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":66.61129568106313,"__ggsql_aes_pos2end__":48.50498338870432,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":74.25249169435216,"__ggsql_aes_pos2end__":66.61129568106313,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":6,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":74.25249169435216,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":22.45430809399478,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":47.780678851174926,"__ggsql_aes_pos2end__":22.45430809399478,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":61.096605744125334,"__ggsql_aes_pos2end__":47.780678851174926,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":71.54046997389034,"__ggsql_aes_pos2end__":61.096605744125334,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":7,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":71.54046997389034,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":28.99159663865546,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":43.48739495798319,"__ggsql_aes_pos2end__":28.99159663865546,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":56.72268907563025,"__ggsql_aes_pos2end__":43.48739495798319,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":78.36134453781513,"__ggsql_aes_pos2end__":56.72268907563025,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":8,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":78.36134453781513,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":34.35897435897436,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":57.94871794871795,"__ggsql_aes_pos2end__":34.35897435897436,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":67.6923076923077,"__ggsql_aes_pos2end__":57.94871794871795,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":81.36752136752136,"__ggsql_aes_pos2end__":67.6923076923077,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":9,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":81.36752136752136,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":18.777292576419217,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":43.88646288209608,"__ggsql_aes_pos2end__":18.777292576419217,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":60.043668122270745,"__ggsql_aes_pos2end__":43.88646288209608,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":78.82096069868997,"__ggsql_aes_pos2end__":60.043668122270745,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":10,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":78.82096069868997,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":13.06818181818182,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":33.71212121212122,"__ggsql_aes_pos2end__":13.06818181818182,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":50.0,"__ggsql_aes_pos2end__":33.71212121212122,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":71.78030303030303,"__ggsql_aes_pos2end__":50.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":11,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":71.78030303030303,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":16.112956810631225,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":31.395348837209298,"__ggsql_aes_pos2end__":16.112956810631225,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":55.14950166112958,"__ggsql_aes_pos2end__":31.395348837209298,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":74.25249169435216,"__ggsql_aes_pos2end__":55.14950166112958,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":12,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":74.25249169435216,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":18.43687374749499,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":34.46893787575151,"__ggsql_aes_pos2end__":18.43687374749499,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":64.32865731462927,"__ggsql_aes_pos2end__":34.46893787575151,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":87.374749498998,"__ggsql_aes_pos2end__":64.32865731462927,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":13,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":87.374749498998,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":18.106312292358805,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":41.02990033222592,"__ggsql_aes_pos2end__":18.106312292358805,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":65.78073089700997,"__ggsql_aes_pos2end__":41.02990033222592,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":81.89368770764119,"__ggsql_aes_pos2end__":65.78073089700997,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":14,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":81.89368770764119,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":21.29032258064516,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":39.83870967741935,"__ggsql_aes_pos2end__":21.29032258064516,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":62.903225806451616,"__ggsql_aes_pos2end__":39.83870967741935,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":81.45161290322581,"__ggsql_aes_pos2end__":62.903225806451616,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":15,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":81.45161290322581,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":22.772277227722775,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":52.27722772277228,"__ggsql_aes_pos2end__":22.772277227722775,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":65.94059405940594,"__ggsql_aes_pos2end__":52.27722772277228,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":86.33663366336634,"__ggsql_aes_pos2end__":65.94059405940594,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":16,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":86.33663366336634,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":19.01743264659271,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":51.82250396196514,"__ggsql_aes_pos2end__":19.01743264659271,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":68.14580031695722,"__ggsql_aes_pos2end__":51.82250396196514,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":78.12995245641838,"__ggsql_aes_pos2end__":68.14580031695722,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":17,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":78.12995245641838,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":35.65891472868217,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":53.48837209302326,"__ggsql_aes_pos2end__":35.65891472868217,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":65.69767441860466,"__ggsql_aes_pos2end__":53.48837209302326,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":80.03875968992247,"__ggsql_aes_pos2end__":65.69767441860466,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":18,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":80.03875968992247,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":23.32657200811359,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":46.65314401622718,"__ggsql_aes_pos2end__":23.32657200811359,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":56.997971602434085,"__ggsql_aes_pos2end__":46.65314401622718,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":79.10750507099392,"__ggsql_aes_pos2end__":56.997971602434085,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":19,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":79.10750507099392,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":19.477911646586342,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":40.16064257028113,"__ggsql_aes_pos2end__":19.477911646586342,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":63.25301204819277,"__ggsql_aes_pos2end__":40.16064257028113,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":83.93574297188755,"__ggsql_aes_pos2end__":63.25301204819277,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":20,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":83.93574297188755,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":19.019607843137255,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":31.37254901960784,"__ggsql_aes_pos2end__":19.019607843137255,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":44.90196078431372,"__ggsql_aes_pos2end__":31.37254901960784,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":75.29411764705883,"__ggsql_aes_pos2end__":44.90196078431372,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":21,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":75.29411764705883,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":32.23300970873787,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":35.53398058252427,"__ggsql_aes_pos2end__":32.23300970873787,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":54.36893203883495,"__ggsql_aes_pos2end__":35.53398058252427,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":82.13592233009707,"__ggsql_aes_pos2end__":54.36893203883495,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":22,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":82.13592233009707,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":19.917864476386036,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":29.363449691991782,"__ggsql_aes_pos2end__":19.917864476386036,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":52.97741273100615,"__ggsql_aes_pos2end__":29.363449691991782,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":78.8501026694045,"__ggsql_aes_pos2end__":52.97741273100615,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":23,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":78.8501026694045,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":25.586353944562905,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":39.01918976545843,"__ggsql_aes_pos2end__":25.586353944562905,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":57.356076759061835,"__ggsql_aes_pos2end__":39.01918976545843,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":78.03837953091684,"__ggsql_aes_pos2end__":57.356076759061835,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":24,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":78.03837953091684,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":31.558935361216733,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":46.7680608365019,"__ggsql_aes_pos2end__":31.558935361216733,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":61.97718631178707,"__ggsql_aes_pos2end__":46.7680608365019,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":68.44106463878326,"__ggsql_aes_pos2end__":61.97718631178707,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":25,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":68.44106463878326,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":32.112068965517246,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":49.353448275862064,"__ggsql_aes_pos2end__":32.112068965517246,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":67.88793103448276,"__ggsql_aes_pos2end__":49.353448275862064,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":85.12931034482759,"__ggsql_aes_pos2end__":67.88793103448276,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":26,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":85.12931034482759,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":16.260162601626014,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":37.19512195121951,"__ggsql_aes_pos2end__":16.260162601626014,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":61.58536585365854,"__ggsql_aes_pos2end__":37.19512195121951,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":73.17073170731707,"__ggsql_aes_pos2end__":61.58536585365854,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":27,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":73.17073170731707,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":21.857923497267763,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":42.80510018214937,"__ggsql_aes_pos2end__":21.857923497267763,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":56.28415300546449,"__ggsql_aes_pos2end__":42.80510018214937,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":73.95264116575592,"__ggsql_aes_pos2end__":56.28415300546449,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":28,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":73.95264116575592,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":31.36842105263158,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":62.73684210526316,"__ggsql_aes_pos2end__":31.36842105263158,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":78.31578947368422,"__ggsql_aes_pos2end__":62.73684210526316,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":83.15789473684211,"__ggsql_aes_pos2end__":78.31578947368422,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":29,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":83.15789473684211,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":5,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":14.652956298200513,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":6,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":35.218508997429296,"__ggsql_aes_pos2end__":14.652956298200513,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":7,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":54.24164524421593,"__ggsql_aes_pos2end__":35.218508997429296,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":8,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":70.4370179948586,"__ggsql_aes_pos2end__":54.24164524421593,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":9,"__ggsql_aes_pos1__":30,"__ggsql_aes_pos2__":100.0,"__ggsql_aes_pos2end__":70.4370179948586,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == '7' ? '7' : datum.label == '8' ? '8' : datum.label == '9' ? '9' : datum.label == '6' ? '6' : datum.label == '5' ? '5' : datum.label"},"scale":{"domain":[5.0,6.0,7.0,8.0,9.0],"range":["#021326","#1a5f8e","#408a7f","#86c168","#fcf3d8"]},"title":"Month","type":"ordinal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '30' ? '30' : datum.label == '10' ? '10' : datum.label == '20' ? '20' : datum.label","values":[0.0,10.0,20.0,30.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[-0.4500000000000002,31.45],"zero":false},"title":"Day","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '50' ? '50' : datum.label == '75' ? '75' : datum.label == '25' ? '25' : datum.label == '100' ? '100' : datum.label","values":[0.0,25.0,50.0,75.0,100.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-5.0,105.0],"zero":false},"stack":null,"title":"Wind","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__","stack":null}},"mark":{"clip":true,"type":"area"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1773134749529';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/ggsql\.org");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>
