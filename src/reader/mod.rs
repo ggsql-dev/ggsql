@@ -970,6 +970,40 @@ mod tests {
     }
 
     #[test]
+    fn test_stacked_bar_chart_dummy_x() {
+        // Test stacked bar chart with no x mapping (dummy x column)
+        // This is the case where only fill is mapped: all bars at same x position should stack
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW bar MAPPING species AS fill
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+
+        // Verify y and y2 encodings exist (stacked bars use y/y2 for range)
+        let encoding = &layer["encoding"];
+        assert!(encoding["y"].is_object(), "Should have y encoding");
+        assert!(
+            encoding["y2"].is_object(),
+            "Should have y2 encoding for stacked bars with dummy x. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+
+        // Verify Vega-Lite stacking is disabled (we handle it ourselves)
+        assert!(
+            encoding["y"]["stack"].is_null(),
+            "y encoding should have stack: null to disable VL stacking. Got: {}",
+            serde_json::to_string_pretty(&encoding["y"]).unwrap()
+        );
+    }
+
+    #[test]
     fn test_dodged_bar_chart() {
         // Test dodged bar chart via position => 'dodge'
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
