@@ -97,6 +97,18 @@ impl SqliteReader {
         &self.conn
     }
 
+    /// List table names known to this reader.
+    ///
+    /// When `internal` is false, filters out internal tables (prefixed with `__ggsql_`).
+    pub fn list_tables(&self, internal: bool) -> Vec<String> {
+        self.registered_tables
+            .borrow()
+            .iter()
+            .filter(|name| internal || !name.starts_with("__ggsql_"))
+            .cloned()
+            .collect()
+    }
+
     /// Check if a table is registered
     fn table_exists(&self, name: &str) -> bool {
         let sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1";
