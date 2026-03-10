@@ -75,6 +75,7 @@ pub use tile::Tile;
 pub use violin::Violin;
 
 use crate::plot::types::{DefaultAestheticValue, ParameterValue, Schema};
+use crate::reader::SqlDialect;
 
 /// Enum of all geom types for pattern matching and serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -198,6 +199,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _group_by: &[String],
         _parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        _dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         Ok(StatResult::Identity)
     }
@@ -408,6 +410,7 @@ impl Geom {
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         self.0.apply_stat_transform(
             query,
@@ -416,6 +419,7 @@ impl Geom {
             group_by,
             parameters,
             execute_query,
+            dialect,
         )
     }
 

@@ -7,7 +7,7 @@ use crate::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
         ParameterValue, StatResult,
     },
-    utils::{sql_generate_series, sql_least, sql_percentile},
+    reader::SqlDialect,
     GgsqlError, Mappings, Result,
 };
 use std::collections::HashMap;
@@ -89,6 +89,7 @@ impl GeomTrait for Density {
         group_by: &[String],
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        dialect: &dyn SqlDialect,
     ) -> crate::Result<super::StatResult> {
         stat_density(
             query,
@@ -97,6 +98,7 @@ impl GeomTrait for Density {
             group_by,
             parameters,
             execute_query,
+            dialect,
         )
     }
 }
@@ -132,6 +134,7 @@ pub(crate) fn stat_density(
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
     execute: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+    dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
     let value = get_column_name(aesthetics, value_aesthetic).ok_or_else(|| {
         GgsqlError::ValidationError(format!(
@@ -142,9 +145,9 @@ pub(crate) fn stat_density(
     let weight = get_column_name(aesthetics, "weight");
 
     let (min, max) = compute_range_sql(&value, query, execute)?;
-    let bw_cte = density_sql_bandwidth(query, group_by, &value, parameters);
+    let bw_cte = density_sql_bandwidth(query, group_by, &value, parameters, dialect);
     let data_cte = build_data_cte(&value, weight.as_deref(), query, group_by);
-    let grid_cte = build_grid_cte(group_by, query, min, max, 512);
+    let grid_cte = build_grid_cte(group_by, query, min, max, 512, dialect);
     let kernel = choose_kde_kernel(parameters)?;
     let density_query = compute_density(
         value_aesthetic,
@@ -227,6 +230,7 @@ fn density_sql_bandwidth(
     groups: &[String],
     value: &str,
     parameters: &HashMap<String, ParameterValue>,
+    dialect: &dyn SqlDialect,
 ) -> String {
     let mut group_by = String::new();
     let mut comma = String::new();
@@ -272,7 +276,7 @@ fn density_sql_bandwidth(
             WHERE {value} IS NOT NULL
             {group_by}
           )",
-        rule = silverman_rule(adjust, value, from, groups),
+        rule = silverman_rule(adjust, value, from, groups, dialect),
         value = value,
         group_by = group_by,
         groups_str = groups_str,
@@ -281,15 +285,15 @@ fn density_sql_bandwidth(
     )
 }
 
-fn silverman_rule(adjust: f64, value_column: &str, from: &str, groups: &[String]) -> String {
+fn silverman_rule(adjust: f64, value_column: &str, from: &str, groups: &[String], dialect: &dyn SqlDialect) -> String {
     // The query computes Silverman's rule of thumb (R's `stats::bw.nrd0()`).
     // We absorb the adjustment in the 0.9 multiplier of the rule
     let adjust = 0.9 * adjust;
     let stddev = format!("SQRT(AVG({v}*{v}) - AVG({v})*AVG({v}))", v = value_column);
-    let q75 = sql_percentile(value_column, 0.75, from, groups);
-    let q25 = sql_percentile(value_column, 0.25, from, groups);
+    let q75 = dialect.sql_percentile(value_column, 0.75, from, groups);
+    let q25 = dialect.sql_percentile(value_column, 0.25, from, groups);
     let iqr = format!("({q75} - {q25}) / 1.34");
-    let min_expr = sql_least(&[&stddev, &iqr]);
+    let min_expr = dialect.sql_least(&[&stddev, &iqr]);
     format!("{adjust} * {min_expr} * POW(COUNT(*), -0.2)")
 }
 
@@ -375,7 +379,7 @@ fn build_data_cte(value: &str, weight: Option<&str>, from: &str, group_by: &[Str
     )
 }
 
-fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: usize) -> String {
+fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: usize, dialect: &dyn SqlDialect) -> String {
     let has_groups = !groups.is_empty();
     let n_points = n_points - 1; // GENERATE_SERIES gives on point for free
     let diff = (max - min).abs();
@@ -386,7 +390,7 @@ fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: u
     let max = max + (expand * diff * 0.5);
     let diff = (max - min).abs();
 
-    let seq = sql_generate_series(n_points + 1);
+    let seq = dialect.sql_generate_series(n_points + 1);
 
     if !has_groups {
         return format!(
@@ -505,6 +509,7 @@ fn compute_density(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::reader::AnsiDialect;
     use crate::reader::duckdb::DuckDBReader;
     use crate::reader::Reader;
 
@@ -519,9 +524,9 @@ mod tests {
             ParameterValue::String("gaussian".to_string()),
         );
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, query, &groups);
-        let grid_cte = build_grid_cte(&groups, query, 0.0, 10.0, 512);
+        let grid_cte = build_grid_cte(&groups, query, 0.0, 10.0, 512, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
@@ -582,9 +587,9 @@ mod tests {
             ParameterValue::String("gaussian".to_string()),
         );
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, query, &groups);
-        let grid_cte = build_grid_cte(&groups, query, -10.0, 10.0, 512);
+        let grid_cte = build_grid_cte(&groups, query, -10.0, 10.0, 512, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
@@ -671,14 +676,14 @@ mod tests {
         let groups: Vec<String> = vec![];
         let parameters = HashMap::new(); // No explicit bandwidth - will compute
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
 
         // Verify SQL uses NTILE-based percentile subqueries
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(bw_cte.contains("NTILE(4)"));
         assert!(bw_cte.contains("bandwidth AS"));
         // Verify the generated rule matches silverman_rule output
-        let expected_rule = silverman_rule(1.0, "x", query, &groups);
+        let expected_rule = silverman_rule(1.0, "x", query, &groups, &AnsiDialect);
         assert!(normalize(&bw_cte).contains(&normalize(&expected_rule)));
 
         // Verify bandwidth computation executes
@@ -695,12 +700,12 @@ mod tests {
             "SELECT x, region FROM (VALUES (1.0, 'A'), (2.0, 'A'), (3.0, 'B')) AS t(x, region)";
         let groups = vec!["region".to_string()];
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
 
         // Verify SQL uses NTILE-based percentile subqueries with grouping
         assert!(bw_cte.contains("NTILE(4)"));
         assert!(bw_cte.contains("GROUP BY region"));
-        let expected_rule = silverman_rule(1.0, "x", query, &groups);
+        let expected_rule = silverman_rule(1.0, "x", query, &groups, &AnsiDialect);
         assert!(normalize(&bw_cte).contains(&normalize(&expected_rule)));
 
         // Verify grouped bandwidth computation executes
@@ -723,10 +728,10 @@ mod tests {
             ParameterValue::String(kernel_name.to_string()),
         );
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, query, &groups);
         // Use wide range to capture essentially all density mass
-        let grid_cte = build_grid_cte(&groups, query, -5.0, 15.0, 512);
+        let grid_cte = build_grid_cte(&groups, query, -5.0, 15.0, 512, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
@@ -831,8 +836,8 @@ mod tests {
             ParameterValue::String("gaussian".to_string()),
         );
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
-        let grid_cte = build_grid_cte(&groups, query, 0.0, 4.0, 100);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
+        let grid_cte = build_grid_cte(&groups, query, 0.0, 4.0, 100, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
 
         // Unweighted (default weights of 1.0)
@@ -993,9 +998,9 @@ mod tests {
             ParameterValue::String("gaussian".to_string()),
         );
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, query, &groups);
-        let grid_cte = build_grid_cte(&groups, query, 0.0, 100.0, 512);
+        let grid_cte = build_grid_cte(&groups, query, 0.0, 100.0, 512, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 

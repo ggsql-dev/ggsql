@@ -11,6 +11,42 @@ use rusqlite::Connection;
 use std::cell::RefCell;
 use std::collections::HashSet;
 
+/// SQLite SQL dialect.
+///
+/// Overrides type name methods for SQLite's limited type system
+/// (TEXT for dates, REAL for numbers, INTEGER for booleans).
+pub struct SqliteDialect;
+
+impl super::SqlDialect for SqliteDialect {
+    fn string_type_name(&self) -> Option<&str> {
+        Some("TEXT")
+    }
+
+    fn number_type_name(&self) -> Option<&str> {
+        Some("REAL")
+    }
+
+    fn integer_type_name(&self) -> Option<&str> {
+        Some("INTEGER")
+    }
+
+    fn boolean_type_name(&self) -> Option<&str> {
+        Some("INTEGER")
+    }
+
+    fn date_type_name(&self) -> Option<&str> {
+        Some("TEXT")
+    }
+
+    fn datetime_type_name(&self) -> Option<&str> {
+        Some("TEXT")
+    }
+
+    fn time_type_name(&self) -> Option<&str> {
+        Some("TEXT")
+    }
+}
+
 /// SQLite database reader
 ///
 /// Executes SQL queries against SQLite databases (in-memory or file-based)
@@ -372,32 +408,8 @@ impl Reader for SqliteReader {
         Ok(())
     }
 
-    fn string_type_name(&self) -> Option<&str> {
-        Some("TEXT")
-    }
-
-    fn number_type_name(&self) -> Option<&str> {
-        Some("REAL")
-    }
-
-    fn integer_type_name(&self) -> Option<&str> {
-        Some("INTEGER")
-    }
-
-    fn boolean_type_name(&self) -> Option<&str> {
-        Some("INTEGER")
-    }
-
-    fn date_type_name(&self) -> Option<&str> {
-        Some("TEXT")
-    }
-
-    fn datetime_type_name(&self) -> Option<&str> {
-        Some("TEXT")
-    }
-
-    fn time_type_name(&self) -> Option<&str> {
-        Some("TEXT")
+    fn dialect(&self) -> &dyn super::SqlDialect {
+        &SqliteDialect
     }
 }
 
