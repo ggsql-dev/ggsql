@@ -1,3 +1,4 @@
+import "./styles.css";
 import vegaEmbed from "vega-embed";
 import { Warn } from "vega";
 import { WasmContextManager } from "./context";
@@ -162,6 +163,34 @@ function initializeExamples() {
   });
 }
 
+function initializeMobileExamples() {
+  const select = document.getElementById(
+    "mobile-example-select",
+  ) as HTMLSelectElement;
+
+  let currentSection = "";
+  let optgroup: HTMLOptGroupElement | null = null;
+  examples.forEach((example, index) => {
+    if (example.section !== currentSection) {
+      currentSection = example.section;
+      optgroup = document.createElement("optgroup");
+      optgroup.label = currentSection;
+      select.appendChild(optgroup);
+    }
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = example.name;
+    optgroup!.appendChild(option);
+  });
+
+  select.addEventListener("change", () => {
+    const idx = parseInt(select.value, 10);
+    if (!isNaN(idx) && examples[idx]) {
+      editorManager.setValue(examples[idx].query);
+    }
+  });
+}
+
 async function main() {
   try {
     setStatus("Loading WASM module...", "loading");
@@ -181,6 +210,7 @@ async function main() {
     tableManager.refresh();
 
     initializeExamples();
+    initializeMobileExamples();
 
     editorManager.onChange((query) => {
       executeQuery(query);
