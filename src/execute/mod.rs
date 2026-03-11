@@ -1368,6 +1368,36 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
+    fn test_layer_references_cte_with_column_aliases() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            WITH t(value, label) AS (
+                SELECT * FROM (VALUES
+                    (70, 'Target'),
+                    (80, 'Warning'),
+                    (90, 'Critical')
+                )
+            )
+            SELECT 1 AS date, 75 AS temperature
+            VISUALISE
+            DRAW line MAPPING date AS x, temperature AS y
+            DRAW rule MAPPING value AS y, label AS colour FROM t
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Layer 0: line from global data
+        let layer0_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer0_df.height(), 1);
+
+        // Layer 1: rule from CTE with column aliases
+        let layer1_df = result.data.get(&naming::layer_key(1)).unwrap();
+        assert_eq!(layer1_df.height(), 3);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
     fn test_histogram_stat_transform() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
