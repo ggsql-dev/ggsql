@@ -202,12 +202,15 @@ fn is_continuous_scale(scale: &Scale) -> bool {
         .is_some_and(|st| st.scale_type_kind() == ScaleTypeKind::Continuous)
 }
 
-/// Check if a scale is discrete (categorical/ordinal).
+/// Check if a scale is discrete for orientation purposes.
+///
+/// Includes categorical, ordinal, and binned scales - all represent
+/// discrete categories rather than continuous values.
 fn is_discrete_scale(scale: &Scale) -> bool {
     scale.scale_type.as_ref().is_some_and(|st| {
         matches!(
             st.scale_type_kind(),
-            ScaleTypeKind::Discrete | ScaleTypeKind::Ordinal
+            ScaleTypeKind::Discrete | ScaleTypeKind::Ordinal | ScaleTypeKind::Binned
         )
     })
 }
