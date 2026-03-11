@@ -883,7 +883,11 @@ mod integration_tests {
                     "Error should mention auto-detection: {}",
                     err
                 );
-                assert!(err.contains("bar"), "Error should mention the geom type: {}", err);
+                assert!(
+                    err.contains("bar"),
+                    "Error should mention the geom type: {}",
+                    err
+                );
             }
             Ok(_) => panic!("Should reject orientation setting for bar geom"),
         }

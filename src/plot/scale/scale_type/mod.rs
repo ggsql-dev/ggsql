@@ -1784,8 +1784,12 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
     //
     // For polar coordinates, pos2 (theta) defaults to zero expansion since it's angular/categorical.
     // Users can still explicitly set expand if they want.
-    let (mult, add) =
-        get_expand_factors_for_aesthetic(&scale.properties, aesthetic, context, user_explicit_expand);
+    let (mult, add) = get_expand_factors_for_aesthetic(
+        &scale.properties,
+        aesthetic,
+        context,
+        user_explicit_expand,
+    );
 
     // Track the original user range to know which values are explicit vs inferred
     let original_user_range = scale.input_range.clone();

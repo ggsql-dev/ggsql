@@ -1147,9 +1147,10 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
             let orientation = resolve_orientation(layer, &scales);
             // Store resolved orientation in parameters for downstream use (writers need it)
-            layer
-                .parameters
-                .insert("orientation".to_string(), ParameterValue::String(orientation.to_string()));
+            layer.parameters.insert(
+                "orientation".to_string(),
+                ParameterValue::String(orientation.to_string()),
+            );
             if orientation == TRANSPOSED {
                 flip_mappings(layer);
                 // Also flip column names in type_info to match the flipped mappings

@@ -343,10 +343,7 @@ mod tests {
         scale.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale];
 
-        assert_eq!(
-            resolve_orientation(&layer, &scales),
-            TRANSPOSED
-        );
+        assert_eq!(resolve_orientation(&layer, &scales), TRANSPOSED);
     }
 
     #[test]
@@ -373,10 +370,7 @@ mod tests {
         scale2.scale_type = Some(ScaleType::discrete());
         let scales = vec![scale1, scale2];
 
-        assert_eq!(
-            resolve_orientation(&layer, &scales),
-            TRANSPOSED
-        );
+        assert_eq!(resolve_orientation(&layer, &scales), TRANSPOSED);
     }
 
     #[test]
@@ -500,10 +494,7 @@ mod tests {
         scale2.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale1, scale2];
 
-        assert_eq!(
-            resolve_orientation(&layer, &scales),
-            TRANSPOSED
-        );
+        assert_eq!(resolve_orientation(&layer, &scales), TRANSPOSED);
     }
 
     #[test]
@@ -525,10 +516,7 @@ mod tests {
         scale2.scale_type = Some(ScaleType::discrete());
         let scales = vec![scale1, scale2];
 
-        assert_eq!(
-            resolve_orientation(&layer, &scales),
-            TRANSPOSED
-        );
+        assert_eq!(resolve_orientation(&layer, &scales), TRANSPOSED);
     }
 
     #[test]
@@ -579,10 +567,7 @@ mod tests {
         scale2.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale1, scale2];
 
-        assert_eq!(
-            resolve_orientation(&layer, &scales),
-            TRANSPOSED
-        );
+        assert_eq!(resolve_orientation(&layer, &scales), TRANSPOSED);
     }
 
     #[test]
@@ -625,10 +610,7 @@ mod tests {
         );
 
         let scales = vec![];
-        assert_eq!(
-            resolve_orientation(&layer, &scales),
-            TRANSPOSED
-        );
+        assert_eq!(resolve_orientation(&layer, &scales), TRANSPOSED);
     }
 
     #[test]
