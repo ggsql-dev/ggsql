@@ -8,6 +8,7 @@
 //! sensible defaults for standard behavior.
 
 use crate::plot::layer::geom::GeomType;
+use crate::plot::layer::is_transposed;
 use crate::plot::ParameterValue;
 use crate::writer::vegalite::POINTS_TO_PIXELS;
 use crate::{naming, AestheticValue, DataFrame, Geom, GgsqlError, Layer, Result};
@@ -243,6 +244,7 @@ pub trait GeomRenderer: Send + Sync {
         _layer: &Layer,
         _data_key: &str,
         _prepared: &PreparedData,
+        _context: &RenderContext,
     ) -> Result<Vec<Value>> {
         Ok(vec![layer_spec])
     }
@@ -269,7 +271,7 @@ impl GeomRenderer for BarRenderer {
         &self,
         layer_spec: &mut Value,
         layer: &Layer,
-        _context: &RenderContext,
+        context: &RenderContext,
     ) -> Result<()> {
         let width = match layer.parameters.get("width") {
             Some(ParameterValue::Number(w)) => *w,
@@ -277,12 +279,7 @@ impl GeomRenderer for BarRenderer {
         };
 
         // For horizontal bars, use "height" for band size; for vertical, use "width"
-        let is_horizontal = layer
-            .parameters
-            .get("orientation")
-            .and_then(|v| v.as_str())
-            .map(|s| s == "transposed")
-            .unwrap_or(false);
+        let is_horizontal = is_transposed(layer, context.scales);
 
         // For dodged bars, use expression-based size with the adjusted width
         // For non-dodged bars, use band-relative size
@@ -450,19 +447,14 @@ impl GeomRenderer for LinearRenderer {
         &self,
         encoding: &mut Map<String, Value>,
         layer: &Layer,
-        _context: &RenderContext,
+        context: &RenderContext,
     ) -> Result<()> {
         // Remove coefficient and intercept from encoding - they're only used in transforms
         encoding.remove("coef");
         encoding.remove("intercept");
 
         // Check orientation
-        let is_horizontal = layer
-            .parameters
-            .get("orientation")
-            .and_then(|v| v.as_str())
-            .map(|s| s == "transposed")
-            .unwrap_or(false);
+        let is_horizontal = is_transposed(layer, context.scales);
 
         // For aligned (default): x is primary axis, y is computed (secondary)
         // For transposed: y is primary axis, x is computed (secondary)
@@ -516,12 +508,7 @@ impl GeomRenderer for LinearRenderer {
         let intercept_field = naming::aesthetic_column("intercept");
 
         // Check orientation
-        let is_horizontal = layer
-            .parameters
-            .get("orientation")
-            .and_then(|v| v.as_str())
-            .map(|s| s == "transposed")
-            .unwrap_or(false);
+        let is_horizontal = is_transposed(layer, context.scales);
 
         // Get extent from appropriate axis:
         // - Aligned (default): extent from pos1 (x-axis), compute y from x
@@ -578,14 +565,9 @@ impl GeomRenderer for RibbonRenderer {
         &self,
         encoding: &mut Map<String, Value>,
         layer: &Layer,
-        _context: &RenderContext,
+        context: &RenderContext,
     ) -> Result<()> {
-        let is_horizontal = layer
-            .parameters
-            .get("orientation")
-            .and_then(|v| v.as_str())
-            .map(|s| s == "transposed")
-            .unwrap_or(false);
+        let is_horizontal = is_transposed(layer, context.scales);
 
         // Remap min/max to primary/secondary based on orientation:
         // - Aligned (vertical): ymax→y, ymin→y2
@@ -662,7 +644,7 @@ impl GeomRenderer for ViolinRenderer {
         &self,
         layer_spec: &mut Value,
         layer: &Layer,
-        _context: &RenderContext,
+        context: &RenderContext,
     ) -> Result<()> {
         layer_spec["mark"] = json!({
             "type": "line",
@@ -674,12 +656,7 @@ impl GeomRenderer for ViolinRenderer {
         let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
 
         // Read orientation from layer (already resolved during execution)
-        let is_horizontal = layer
-            .parameters
-            .get("orientation")
-            .and_then(|v| v.as_str())
-            .map(|s| s == "transposed")
-            .unwrap_or(false);
+        let is_horizontal = is_transposed(layer, context.scales);
 
         // Continuous axis column for order calculation:
         // - Vertical: pos2 (y-axis has continuous density values)
@@ -751,15 +728,10 @@ impl GeomRenderer for ViolinRenderer {
         &self,
         encoding: &mut Map<String, Value>,
         layer: &Layer,
-        _context: &RenderContext,
+        context: &RenderContext,
     ) -> Result<()> {
         // Read orientation from layer (already resolved during execution)
-        let is_horizontal = layer
-            .parameters
-            .get("orientation")
-            .and_then(|v| v.as_str())
-            .map(|s| s == "transposed")
-            .unwrap_or(false);
+        let is_horizontal = is_transposed(layer, context.scales);
 
         // Categorical axis for detail encoding:
         // - Vertical: x channel (categorical groups on x-axis)
@@ -906,6 +878,7 @@ impl GeomRenderer for ErrorBarRenderer {
         layer: &Layer,
         _data_key: &str,
         _prepared: &PreparedData,
+        _context: &RenderContext,
     ) -> Result<Vec<Value>> {
         // Get width parameter (in points)
         let width = if let Some(ParameterValue::Number(num)) = layer.parameters.get("width") {
@@ -1035,16 +1008,12 @@ impl BoxplotRenderer {
         layer: &Layer,
         base_key: &str,
         has_outliers: bool,
+        context: &RenderContext,
     ) -> Result<Vec<Value>> {
         let mut layers: Vec<Value> = Vec::new();
 
         // Read orientation from layer (already resolved during execution)
-        let is_horizontal = layer
-            .parameters
-            .get("orientation")
-            .and_then(|v| v.as_str())
-            .map(|s| s == "transposed")
-            .unwrap_or(false);
+        let is_horizontal = is_transposed(layer, context.scales);
 
         // Value columns depend on orientation (after DataFrame column flip):
         // - Vertical: values in pos2/pos2end (no flip)
@@ -1258,6 +1227,7 @@ impl GeomRenderer for BoxplotRenderer {
         layer: &Layer,
         data_key: &str,
         prepared: &PreparedData,
+        context: &RenderContext,
     ) -> Result<Vec<Value>> {
         let PreparedData::Composite { metadata, .. } = prepared else {
             return Err(GgsqlError::InternalError(
@@ -1269,7 +1239,7 @@ impl GeomRenderer for BoxplotRenderer {
             GgsqlError::InternalError("Failed to downcast boxplot metadata".to_string())
         })?;
 
-        self.render_layers(prototype, layer, data_key, info.has_outliers)
+        self.render_layers(prototype, layer, data_key, info.has_outliers, context)
     }
 }
 

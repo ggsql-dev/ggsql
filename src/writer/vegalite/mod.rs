@@ -196,7 +196,7 @@ fn build_layers(
         renderer.modify_spec(&mut layer_spec, layer, &context)?;
 
         // Finalize the layer (may expand into multiple layers for composite geoms)
-        let final_layers = renderer.finalize(layer_spec, layer, data_key, prepared)?;
+        let final_layers = renderer.finalize(layer_spec, layer, data_key, prepared, &context)?;
         layers.extend(final_layers);
     }
 

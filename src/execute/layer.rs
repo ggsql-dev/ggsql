@@ -4,6 +4,7 @@
 //! transformations, stat transforms, and post-query operations.
 
 use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
+use crate::plot::layer::is_transposed;
 use crate::plot::{
     AestheticValue, DefaultAestheticValue, Layer, ParameterValue, Scale, Schema, SqlTypeNames,
     StatResult,
@@ -361,12 +362,7 @@ where
 
     // Orientation detection and initial flip was already done in mod.rs before
     // build_layer_base_query. We just check if we need to flip back after stat.
-    let needs_flip = layer
-        .parameters
-        .get("orientation")
-        .and_then(|v| v.as_str())
-        .map(|s| s == "transposed")
-        .unwrap_or(false);
+    let needs_flip = is_transposed(layer, scales);
 
     // Build the aesthetic-named schema for stat transforms
     // Note: Mappings were already flipped in mod.rs if needed, so schema reflects normalized orientation

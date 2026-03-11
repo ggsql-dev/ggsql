@@ -26,6 +26,7 @@ use crate::naming;
 use crate::parser;
 use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
+use crate::plot::layer::is_transposed;
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
 use crate::{DataFrame, GgsqlError, Plot, Result};
 use std::collections::{HashMap, HashSet};
@@ -1031,7 +1032,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // `column AS __ggsql_aes_pos1__`.
     {
         use crate::plot::layer::orientation::{
-            flip_mappings, geom_has_implicit_orientation, resolve_orientation, TRANSPOSED,
+            flip_mappings, geom_has_implicit_orientation, resolve_orientation,
         };
         use crate::plot::ParameterValue;
         let scales = specs[0].scales.clone();
@@ -1073,7 +1074,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                 "orientation".to_string(),
                 ParameterValue::String(orientation.to_string()),
             );
-            if orientation == TRANSPOSED {
+            if is_transposed(layer, &scales) {
                 flip_mappings(layer);
                 // Also flip column names in type_info to match the flipped mappings
                 if layer_idx < layer_type_info.len() {
@@ -1178,12 +1179,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     for (idx, q) in layer_queries.iter().enumerate() {
         let layer = &mut specs[0].layers[idx];
         let remappings_key = serde_json::to_string(&layer.remappings).unwrap_or_default();
-        let needs_flip = layer
-            .parameters
-            .get("orientation")
-            .and_then(|v| v.as_str())
-            .map(|s| s == "transposed")
-            .unwrap_or(false);
+        let needs_flip = is_transposed(layer, &scales);
         let config_key = (q.clone(), remappings_key, needs_flip);
 
         if let Some(existing_key) = config_to_key.get(&config_key) {
@@ -1223,13 +1219,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             // with ALIGNED orientation names) but BEFORE update_mappings_for_remappings
             // (which uses remapping keys to create mapping entries).
             // Phase 4.5 will then flip the DataFrame columns to match.
-            let needs_flip = l
-                .parameters
-                .get("orientation")
-                .and_then(|v| v.as_str())
-                .map(|s| s == "transposed")
-                .unwrap_or(false);
-            if needs_flip {
+            if is_transposed(l, &scales) {
                 crate::plot::layer::orientation::flip_remappings(l);
             }
 
@@ -1249,18 +1239,13 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // All positional columns (stat-produced and literal) are flipped together.
     let mut flipped_keys: HashSet<String> = HashSet::new();
     for layer in specs[0].layers.iter() {
-        let needs_flip = layer
-            .parameters
-            .get("orientation")
-            .and_then(|v| v.as_str())
-            .map(|s| s == "transposed")
-            .unwrap_or(false);
-        if needs_flip {
+        if is_transposed(layer, &scales) {
             if let Some(ref key) = layer.data_key {
                 if flipped_keys.insert(key.clone()) {
                     // First time flipping this data key
                     if let Some(df) = data_map.remove(key) {
-                        let flipped_df = layer::flip_dataframe_positional_columns(df, &aesthetic_ctx);
+                        let flipped_df =
+                            layer::flip_dataframe_positional_columns(df, &aesthetic_ctx);
                         data_map.insert(key.clone(), flipped_df);
                     }
                 }

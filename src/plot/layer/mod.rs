@@ -16,7 +16,7 @@ pub mod orientation;
 pub mod position;
 
 // Re-export orientation functions and constants
-pub use orientation::{is_transposed, ALIGNED, TRANSPOSED};
+pub use orientation::is_transposed;
 
 // Re-export geom types for convenience
 pub use geom::{
