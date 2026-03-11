@@ -244,7 +244,6 @@ pub trait GeomRenderer: Send + Sync {
         _layer: &Layer,
         _data_key: &str,
         _prepared: &PreparedData,
-        _context: &RenderContext,
     ) -> Result<Vec<Value>> {
         Ok(vec![layer_spec])
     }
@@ -878,7 +877,6 @@ impl GeomRenderer for ErrorBarRenderer {
         layer: &Layer,
         _data_key: &str,
         _prepared: &PreparedData,
-        _context: &RenderContext,
     ) -> Result<Vec<Value>> {
         // Get width parameter (in points)
         let width = if let Some(ParameterValue::Number(num)) = layer.parameters.get("width") {
@@ -1008,7 +1006,6 @@ impl BoxplotRenderer {
         layer: &Layer,
         base_key: &str,
         has_outliers: bool,
-        _context: &RenderContext,
     ) -> Result<Vec<Value>> {
         let mut layers: Vec<Value> = Vec::new();
 
@@ -1227,7 +1224,6 @@ impl GeomRenderer for BoxplotRenderer {
         layer: &Layer,
         data_key: &str,
         prepared: &PreparedData,
-        context: &RenderContext,
     ) -> Result<Vec<Value>> {
         let PreparedData::Composite { metadata, .. } = prepared else {
             return Err(GgsqlError::InternalError(
@@ -1239,7 +1235,7 @@ impl GeomRenderer for BoxplotRenderer {
             GgsqlError::InternalError("Failed to downcast boxplot metadata".to_string())
         })?;
 
-        self.render_layers(prototype, layer, data_key, info.has_outliers, context)
+        self.render_layers(prototype, layer, data_key, info.has_outliers)
     }
 }
 
