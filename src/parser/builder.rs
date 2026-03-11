@@ -540,7 +540,8 @@ fn parse_parameter_assignment(
     let (name_node, value_node) = extract_name_value_nodes(node, "parameter assignment")?;
 
     // Parse parameter name (parameter_name is just an identifier)
-    let param_name = source.get_text(&name_node);
+    // Normalize British spellings (colour -> color) just like MAPPING clauses
+    let param_name = normalise_aes_name(&source.get_text(&name_node));
 
     // Parse parameter value (parameter_value wraps the actual value node)
     let param_value = if let Some(value_child) = value_node.child(0) {
@@ -3524,5 +3525,76 @@ mod tests {
         assert!(result.is_ok());
         let specs = result.unwrap();
         assert_eq!(specs[0].layers[0].position, Position::dodge());
+    }
+
+    // ========================================
+    // Parameter Name Normalization Tests
+    // ========================================
+
+    #[test]
+    fn test_parameter_colour_normalized_to_color() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y SETTING colour => 'red'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // "colour" should be normalized to "color"
+        assert!(specs[0].layers[0].parameters.contains_key("color"));
+        assert!(!specs[0].layers[0].parameters.contains_key("colour"));
+        // Color names are converted to hex codes during parsing
+        assert_eq!(
+            specs[0].layers[0].parameters.get("color"),
+            Some(&ParameterValue::String("#ff0000".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parameter_col_normalized_to_color() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y SETTING col => 'blue'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // "col" should be normalized to "color"
+        assert!(specs[0].layers[0].parameters.contains_key("color"));
+        assert!(!specs[0].layers[0].parameters.contains_key("col"));
+        // Color names are converted to hex codes during parsing
+        assert_eq!(
+            specs[0].layers[0].parameters.get("color"),
+            Some(&ParameterValue::String("#0000ff".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parameter_mixed_with_colour() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y SETTING colour => 'green', opacity => 0.5
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // "colour" normalized to "color", opacity unchanged
+        assert!(specs[0].layers[0].parameters.contains_key("color"));
+        assert!(specs[0].layers[0].parameters.contains_key("opacity"));
+        // Color names are converted to hex codes during parsing
+        assert_eq!(
+            specs[0].layers[0].parameters.get("color"),
+            Some(&ParameterValue::String("#008000".to_string()))
+        );
+        assert_eq!(
+            specs[0].layers[0].parameters.get("opacity"),
+            Some(&ParameterValue::Number(0.5))
+        );
     }
 }
