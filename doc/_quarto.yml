@@ -1,7 +1,7 @@
 project:
   type: website
   resources:
-    - playground/**
+    - wasm/**
 
 website:
   title: "ggsql"
@@ -51,7 +51,7 @@ website:
             href: syntax/clause/label.qmd
       - examples.qmd
       - text: Playground
-        href: playground/index.html
+        href: wasm/index.html
     tools:
       - icon: github
         menu:

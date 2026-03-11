@@ -41,8 +41,8 @@ fi
 echo "Building WASM demo..."
 (cd "$SCRIPT_DIR/demo" && npm install && npm run build)
 
-echo "Copying demo to doc/playground..."
-rm -rf "$REPO_ROOT/doc/playground"
-cp -r "$SCRIPT_DIR/demo/dist" "$REPO_ROOT/doc/playground"
+echo "Copying output to doc/wasm..."
+rm -rf "$REPO_ROOT/doc/wasm"
+cp -r "$SCRIPT_DIR/demo/dist" "$REPO_ROOT/doc/wasm"
 
-echo "Done! Demo output is in: $REPO_ROOT/doc/playground"
+echo "Done! Output is in: $REPO_ROOT/doc/wasm"

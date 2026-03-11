@@ -30,7 +30,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: wasm-demo
-          path: doc/playground
+          path: doc/wasm
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
