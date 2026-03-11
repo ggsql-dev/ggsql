@@ -5,9 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 SKIP_BINARY=false
+SKIP_OPT=false
 for arg in "$@"; do
     case "$arg" in
         --skip-binary) SKIP_BINARY=true ;;
+        --skip-opt) SKIP_OPT=true ;;
         *) echo "Unknown argument: $arg" >&2; exit 1 ;;
     esac
 done
@@ -32,8 +34,12 @@ if [ "$SKIP_BINARY" = false ]; then
     echo "Building WASM binary..."
     (cd "$SCRIPT_DIR" && wasm-pack build --target web --profile wasm --no-opt)
 
-    echo "Optimising WASM binary..."
-    (cd "$SCRIPT_DIR" && wasm-opt pkg/ggsql_wasm_bg.wasm -o pkg/ggsql_wasm_bg.wasm -Oz --all-features)
+    if [ "$SKIP_OPT" = false ]; then
+        echo "Optimising WASM binary..."
+        (cd "$SCRIPT_DIR" && wasm-opt pkg/ggsql_wasm_bg.wasm -o pkg/ggsql_wasm_bg.wasm -Oz --all-features)
+    else
+        echo "Skipping wasm-opt (--skip-opt)."
+    fi
 else
     echo "Skipping WASM binary build (--skip-binary)."
 fi
