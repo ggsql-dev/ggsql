@@ -64,9 +64,15 @@ pub fn resolve_orientation(layer: &Layer, scales: &[Scale]) -> &'static str {
 
 /// Check if a layer is transposed (horizontal orientation).
 ///
-/// Convenience helper for downstream code that needs to check orientation.
-pub fn is_transposed(layer: &Layer, scales: &[Scale]) -> bool {
-    resolve_orientation(layer, scales) == TRANSPOSED
+/// Reads the orientation from the layer's parameters, which must have been
+/// set by `resolve_orientations()` during execution.
+pub fn is_transposed(layer: &Layer) -> bool {
+    layer
+        .parameters
+        .get("orientation")
+        .and_then(|v| v.as_str())
+        .map(|s| s == TRANSPOSED)
+        .unwrap_or(false)
 }
 
 /// Check if a geom type supports orientation auto-detection.
@@ -302,6 +308,8 @@ mod tests {
 
     #[test]
     fn test_is_transposed_helper() {
+        use crate::plot::ParameterValue;
+
         // Helper function should return true for transposed orientation
         let mut layer = Layer::new(Geom::histogram());
         layer
@@ -311,15 +319,26 @@ mod tests {
         scale.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale];
 
-        assert!(is_transposed(&layer, &scales));
+        // Resolve and store orientation (as done by resolve_orientations)
+        let orientation = resolve_orientation(&layer, &scales);
+        layer.parameters.insert(
+            "orientation".to_string(),
+            ParameterValue::String(orientation.to_string()),
+        );
+        assert!(is_transposed(&layer));
 
         // Should return false for aligned orientation
-        let layer2 = Layer::new(Geom::histogram());
+        let mut layer2 = Layer::new(Geom::histogram());
         let mut scale2 = Scale::new("pos1");
         scale2.scale_type = Some(ScaleType::continuous());
         let scales2 = vec![scale2];
 
-        assert!(!is_transposed(&layer2, &scales2));
+        let orientation2 = resolve_orientation(&layer2, &scales2);
+        layer2.parameters.insert(
+            "orientation".to_string(),
+            ParameterValue::String(orientation2.to_string()),
+        );
+        assert!(!is_transposed(&layer2));
     }
 
     #[test]

@@ -1027,69 +1027,14 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Detect orientation and flip mappings BEFORE building base queries.
     // This ensures the SQL query uses the correct aesthetic column names.
-    // The flip must happen here (not in apply_layer_transforms) because
-    // build_layer_base_query uses layer.mappings to create SQL like
-    // `column AS __ggsql_aes_pos1__`.
-    {
-        use crate::plot::layer::orientation::{
-            flip_mappings, geom_has_implicit_orientation, resolve_orientation,
-        };
-        use crate::plot::ParameterValue;
-        let scales = specs[0].scales.clone();
-        let aesthetic_ctx = specs[0].get_aesthetic_context();
-        for (layer_idx, layer) in specs[0].layers.iter_mut().enumerate() {
-            // Check if user tried to set orientation
-            let geom_type = layer.geom.geom_type();
-            if layer.parameters.contains_key("orientation") {
-                // Geoms with implicit orientation (bar, histogram, etc.): reject, use auto-detection
-                if geom_has_implicit_orientation(&geom_type) {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Layer {}: orientation is auto-detected for {} geom and cannot be set via SETTING. \
-                        Use aesthetic mappings to control orientation (e.g., MAPPING category AS y for horizontal bars).",
-                        layer_idx + 1,
-                        geom_type
-                    )));
-                }
-
-                // Geoms without orientation in default_params (point, path, polygon): reject
-                let has_orientation_default = layer
-                    .geom
-                    .default_params()
-                    .iter()
-                    .any(|p| p.name == "orientation");
-                if !has_orientation_default {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Layer {}: Invalid setting 'orientation' for geom '{}'. \
-                        This geom does not support orientation.",
-                        layer_idx + 1,
-                        geom_type
-                    )));
-                }
-                // Otherwise (line, linear, area): allow user-provided orientation
-            }
-
-            let orientation = resolve_orientation(layer, &scales);
-            // Store resolved orientation in parameters for downstream use (writers need it)
-            layer.parameters.insert(
-                "orientation".to_string(),
-                ParameterValue::String(orientation.to_string()),
-            );
-            if is_transposed(layer, &scales) {
-                flip_mappings(layer);
-                // Also flip column names in type_info to match the flipped mappings
-                if layer_idx < layer_type_info.len() {
-                    for (name, _, _) in &mut layer_type_info[layer_idx] {
-                        if let Some(aesthetic) = naming::extract_aesthetic_name(name) {
-                            let flipped = aesthetic_ctx.flip_positional(aesthetic);
-                            if flipped != aesthetic {
-                                *name = naming::aesthetic_column(&flipped);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    let scales = specs[0].scales.clone();
+    let aesthetic_ctx = specs[0].get_aesthetic_context();
+    layer::resolve_orientations(
+        &mut specs[0].layers,
+        &scales,
+        &mut layer_type_info,
+        &aesthetic_ctx,
+    );
 
     // Build layer base queries using build_layer_base_query()
     // These include: SELECT with aesthetic renames, casts from type_requirements, filters
@@ -1179,7 +1124,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     for (idx, q) in layer_queries.iter().enumerate() {
         let layer = &mut specs[0].layers[idx];
         let remappings_key = serde_json::to_string(&layer.remappings).unwrap_or_default();
-        let needs_flip = is_transposed(layer, &scales);
+        let needs_flip = is_transposed(layer);
         let config_key = (q.clone(), remappings_key, needs_flip);
 
         if let Some(existing_key) = config_to_key.get(&config_key) {
@@ -1219,7 +1164,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             // with ALIGNED orientation names) but BEFORE update_mappings_for_remappings
             // (which uses remapping keys to create mapping entries).
             // Phase 4.5 will then flip the DataFrame columns to match.
-            if is_transposed(l, &scales) {
+            if is_transposed(l) {
                 crate::plot::layer::orientation::flip_remappings(l);
             }
 
@@ -1239,7 +1184,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // All positional columns (stat-produced and literal) are flipped together.
     let mut flipped_keys: HashSet<String> = HashSet::new();
     for layer in specs[0].layers.iter() {
-        if is_transposed(layer, &scales) {
+        if is_transposed(layer) {
             if let Some(ref key) = layer.data_key {
                 if flipped_keys.insert(key.clone()) {
                     // First time flipping this data key

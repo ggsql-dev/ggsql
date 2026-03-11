@@ -271,7 +271,7 @@ impl GeomRenderer for BarRenderer {
         &self,
         layer_spec: &mut Value,
         layer: &Layer,
-        context: &RenderContext,
+        _context: &RenderContext,
     ) -> Result<()> {
         let width = match layer.parameters.get("width") {
             Some(ParameterValue::Number(w)) => *w,
@@ -279,7 +279,7 @@ impl GeomRenderer for BarRenderer {
         };
 
         // For horizontal bars, use "height" for band size; for vertical, use "width"
-        let is_horizontal = is_transposed(layer, context.scales);
+        let is_horizontal = is_transposed(layer);
 
         // For dodged bars, use expression-based size with the adjusted width
         // For non-dodged bars, use band-relative size
@@ -447,14 +447,14 @@ impl GeomRenderer for LinearRenderer {
         &self,
         encoding: &mut Map<String, Value>,
         layer: &Layer,
-        context: &RenderContext,
+        _context: &RenderContext,
     ) -> Result<()> {
         // Remove coefficient and intercept from encoding - they're only used in transforms
         encoding.remove("coef");
         encoding.remove("intercept");
 
         // Check orientation
-        let is_horizontal = is_transposed(layer, context.scales);
+        let is_horizontal = is_transposed(layer);
 
         // For aligned (default): x is primary axis, y is computed (secondary)
         // For transposed: y is primary axis, x is computed (secondary)
@@ -508,7 +508,7 @@ impl GeomRenderer for LinearRenderer {
         let intercept_field = naming::aesthetic_column("intercept");
 
         // Check orientation
-        let is_horizontal = is_transposed(layer, context.scales);
+        let is_horizontal = is_transposed(layer);
 
         // Get extent from appropriate axis:
         // - Aligned (default): extent from pos1 (x-axis), compute y from x
@@ -565,9 +565,9 @@ impl GeomRenderer for RibbonRenderer {
         &self,
         encoding: &mut Map<String, Value>,
         layer: &Layer,
-        context: &RenderContext,
+        _context: &RenderContext,
     ) -> Result<()> {
-        let is_horizontal = is_transposed(layer, context.scales);
+        let is_horizontal = is_transposed(layer);
 
         // Remap min/max to primary/secondary based on orientation:
         // - Aligned (vertical): ymax→y, ymin→y2
@@ -644,7 +644,7 @@ impl GeomRenderer for ViolinRenderer {
         &self,
         layer_spec: &mut Value,
         layer: &Layer,
-        context: &RenderContext,
+        _context: &RenderContext,
     ) -> Result<()> {
         layer_spec["mark"] = json!({
             "type": "line",
@@ -656,7 +656,7 @@ impl GeomRenderer for ViolinRenderer {
         let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
 
         // Read orientation from layer (already resolved during execution)
-        let is_horizontal = is_transposed(layer, context.scales);
+        let is_horizontal = is_transposed(layer);
 
         // Continuous axis column for order calculation:
         // - Vertical: pos2 (y-axis has continuous density values)
@@ -728,10 +728,10 @@ impl GeomRenderer for ViolinRenderer {
         &self,
         encoding: &mut Map<String, Value>,
         layer: &Layer,
-        context: &RenderContext,
+        _context: &RenderContext,
     ) -> Result<()> {
         // Read orientation from layer (already resolved during execution)
-        let is_horizontal = is_transposed(layer, context.scales);
+        let is_horizontal = is_transposed(layer);
 
         // Categorical axis for detail encoding:
         // - Vertical: x channel (categorical groups on x-axis)
@@ -1008,12 +1008,12 @@ impl BoxplotRenderer {
         layer: &Layer,
         base_key: &str,
         has_outliers: bool,
-        context: &RenderContext,
+        _context: &RenderContext,
     ) -> Result<Vec<Value>> {
         let mut layers: Vec<Value> = Vec::new();
 
         // Read orientation from layer (already resolved during execution)
-        let is_horizontal = is_transposed(layer, context.scales);
+        let is_horizontal = is_transposed(layer);
 
         // Value columns depend on orientation (after DataFrame column flip):
         // - Vertical: values in pos2/pos2end (no flip)

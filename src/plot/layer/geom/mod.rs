@@ -220,15 +220,12 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
     /// Returns valid parameter names for SETTING clause.
     ///
-    /// Combines supported aesthetics with non-aesthetic parameters.
-    /// Includes "orientation" which is set internally during execution (not user-settable).
+    /// Combines supported aesthetics with non-aesthetic parameters from default_params.
     fn valid_settings(&self) -> Vec<&'static str> {
         let mut valid: Vec<&'static str> = self.aesthetics().supported();
         for param in self.default_params() {
             valid.push(param.name);
         }
-        // Internal parameter set during execution (not user-settable via SETTING)
-        valid.push("orientation");
         valid
     }
 }

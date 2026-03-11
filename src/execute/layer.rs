@@ -5,6 +5,7 @@
 
 use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
 use crate::plot::layer::is_transposed;
+use crate::plot::layer::orientation::{flip_mappings, resolve_orientation};
 use crate::plot::{
     AestheticValue, DefaultAestheticValue, Layer, ParameterValue, Scale, Schema, SqlTypeNames,
     StatResult,
@@ -362,7 +363,7 @@ where
 
     // Orientation detection and initial flip was already done in mod.rs before
     // build_layer_base_query. We just check if we need to flip back after stat.
-    let needs_flip = is_transposed(layer, scales);
+    let needs_flip = is_transposed(layer);
 
     // Build the aesthetic-named schema for stat transforms
     // Note: Mappings were already flipped in mod.rs if needed, so schema reflects normalized orientation
@@ -680,4 +681,47 @@ pub fn flip_dataframe_positional_columns(
     }
 
     lazy.collect().expect("rename should not fail")
+}
+
+/// Resolve orientation for all layers and apply mapping flips.
+///
+/// This function:
+/// 1. Resolves orientation via auto-detection or explicit setting
+/// 2. Stores resolved orientation in layer parameters
+/// 3. Flips mappings for transposed layers
+/// 4. Flips type_info column names to match flipped mappings
+///
+/// Must be called BEFORE building base queries, since build_layer_base_query
+/// uses layer.mappings to create SQL like `column AS __ggsql_aes_pos1__`.
+///
+/// Note: Validation of orientation settings is handled by `validate_settings()`,
+/// which rejects orientation for geoms that don't have it in default_params.
+pub fn resolve_orientations(
+    layers: &mut [Layer],
+    scales: &[Scale],
+    layer_type_info: &mut [Vec<super::schema::TypeInfo>],
+    aesthetic_ctx: &AestheticContext,
+) {
+    for (layer_idx, layer) in layers.iter_mut().enumerate() {
+        let orientation = resolve_orientation(layer, scales);
+        // Store resolved orientation in parameters for downstream use (writers need it)
+        layer.parameters.insert(
+            "orientation".to_string(),
+            ParameterValue::String(orientation.to_string()),
+        );
+        if is_transposed(layer) {
+            flip_mappings(layer);
+            // Also flip column names in type_info to match the flipped mappings
+            if layer_idx < layer_type_info.len() {
+                for (name, _, _) in &mut layer_type_info[layer_idx] {
+                    if let Some(aesthetic) = naming::extract_aesthetic_name(name) {
+                        let flipped = aesthetic_ctx.flip_positional(aesthetic);
+                        if flipped != aesthetic {
+                            *name = naming::aesthetic_column(&flipped);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

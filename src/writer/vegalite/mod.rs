@@ -1139,11 +1139,8 @@ impl Writer for VegaLiteWriter {
             layer.validate_required_aesthetics().map_err(|e| {
                 GgsqlError::ValidationError(format!("Layer validation failed: {}", e))
             })?;
-
-            // Check SETTING parameters are valid for this geom
-            layer.validate_settings().map_err(|e| {
-                GgsqlError::ValidationError(format!("Layer validation failed: {}", e))
-            })?;
+            // Note: validate_settings() is already called during execution, before
+            // internal parameters like "orientation" are set, so we don't call it here.
         }
 
         Ok(())

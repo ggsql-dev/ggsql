@@ -867,7 +867,8 @@ mod integration_tests {
         // Test orientation setting behavior for different geom types
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
-        // 1. Bar geom (has implicit orientation) - should reject with auto-detection message
+        // 1. Bar geom (has implicit orientation) - should reject
+        // Orientation is auto-detected based on mappings, not settable via SETTING
         let query = r#"
             SELECT 'A' as category, 10 as value
             VISUALISE
@@ -879,8 +880,8 @@ mod integration_tests {
             Err(e) => {
                 let err = e.to_string();
                 assert!(
-                    err.contains("orientation is auto-detected"),
-                    "Error should mention auto-detection: {}",
+                    err.contains("Invalid setting 'orientation'"),
+                    "Error should mention invalid setting: {}",
                     err
                 );
                 assert!(
@@ -904,8 +905,8 @@ mod integration_tests {
             Err(e) => {
                 let err2 = e.to_string();
                 assert!(
-                    err2.contains("does not support orientation"),
-                    "Error should mention lack of support: {}",
+                    err2.contains("Invalid setting 'orientation'"),
+                    "Error should mention invalid setting: {}",
                     err2
                 );
             }
