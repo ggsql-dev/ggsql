@@ -93,8 +93,6 @@ impl GeomTrait for Smooth {
             )),
         }
     }
-
-    // Note: stat_smooth not yet implemented - will return Identity for now
 }
 
 impl std::fmt::Display for Smooth {
@@ -253,20 +251,31 @@ mod tests {
         let groups: Vec<String> = vec![];
 
         let mut mapping = crate::Mappings::new();
-        mapping.aesthetics.insert("pos1".to_string(), AestheticValue::Column {
-            name: "x".to_string(),
-            original_name: None,
-            is_dummy: false,
-        });
-        mapping.aesthetics.insert("pos2".to_string(), AestheticValue::Column {
-            name: "y".to_string(),
-            original_name: None,
-            is_dummy: false,
-        });
+        mapping.aesthetics.insert(
+            "pos1".to_string(),
+            AestheticValue::Column {
+                name: "x".to_string(),
+                original_name: None,
+                is_dummy: false,
+            },
+        );
+        mapping.aesthetics.insert(
+            "pos2".to_string(),
+            AestheticValue::Column {
+                name: "y".to_string(),
+                original_name: None,
+                is_dummy: false,
+            },
+        );
 
         let result = stat_ols(query, &mapping, &groups).expect("stat_ols should succeed");
 
-        if let StatResult::Transformed { query: sql, stat_columns, .. } = result {
+        if let StatResult::Transformed {
+            query: sql,
+            stat_columns,
+            ..
+        } = result
+        {
             assert_eq!(stat_columns, vec!["pos1", "intensity"]);
 
             let df = reader.execute_sql(&sql).expect("SQL should execute");
@@ -293,20 +302,31 @@ mod tests {
         let groups = vec!["category".to_string()];
 
         let mut mapping = crate::Mappings::new();
-        mapping.aesthetics.insert("pos1".to_string(), AestheticValue::Column {
-            name: "x".to_string(),
-            original_name: None,
-            is_dummy: false,
-        });
-        mapping.aesthetics.insert("pos2".to_string(), AestheticValue::Column {
-            name: "y".to_string(),
-            original_name: None,
-            is_dummy: false,
-        });
+        mapping.aesthetics.insert(
+            "pos1".to_string(),
+            AestheticValue::Column {
+                name: "x".to_string(),
+                original_name: None,
+                is_dummy: false,
+            },
+        );
+        mapping.aesthetics.insert(
+            "pos2".to_string(),
+            AestheticValue::Column {
+                name: "y".to_string(),
+                original_name: None,
+                is_dummy: false,
+            },
+        );
 
         let result = stat_ols(query, &mapping, &groups).expect("stat_ols should succeed");
 
-        if let StatResult::Transformed { query: sql, stat_columns, .. } = result {
+        if let StatResult::Transformed {
+            query: sql,
+            stat_columns,
+            ..
+        } = result
+        {
             assert_eq!(stat_columns, vec!["pos1", "intensity"]);
 
             let df = reader.execute_sql(&sql).expect("SQL should execute");
@@ -330,20 +350,31 @@ mod tests {
         let groups: Vec<String> = vec![];
 
         let mut mapping = crate::Mappings::new();
-        mapping.aesthetics.insert("pos1".to_string(), AestheticValue::Column {
-            name: "x".to_string(),
-            original_name: None,
-            is_dummy: false,
-        });
-        mapping.aesthetics.insert("pos2".to_string(), AestheticValue::Column {
-            name: "y".to_string(),
-            original_name: None,
-            is_dummy: false,
-        });
+        mapping.aesthetics.insert(
+            "pos1".to_string(),
+            AestheticValue::Column {
+                name: "x".to_string(),
+                original_name: None,
+                is_dummy: false,
+            },
+        );
+        mapping.aesthetics.insert(
+            "pos2".to_string(),
+            AestheticValue::Column {
+                name: "y".to_string(),
+                original_name: None,
+                is_dummy: false,
+            },
+        );
 
         let result = stat_tls(query, &mapping, &groups).expect("stat_tls should succeed");
 
-        if let StatResult::Transformed { query: sql, stat_columns, .. } = result {
+        if let StatResult::Transformed {
+            query: sql,
+            stat_columns,
+            ..
+        } = result
+        {
             assert_eq!(stat_columns, vec!["pos1", "intensity"]);
 
             let df = reader.execute_sql(&sql).expect("SQL should execute");
@@ -370,20 +401,31 @@ mod tests {
         let groups = vec!["category".to_string()];
 
         let mut mapping = crate::Mappings::new();
-        mapping.aesthetics.insert("pos1".to_string(), AestheticValue::Column {
-            name: "x".to_string(),
-            original_name: None,
-            is_dummy: false,
-        });
-        mapping.aesthetics.insert("pos2".to_string(), AestheticValue::Column {
-            name: "y".to_string(),
-            original_name: None,
-            is_dummy: false,
-        });
+        mapping.aesthetics.insert(
+            "pos1".to_string(),
+            AestheticValue::Column {
+                name: "x".to_string(),
+                original_name: None,
+                is_dummy: false,
+            },
+        );
+        mapping.aesthetics.insert(
+            "pos2".to_string(),
+            AestheticValue::Column {
+                name: "y".to_string(),
+                original_name: None,
+                is_dummy: false,
+            },
+        );
 
         let result = stat_tls(query, &mapping, &groups).expect("stat_tls should succeed");
 
-        if let StatResult::Transformed { query: sql, stat_columns, .. } = result {
+        if let StatResult::Transformed {
+            query: sql,
+            stat_columns,
+            ..
+        } = result
+        {
             assert_eq!(stat_columns, vec!["pos1", "intensity"]);
 
             let df = reader.execute_sql(&sql).expect("SQL should execute");

@@ -139,11 +139,7 @@ pub(crate) fn stat_density(
             value_aesthetic
         ))
     })?;
-    let mut smooth = None;
-    if let Some(smth) = smooth_aesthetic {
-        smooth = get_column_name(aesthetics, smth);
-    }
-
+    let smooth = smooth_aesthetic.and_then(|smth| get_column_name(aesthetics, smth));
     let weight = get_column_name(aesthetics, "weight");
 
     let (min, max) = compute_range_sql(&value, query, execute)?;
@@ -354,6 +350,8 @@ fn choose_kde_kernel(
         }
     };
     if let Some(smth) = smooth {
+        // Nadaraya-Watson estimator: E[Y|X=x] = Σ(K((x-xi)/h) × yi) / Σ(K((x-xi)/h))
+        // The bandwidth h cancels in the numerator and denominator ratio
         Ok(format!(
             "SUM(data.weight * ({kernel}) * ({smth})) / SUM(data.weight * ({kernel}))",
             kernel = kernel,
@@ -389,7 +387,14 @@ fn build_data_cte(
     };
 
     // Only filter out nulls in value column, keep NULLs in group columns
-    let filter_valid = format!("{} IS NOT NULL", value);
+    let mut filter_valid = format!("{} IS NOT NULL", value);
+    if let Some(s) = smooth {
+        filter_valid = format!(
+            "{filter} AND {smth} IS NOT NULL",
+            filter = filter_valid,
+            smth = s
+        );
+    }
 
     format!(
         "data AS (
