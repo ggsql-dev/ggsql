@@ -17,13 +17,13 @@ use crate::{naming, GgsqlError};
 #[cfg(feature = "builtin-data")]
 static PENGUINS: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../data/penguins.parquet"
+    "/data/penguins.parquet"
 ));
 
 #[cfg(feature = "builtin-data")]
 static AIRQUALITY: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../data/airquality.parquet"
+    "/data/airquality.parquet"
 ));
 
 /// Get the embedded parquet bytes for a known builtin dataset.
