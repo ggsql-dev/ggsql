@@ -7,8 +7,8 @@ website:
     The home of ggsql. A declarative visualisation language build on top of SQL
     and the grammar of graphics.
   site-url: https://ggsql.org
-  repo-url: https://github.com/ggsql-dev/ggsql
-  issue-url: https://github.com/ggsql-dev/ggsql/issues
+  repo-url: https://github.com/posit-dev/ggsql
+  issue-url: https://github.com/posit-dev/ggsql/issues
   repo-branch: gh-pages
   image: assets/logo.png
   image-alt: |
@@ -60,6 +60,7 @@ website:
     title: Syntax
     style: "floating"
     search: true
+    logo: false
     contents:
       - text: Overview
         href: syntax/index.qmd
