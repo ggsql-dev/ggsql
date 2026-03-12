@@ -35,7 +35,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
@@ -51,6 +51,8 @@ jobs:
 
       - name: Setup quarto
         uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: pre-release
 
       - name: Setup Jupyter
         run: python3 -m pip install jupyter jupyterlab
