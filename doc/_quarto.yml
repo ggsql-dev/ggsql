@@ -7,8 +7,8 @@ website:
     The home of ggsql. A declarative visualisation language build on top of SQL
     and the grammar of graphics.
   site-url: https://ggsql.org
-  repo-url: https://github.com/ggsql-dev/ggsql
-  issue-url: https://github.com/ggsql-dev/ggsql/issues
+  repo-url: https://github.com/posit-dev/ggsql
+  issue-url: https://github.com/posit-dev/ggsql/issues
   repo-branch: gh-pages
   image: assets/logo.png
   image-alt: |
@@ -49,6 +49,8 @@ website:
             href: syntax/clause/label.qmd
       - text: Gallery
         href: gallery/index.qmd
+      - href: faq.qmd
+        text: FAQ
     tools:
       - icon: github
         menu:
@@ -61,6 +63,7 @@ website:
     title: Syntax
     style: "floating"
     search: true
+    logo: false
     contents:
       - text: Overview
         href: syntax/index.qmd
@@ -114,3 +117,9 @@ format:
           <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js"
               data-light-bg="#94D2BD"
               data-dark-bg="#001219"></script>
+          <!-- Privacy-friendly analytics by Plausible -->
+          <script async src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
+          <script>
+              window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+              plausible.init()
+          </script>
