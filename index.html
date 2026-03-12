@@ -2,13 +2,16 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.8.27">
+<meta name="generator" content="quarto-1.9.32">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
 <title>ggsql</title>
 <style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
 div.columns{display: flex; gap: min(4vw, 1.5em);}
@@ -68,22 +71,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="./assets/icon.svg" rel="icon" type="image/svg+xml">
 <script src="site_libs/quarto-html/quarto.js" type="module"></script>
 <script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
-<script src="site_libs/quarto-html/axe/axe-check.js" type="module"></script>
 <script src="site_libs/quarto-html/popper.min.js"></script>
 <script src="site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="site_libs/quarto-html/anchor.min.js"></script>
 <link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-8caf6eaa0938078aad3b4e3e78d03e50.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-391dc9eaa9d5ee7385b50e8209b8eefe.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-8caf6eaa0938078aad3b4e3e78d03e50.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-8277d71423f8bf409986fc0a8e306eac.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-782968149af33607e2a9b4943268fa3a.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-8277d71423f8bf409986fc0a8e306eac.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-a5939c2ae72a7b0c79969b5f3e255c36.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-dark-94b57c8b454cc9c3df3757d9a61d1e94.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-a5939c2ae72a7b0c79969b5f3e255c36.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
-<script src="site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
-<link href="site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
-<link href="site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-75876b1abfe735b57d7179e0764bf742.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-d26bc67d90384f6b3dac4cd27db4be95.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-75876b1abfe735b57d7179e0764bf742.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -112,6 +111,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   }
 }</script>
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
+<!-- Privacy-friendly analytics by Plausible -->
+<script async="" src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
+<script>
+    window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+    plausible.init()
+</script>
 
 
 <meta property="og:title" content="ggsql">
@@ -203,6 +208,10 @@ gradient teal.
     <a class="nav-link" href="./examples.html"> 
 <span class="menu-text">Examples</span></a>
   </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./faq.html"> 
+<span class="menu-text">FAQ</span></a>
+  </li>  
 </ul>
           </div> <!-- /navcollapse -->
             <div class="quarto-navbar-tools">
@@ -238,20 +247,20 @@ gradient teal.
 
 
 <div class="hero-banner">
-<p><a href="assets/hero.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="assets/hero.png" class="hero-image img-fluid"></a></p>
+<p><img src="assets/hero.png" class="hero-image img-fluid"></p>
 <section id="sql-meets-grammar-of-graphics" class="hero-content">
 <h1>SQL meets Grammar of Graphics</h1>
 <p>A declarative visualization language that extends SQL with powerful data visualization capabilities.</p>
 <div class="hero-buttons">
-<p><a href="./installation.html" class="btn btn-secondary btn-lg">Get Started</a> <a href="./examples.html" class="btn btn-outline-secondary btn-lg">View Examples</a></p>
+<p><a href="./installation.html" class="btn btn-secondary btn-lg">Get Started</a> <a href="./examples.html" class="btn btn-outline-light btn-lg">View Examples</a></p>
 </div>
 </section>
 </div>
 <section id="features" class="content-block">
 <h2>Features</h2>
 <div class="features">
-<section id="pure-sql-foundation" class="feature">
-<h3>Pure SQL Foundation</h3>
+<section id="familiar-syntax" class="feature">
+<h3>Familiar Syntax</h3>
 <p>Write standard SQL queries and seamlessly extend them with visualization clauses. Your existing SQL knowledge transfers directly.</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-example code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> date, revenue, region</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> sales</span>
@@ -261,89 +270,35 @@ gradient teal.
 </section>
 <section id="grammar-of-graphics" class="feature">
 <h3>Grammar of Graphics</h3>
-<p>Compose visualizations from independent layers, scales, and coordinates. Mix and match geoms, facets, and themes for precise control.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-example code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> </span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> date AS <span class="at">x</span>, value AS <span class="at">y</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> </span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> date AS <span class="at">x</span>, value AS <span class="at">y</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> </span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">type</span> <span class="op">=&gt;</span> <span class="st">'date'</span></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> region</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Compose visualizations from independent layers, scales, and coordinates. Mix and match components for powerful custom visuals.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-example code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> date <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> sales</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span> </span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span> </span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="st">'weeks'</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> region</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
-<section id="pluggable-architecture" class="feature">
-<h3>Pluggable Architecture</h3>
-<p>Connect to DuckDB, PostgreSQL, or SQLite. Output to Vega-Lite, ggplot2, or render directly to PNG.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode ggsql code-example code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Use any data source</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>ggsql exec <span class="st">"SELECT ..."</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="co">--reader duckdb://data.db</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="co">--writer vegalite</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="co">--output viz.json</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="built-for-humans-and-ai" class="feature">
+<h3>Built for Humans <em>and</em> AI</h3>
+<p>The structured syntax makes it easy for AI agents to write, and for you to read, adjust, and verify.</p>
+<p>You also avoid needing agents to launch full programming languages like Python or R to create powerful visualizations, so you can rest assured that the agent doesn’t accidentally alter your environment in unwanted ways.</p>
 </section>
+<section id="there-where-you-need-it" class="feature">
+<h3>There where you need it</h3>
+<p>ggsql is available where you do your data analysis:</p>
+<div class="tool-grid">
+<div class="tool-item">
+<p><img src="assets/logos/positron.svg" class="tool-logo img-fluid"> Positron</p>
 </div>
-</section>
-<section id="built-for-modern-workflows" class="content-block alt-bg">
-<h2>Built for Modern Workflows</h2>
-<div class="workflow-grid">
-<section id="jupyter-kernel" class="workflow-item">
-<h3>Jupyter Kernel</h3>
-<p>Interactive notebooks with inline Vega-Lite visualizations. Persistent database sessions across cells.</p>
-<p><a href="./installation.html#jupyter-kernel">Learn more →</a></p>
-</section>
-<section id="vs-code-extension" class="workflow-item">
-<h3>VS Code Extension</h3>
-<p>Syntax highlighting for <code>.ggsql</code> files with full SQL and visualization clause support.</p>
-<p><a href="./installation.html#vs-code-extension">Learn more →</a></p>
-</section>
-<section id="rest-api" class="workflow-item">
-<h3>REST API</h3>
-<p>Build dashboards and web applications with the <code>ggsql-rest</code> server. CORS-enabled with sample data loading.</p>
-<p><a href="./installation.html#rest-api">Learn more →</a></p>
-</section>
-<section id="cli-tool" class="workflow-item">
-<h3>CLI Tool</h3>
-<p>Parse, validate, and execute queries from the command line. Perfect for automation and CI pipelines.</p>
-<p><a href="./installation.html#cli">Learn more →</a></p>
-</section>
+<div class="tool-item">
+<p><img src="assets/logos/quarto.svg" class="tool-logo img-fluid"> Quarto</p>
 </div>
-</section>
-<section id="quick-example" class="content-block">
-<h2>Quick Example</h2>
-<div class="example-container">
-<div class="example-code">
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Create a multi-layer visualization</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> date, revenue, region</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> sales</span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> year <span class="op">&gt;=</span> <span class="dv">2023</span></span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> date <span class="kw">AS</span> <span class="at">x</span>, revenue <span class="kw">AS</span> <span class="at">y</span>, region <span class="kw">AS</span> <span class="at">color</span></span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span></span>
-<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> </span>
-<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">size</span> <span class="op">=&gt;</span> <span class="dv">3</span></span>
-<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> </span>
-<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">type</span> <span class="op">=&gt;</span> <span class="st">'date'</span></span>
-<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">y</span> </span>
-<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">type</span> <span class="op">=&gt;</span> <span class="st">'linear'</span>, <span class="at">limits</span> <span class="op">=&gt;</span> [<span class="dv">0</span>, <span class="dv">100000</span>]</span>
-<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> region <span class="kw">SETTING</span> <span class="at">scales</span> <span class="op">=&gt;</span> <span class="st">'free_y'</span></span>
-<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span></span>
-<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>  <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Revenue Trends by Region'</span>,</span>
-<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>  <span class="at">x</span> <span class="op">=&gt;</span> <span class="st">'Date'</span>,</span>
-<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">y</span> <span class="op">=&gt;</span> <span class="st">'Revenue (USD)'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="tool-item">
+<p><img src="assets/logos/jupyter.svg" class="tool-logo img-fluid"> Jupyter</p>
 </div>
-<section id="whats-happening-here" class="example-description">
-<h3>What’s happening here?</h3>
-<ol type="1">
-<li><strong>SQL Query</strong> retrieves sales data filtered by year</li>
-<li><strong>VISUALISE</strong> maps columns to visual aesthetics</li>
-<li><strong>DRAW</strong> creates line and point layers</li>
-<li><strong>SCALE</strong> configures the x-axis as temporal</li>
-<li><strong>FACET</strong> creates small multiples by region</li>
-<li><strong>LABEL</strong> adds descriptive titles</li>
-</ol>
-<p>The output is a Vega-Lite specification that renders as an interactive chart.</p>
+<div class="tool-item">
+<p><img src="assets/logos/vscode.svg" class="tool-logo img-fluid"> VS Code</p>
+</div>
+</div>
 </section>
 </div>
 </section>
@@ -352,7 +307,7 @@ gradient teal.
 <h2>Ready to get started?</h2>
 <p>Install ggsql and start creating visualizations in minutes.</p>
 <div class="cta-buttons">
-<p><a href="./installation.html" class="btn btn-primary btn-lg">Installation Guide</a> <a href="./syntax/index.html" class="btn btn-outline-primary btn-lg">Syntax Reference</a> <a href="https://github.com/georgestagg/ggsql" class="btn btn-outline-secondary btn-lg">GitHub</a></p>
+<p><a href="./installation.html" class="btn btn-primary btn-lg">Installation</a> <a href="./syntax/index.html" class="btn btn-outline-primary btn-lg">Documentation</a> <a href="./examples.html" class="btn btn-outline-secondary btn-lg">Examples</a></p>
 </div>
 </section>
 </div>
@@ -761,38 +716,6 @@ gradient teal.
   });
   </script>
 </div> <!-- /content -->
-<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer><script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
-(function() {
-  let previousOnload = window.onload;
-  window.onload = () => {
-    if (previousOnload) {
-      previousOnload();
-    }
-    lightboxQuarto.on('slide_before_load', (data) => {
-      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
-      const href = trigger.getAttribute('href');
-      if (href !== null) {
-        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
-        if (imgEl !== null) {
-          const srcAttr = imgEl.getAttribute("src");
-          if (srcAttr && srcAttr.startsWith("data:")) {
-            slideConfig.href = srcAttr;
-          }
-        }
-      } 
-    });
-  
-    lightboxQuarto.on('slide_after_load', (data) => {
-      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
-      if (window.Quarto?.typesetMath) {
-        window.Quarto.typesetMath(slideNode);
-      }
-    });
-  
-  };
-  
-})();
-          </script>
 
 
 
