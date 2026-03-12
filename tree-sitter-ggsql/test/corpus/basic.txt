@@ -438,14 +438,13 @@ DRAW point
         (geom_type)))))
 
 ================================================================================
-Plot with scales and theme
+Plot with scales
 ================================================================================
 
 VISUALISE x, y, group AS color
 DRAW point
 SCALE CONTINUOUS x FROM [0, 100]
 SCALE color TO viridis
-THEME minimal
 
 --------------------------------------------------------------------------------
 
@@ -486,11 +485,6 @@ THEME minimal
       (scale_clause
         (aesthetic_name)
         (scale_to_clause
-          (identifier
-            (bare_identifier)))))
-    (viz_clause
-      (theme_clause
-        (theme_name
           (identifier
             (bare_identifier)))))))
 

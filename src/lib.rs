@@ -15,7 +15,6 @@ WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
 LABEL title => 'Sales by Region'
-THEME minimal
 ```
 
 ## Architecture

@@ -13,7 +13,6 @@ WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
 LABEL title => 'Sales by Region'
-THEME minimal
 ```
 
 ## Project Status
@@ -37,7 +36,7 @@ THEME minimal
 - 📋 Additional readers
 - 📋 Additional writers
 - 📋 More geom types and statistical transformations
-- 📋 Enhanced theme system
+- 📋 More geom types
 
 ## Architecture
 
@@ -219,7 +218,7 @@ Key grammar elements:
 - `SCALE <aesthetic> SETTING` - Configure data-to-visual mappings
 - `FACET` - Create small multiples (WRAP for flowing layout, BY for grid)
 - `PROJECT` - Coordinate transformations (cartesian, flip, polar)
-- `LABEL`, `THEME` - Styling and annotation
+- `LABEL` - Text labels and annotation
 
 ## Jupyter Kernel
 

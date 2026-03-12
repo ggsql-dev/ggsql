@@ -14,8 +14,7 @@
 //! ├─ scales: Vec<Scale>             (0+ ScaleNode, one per SCALE clause)
 //! ├─ facet: Option<Facet>           (optional, from FACET clause)
 //! ├─ project: Option<Projection>    (optional, from PROJECT clause)
-//! ├─ labels: Option<Labels>         (optional, merged from LABEL clauses)
-//! └─ theme: Option<Theme>           (optional, from THEME clause)
+//! └─ labels: Option<Labels>         (optional, merged from LABEL clauses)
 //! ```
 
 use crate::naming;
@@ -64,8 +63,6 @@ pub struct Plot {
     pub project: Option<Projection>,
     /// Text labels (merged from all LABEL clauses)
     pub labels: Option<Labels>,
-    /// Theme styling (from THEME clause)
-    pub theme: Option<Theme>,
     /// Aesthetic context for coordinate-specific aesthetic names
     /// Computed from the coord type and facet, used for transformations
     #[serde(skip)]
@@ -79,15 +76,6 @@ pub struct Labels {
     pub labels: HashMap<String, String>,
 }
 
-/// Theme styling (from THEME clause)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Theme {
-    /// Base theme style
-    pub style: Option<String>,
-    /// Theme property overrides
-    pub properties: HashMap<String, ParameterValue>,
-}
-
 // Manual PartialEq implementation (aesthetic_context is derived, not compared)
 impl PartialEq for Plot {
     fn eq(&self, other: &Self) -> bool {
@@ -98,7 +86,6 @@ impl PartialEq for Plot {
             && self.facet == other.facet
             && self.project == other.project
             && self.labels == other.labels
-            && self.theme == other.theme
     }
 }
 
@@ -113,7 +100,6 @@ impl Plot {
             facet: None,
             project: None,
             labels: None,
-            theme: None,
             aesthetic_context: None,
         }
     }
@@ -128,7 +114,6 @@ impl Plot {
             facet: None,
             project: None,
             labels: None,
-            theme: None,
             aesthetic_context: None,
         }
     }

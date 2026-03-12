@@ -453,7 +453,6 @@ module.exports = grammar({
       $.facet_clause,
       $.project_clause,
       $.label_clause,
-      $.theme_clause,
     ),
 
     // DRAW clause - syntax: DRAW geom [MAPPING ...] [REMAPPING ...] [SETTING ...] [FILTER ...] [PARTITION BY ...] [ORDER BY ...]
@@ -665,7 +664,7 @@ module.exports = grammar({
       // Facet aesthetics
       'panel', 'row', 'column',
       // Computed variables
-      'offset',
+      'offset', 'density', 'count', 'intensity',
       // Allow any identifier for custom PROJECT aesthetics (e.g., PROJECT a, b TO polar)
       $.identifier
     ),
@@ -819,34 +818,6 @@ module.exports = grammar({
     ),
 
     label_type: $ => $.identifier,
-
-    // THEME clause - THEME [name] [SETTING prop => value, ...]
-    theme_clause: $ => choice(
-      // Just theme name
-      seq(caseInsensitive('THEME'), $.theme_name),
-      // Theme name with properties
-      seq(
-        caseInsensitive('THEME'), $.theme_name, caseInsensitive('SETTING'),
-        $.theme_property,
-        repeat(seq(',', $.theme_property))
-      ),
-      // Just properties (custom theme)
-      seq(
-        caseInsensitive('THEME'), caseInsensitive('SETTING'),
-        $.theme_property,
-        repeat(seq(',', $.theme_property))
-      )
-    ),
-
-    theme_name: $ => $.identifier,
-
-    theme_property: $ => seq(
-      field('name', $.theme_property_name),
-      '=>',
-      field('value', choice($.string, $.number, $.boolean))
-    ),
-
-    theme_property_name: $ => $.identifier,
 
     // Basic tokens
     bare_identifier: $ => token(/[a-zA-Z_][a-zA-Z0-9_]*/),

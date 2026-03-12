@@ -21,7 +21,7 @@ use super::SourceTree;
 ///
 /// Returns (name_node, value_node) without any interpretation.
 /// Works for both patterns:
-/// - `name => value` (SETTING, PROJECT, THEME, LABEL, RENAMING)
+/// - `name => value` (SETTING, PROJECT, LABEL, RENAMING)
 /// - `value AS name` (MAPPING explicit_mapping)
 ///
 /// Caller is responsible for interpreting the nodes based on their context.
@@ -326,9 +326,6 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
                 } else {
                     spec.labels = Some(new_labels);
                 }
-            }
-            "theme_clause" => {
-                spec.theme = Some(build_theme(&child, source)?);
             }
             _ => {
                 // Unknown clause type
@@ -1121,51 +1118,6 @@ fn build_labels(node: &Node, source: &SourceTree) -> Result<Labels> {
 }
 
 // ============================================================================
-// Theme Building
-// ============================================================================
-
-/// Build a Theme from a theme_clause node
-fn build_theme(node: &Node, source: &SourceTree) -> Result<Theme> {
-    let mut style: Option<String> = None;
-    let mut properties = HashMap::new();
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "THEME" | "SETTING" | "=>" | "," => continue,
-            "theme_name" => {
-                style = Some(source.get_text(&child));
-            }
-            "theme_property" => {
-                // Parse theme property: name => value using field-based queries
-                let (name_node, value_node) = extract_name_value_nodes(&child, "theme property")?;
-
-                // Parse property name
-                let prop_name = source.get_text(&name_node);
-
-                // Parse property value
-                let prop_value = match value_node.kind() {
-                    "string" | "number" | "boolean" => {
-                        parse_value_node(&value_node, source, "theme property")?
-                    }
-                    _ => {
-                        return Err(GgsqlError::ParseError(format!(
-                            "Invalid theme property value type: {}",
-                            value_node.kind()
-                        )));
-                    }
-                };
-
-                properties.insert(prop_name, prop_value);
-            }
-            _ => {}
-        }
-    }
-
-    Ok(Theme { style, properties })
-}
-
-// ============================================================================
 // Validation & Utilities
 // ============================================================================
 
@@ -1397,7 +1349,6 @@ mod tests {
             ViSuAlIsE date AS x, revenue AS y
             DrAw line
             ScAlE x SeTtInG type => 'date'
-            ThEmE minimal
         "#;
 
         let result = parse_test_query(query);
@@ -1406,7 +1357,6 @@ mod tests {
         assert_eq!(specs.len(), 1);
         assert_eq!(specs[0].layers.len(), 1);
         assert_eq!(specs[0].scales.len(), 1);
-        assert!(specs[0].theme.is_some());
     }
 
     #[test]
