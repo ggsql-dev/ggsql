@@ -419,3 +419,18 @@ code {
     }
   }
 }
+
+// FAQ callouts with brand teal colors
+.callout.callout-style-default.callout-note {
+  border-color: var(--brand-paleteal, #DEF1EB);
+  border-left-color: var(--brand-teal, #0A9396);
+
+  .callout-icon {
+    // Transform icon to brand-teal (#0A9396)
+    filter: brightness(0) saturate(100%) invert(33%) sepia(92%) saturate(458%) hue-rotate(152deg) brightness(93%) contrast(89%);
+  }
+
+  .callout-header {
+    background-color: var(--brand-paleteal, #DEF1EB);
+  }
+}
