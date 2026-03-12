@@ -41,7 +41,7 @@ jobs:
         run: df -h
 
       - name: Setup CLI tools
-        run: cargo install --path src
+        run: cargo install --locked --path src
 
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
