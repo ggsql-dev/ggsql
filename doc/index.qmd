@@ -57,7 +57,7 @@ FACET region
 :::
 
 ::: {.feature}
-### Build for Humans _and_ AI
+### Built for Humans _and_ AI
 
 The structured syntax makes it easy for AI agents to write, and for you to read, adjust, and verify.
 

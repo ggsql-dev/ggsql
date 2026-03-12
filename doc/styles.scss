@@ -81,7 +81,7 @@ code {
   // Wide layout: content box to the right of image
   @media (min-width: 1200px) {
     flex-direction: row;
-    align-items: flex-end;
+    align-items: center;
     justify-content: flex-end;
     min-height: 400px;
     overflow: hidden;
@@ -95,7 +95,7 @@ code {
       flex: 1 1 auto;
       display: flex;
       justify-content: flex-end;
-      align-items: flex-end;
+      align-items: center;
       margin: 0;
     }
 
@@ -103,7 +103,7 @@ code {
       max-width: 100%;
       max-height: 100%;
       object-fit: contain;
-      object-position: bottom;
+      object-position: center;
       mask-image: linear-gradient(
         to right,
         transparent 0%,
@@ -125,9 +125,7 @@ code {
       width: auto;
       max-width: 400px;
       padding: 0rem 1rem 1rem;
-      margin-left: -80px;
-      margin-right: calc((100vw - 1200px) / 2);
-      margin-bottom: 2rem;
+      margin: 4rem calc((100vw - 1200px) / 2) 2rem -80px;
       border-radius: 12px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
       position: relative;
