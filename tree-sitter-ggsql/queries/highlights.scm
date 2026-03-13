@@ -31,34 +31,57 @@
 
 ; Aesthetic names
 [
+  ; Position aesthetics (cartesian)
   "x"
   "y"
-  "weight"
   "xmin"
   "xmax"
   "ymin"
   "ymax"
   "xend"
   "yend"
+  ; Position aesthetics (polar)
+  "theta"
+  "radius"
+  "thetamin"
+  "thetamax"
+  "radiusmin"
+  "radiusmax"
+  "thetaend"
+  "radiusend"
+  ; Aggregation aesthetic
+  "weight"
+  ; Color aesthetics
   "color"
   "colour"
   "fill"
   "stroke"
   "opacity"
+  ; Size and shape
   "size"
   "shape"
   "linetype"
   "linewidth"
   "width"
   "height"
+  ; Text aesthetics
   "label"
   "family"
   "fontface"
   "hjust"
   "vjust"
+  ; Specialty aesthetics
+  "coef"
+  "intercept"
+  ; Facet aesthetics
   "panel"
   "row"
   "column"
+  ; Computed variables
+  "offset"
+  "density"
+  "count"
+  "intensity"
 ] @attribute
 
 ; String literals
@@ -81,7 +104,6 @@
 
 ; Property names
 (project_property_name) @property
-(theme_property_name) @property
 (label_type) @property
 
 ; Operators

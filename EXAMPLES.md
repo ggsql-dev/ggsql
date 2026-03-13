@@ -8,7 +8,7 @@ This document provides a collection of basic examples demonstrating how to use g
 - [Multiple Layers](#multiple-layers)
 - [Scales and Transformations](#scales-and-transformations)
 - [Projections](#projections)
-- [Labels and Themes](#labels-and-themes)
+- [Labels](#labels)
 - [Faceting](#faceting)
 - [Common Table Expressions (CTEs)](#common-table-expressions-ctes)
 - [Advanced Examples](#advanced-examples)
@@ -168,7 +168,7 @@ PROJECT y, x TO polar SETTING start => 90
 
 ---
 
-## Labels and Themes
+## Labels
 
 ### Chart with Title and Axis Labels
 
@@ -192,24 +192,6 @@ LABEL title => 'Performance Metrics',
       x => 'Date',
       y => 'Metric Value',
       caption => 'Data source: Analytics DB'
-```
-
-### Themed Visualization
-
-```sql
-SELECT category, value FROM data
-VISUALISE category AS x, value AS y
-DRAW bar
-THEME minimal
-```
-
-### Theme with Custom Properties
-
-```sql
-SELECT x, y FROM data
-VISUALISE x, y
-DRAW point
-THEME dark SETTING background => '#1a1a1a'
 ```
 
 ---
@@ -455,7 +437,6 @@ FACET region
 LABEL title => 'Sales Trends by Region',
       x => 'Date',
       y => 'Total Quantity'
-THEME minimal
 ```
 
 ### Time Series with Multiple Aesthetics
@@ -495,7 +476,6 @@ SCALE fill TO ['red', 'orange', 'yellow', 'green', 'blue',
 LABEL title => 'Top 10 Products by Revenue',
       x => 'Product',
       y => 'Revenue ($)'
-THEME classic
 ```
 
 ### Distribution with Custom range
@@ -639,11 +619,9 @@ Draw Line
 
 6. **Multiple Layers**: Combine layers (e.g., line + point) for richer visualizations.
 
-7. **Themes**: Apply themes last in your specification for consistent styling.
+7. **Labels**: Always provide meaningful titles and axis labels for clarity.
 
-8. **Labels**: Always provide meaningful titles and axis labels for clarity.
-
-9. **Range Specification**: Use SCALE for all axis limits and aesthetic domain specifications.
+8. **Range Specification**: Use SCALE for all axis limits and aesthetic domain specifications.
 
 ---
 
