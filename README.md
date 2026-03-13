@@ -30,7 +30,7 @@ We are approaching an alpha release with the main architectural parts finished. 
 Please follow the instructions on [the website](https://ggsql.org/get_started.html) for up to date information on how to install ggsql.
 
 ## Try it out
-ggsql compiles to WASM and can thus be embedded in a website. You can try it out on our [playground](https://ggsql.org/wasm/) (no installations required).
+ggsql compiles to WASM and can thus be embedded in a website. You can try it out on our [playground](https://ggsql.org/wasm/) (no installation required).
 
 ## Learn more
 Browse [the documentation](https://ggsql.org/syntax/) to learn of all ggsql has to offer. Complete with interactive examples to try out.

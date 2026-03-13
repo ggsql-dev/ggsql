@@ -76,9 +76,9 @@ LABEL
    y => 'Bill depth'
 ```
 
-Congratulations! You have started your journey with ggsql! All examples you see on this site will be interactive. Please experiment to your hearts content. If you want a more dedicated exploration experience head to [our playground](wasm/) which provides a simple IDE with a number of examples to try out.
+Congratulations! You have started your journey with ggsql! All examples you see on this site will be interactive. Please experiment to your heart's content. If you want a more dedicated exploration experience head to [our playground](wasm/) which provides a simple IDE with a number of examples to try out.
 
-Now that you have gotten a feel for ggsql you may want to try running locally with your own data. Read on to learn how
+Now that you have gotten a feel for ggsql you may want to try running locally with your own data. Read on to learn how.
 
 ## Installation
 

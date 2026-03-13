@@ -107,7 +107,7 @@ Install ggsql and start creating visualizations in minutes.
 [Examples](examples.qmd){.btn .btn-outline-secondary .btn-lg}
 :::
 
-Or try our [online playground](wasm/) to experience the syntax _right now_
+Or try our [online playground](wasm/) to experience the syntax _right now_.
 
 :::
 
