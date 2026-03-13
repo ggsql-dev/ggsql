@@ -12,7 +12,7 @@ mkdirSync(distDir, { recursive: true });
 
 // Copy static files
 console.log("Copying static files...");
-copyFileSync(join(__dirname, "src/index.html"), join(distDir, "index.html"));
+copyFileSync(join(__dirname, "src/index.qmd"), join(distDir, "index.qmd"));
 copyFileSync(
   join(__dirname, "../pkg/ggsql_wasm_bg.wasm"),
   join(distDir, "ggsql_wasm_bg.wasm"),
