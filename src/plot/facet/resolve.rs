@@ -1098,10 +1098,9 @@ mod tests {
     #[test]
     fn test_nrow_not_string() {
         let mut facet = make_wrap_facet();
-        facet.properties.insert(
-            "nrow".to_string(),
-            ParameterValue::String("2".to_string()),
-        );
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::String("2".to_string()));
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
