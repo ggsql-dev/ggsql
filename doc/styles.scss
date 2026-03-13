@@ -182,6 +182,10 @@ code {
     background: var(--brand-paleteal, #DEF1EB);
     color: var(--brand-darkteal);
 
+    > section > p > a {
+      color: black
+    }
+
     > h2 {
       color: var(--brand-darkteal);
       border-bottom-color: var(--brand-darkteal);

@@ -1,5 +1,5 @@
 ---
-title: "Installing ggsql"
+title: "Getting started"
 ---
 
 <!-- UNCOMMENT THIS WHEN WE RELEASE

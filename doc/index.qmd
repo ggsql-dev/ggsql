@@ -16,8 +16,8 @@ repo-actions: false
 A declarative visualization language that extends SQL with powerful data visualization capabilities.
 
 ::: {.hero-buttons}
-[Get Started](installation.qmd){.btn .btn-secondary .btn-lg}
-[View Examples](examples.qmd){.btn .btn-outline-light .btn-lg}
+[Get Started](get_started.qmd){.btn .btn-secondary .btn-lg}
+[View Examples](gallery/index.qmd){.btn .btn-outline-light .btn-lg}
 :::
 
 :::
@@ -102,10 +102,12 @@ VS Code
 Install ggsql and start creating visualizations in minutes.
 
 ::: {.cta-buttons}
-[Installation](installation.qmd){.btn .btn-primary .btn-lg}
+[Installation](get_started.qmd){.btn .btn-primary .btn-lg}
 [Documentation](syntax/index.qmd){.btn .btn-outline-primary .btn-lg}
 [Examples](examples.qmd){.btn .btn-outline-secondary .btn-lg}
 :::
+
+Or try our [online playground](wasm/) to experience the syntax _right now_
 
 :::
 
