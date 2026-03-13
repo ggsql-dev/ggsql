@@ -26,7 +26,8 @@ website:
   twitter-card:
     card-style: summary
   open-graph: true
-  search: true
+  search:
+    keyboard-shortcut: []
   navbar:
     left:
       - get_started.qmd
