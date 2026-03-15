@@ -21,7 +21,7 @@ include-in-header:
 
 ::: {.hero-banner}
 
-# <span class="hcode">QUERY</span> ![](assets/visualize.svg){.hviz} <span class="hund">UNDERSTAND</span>
+# <span class="hcode">QUERY</span> <span class="hviz-wrapper">![](assets/visualize.svg){.hviz aria-hidden="true"}<span class="sr-only">VISUALIZE</span></span> <span class="hund">UNDERSTAND</span>
 
 ::: {.hero-body}
 ggsql brings the elegance of the Grammar of Graphics to SQL. Write familiar queries, add visualization clauses, and see your data transform into beautiful, composable charts — no context switching, no separate tools, just SQL with superpowers.

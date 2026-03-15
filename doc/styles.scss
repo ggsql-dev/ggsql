@@ -56,14 +56,33 @@ body:has(.hero-banner) {
       font-weight: 100;
     }
 
-    .hviz {
-      display: inline;
-      height: 0.85em;
-      width: auto;
+    .hviz-wrapper {
+      position: relative;
+      display: inline-block;
       vertical-align: baseline;
       margin: 0 0.1em;
+    }
+
+    .hviz-wrapper .hviz {
+      display: block;
+      height: 0.85em;
+      width: auto;
+      margin: 0;
       position: relative;
       top: 0.08em;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    // Accessible + selectable text overlay
+    .hviz-wrapper .sr-only {
+      position: absolute;
+      inset: 0;
+      color: transparent;
+      user-select: all;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .hund {
