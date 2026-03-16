@@ -83,7 +83,7 @@ VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
 You can combine this with the `orientation` setting to make a vertical steamgraph
 
 ```{ggsql}
-VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
+VISUALISE Date AS y, Value AS x, Series AS colour FROM long_airquality
 DRAW area 
   SETTING position => 'stack', center => true, orientation => 'transposed'
 ```
