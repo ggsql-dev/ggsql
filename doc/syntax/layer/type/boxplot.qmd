@@ -82,6 +82,7 @@ Consider more observations as outliers by setting a smaller `coef`:
 
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
+DRAW boxplot
   MAPPING species AS x, bill_len AS y
   SETTING coef => 0.1
 ```
