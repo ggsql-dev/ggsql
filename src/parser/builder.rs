@@ -3328,9 +3328,10 @@ mod tests {
 
         let literal_node = source.find_node(&root, "(literal_value) @lit").unwrap();
         let parsed = parse_literal_value(&literal_node, &source).unwrap();
-        assert!(
-            matches!(parsed, AestheticValue::Literal(ParameterValue::String(ref s)) if s == "red")
-        );
+        assert!(matches!(
+            parsed,
+            AestheticValue::Literal(ParameterValue::String(ref s)) if s == "red"
+        ));
 
         // Test number literal
         let source2 = make_source("VISUALISE DRAW point MAPPING 42 AS size");
