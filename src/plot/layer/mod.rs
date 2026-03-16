@@ -20,9 +20,12 @@ pub use geom::{
 // Re-export position types for convenience
 pub use position::{Position, PositionTrait, PositionType};
 
-use crate::plot::{
-    is_facet_aesthetic,
-    types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression},
+use crate::{
+    plot::{
+        is_facet_aesthetic,
+        types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression},
+    },
+    AestheticContext,
 };
 
 /// A single visualization layer (from DRAW clause)
@@ -161,12 +164,19 @@ impl Layer {
     }
 
     /// Check if this layer has the required aesthetics, and no exotic aesthetics.
-    pub fn validate_mapping(&self) -> std::result::Result<(), String> {
+    pub fn validate_mapping(
+        &self,
+        context: &Option<AestheticContext>,
+    ) -> std::result::Result<(), String> {
         // Check if all required aesthetics exist.
-        let mut missing: Vec<&str> = Vec::new();
+        let mut missing = Vec::new();
         for aesthetic in self.geom.aesthetics().required() {
             if !self.mappings.contains_key(aesthetic) {
-                missing.push(aesthetic);
+                let name = match context {
+                    Some(ctx) => ctx.map_internal_to_user(aesthetic),
+                    _ => aesthetic.to_string(),
+                };
+                missing.push(name);
             }
         }
         if !missing.is_empty() {
@@ -177,14 +187,18 @@ impl Layer {
             ));
         }
         // Check if any unsupported mappings are present
-        let mut extra: Vec<&str> = Vec::new();
+        let mut extra = Vec::new();
         let supported = self.geom.aesthetics().supported();
         for aesthetic in self.mappings.aesthetics.keys() {
             if is_facet_aesthetic(aesthetic) {
                 continue;
             }
             if !supported.contains(&aesthetic.as_str()) {
-                extra.push(aesthetic);
+                let name = match context {
+                    Some(ctx) => ctx.map_internal_to_user(aesthetic),
+                    _ => aesthetic.to_string(),
+                };
+                extra.push(name);
             }
         }
         if !extra.is_empty() {

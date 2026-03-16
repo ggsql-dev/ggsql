@@ -234,6 +234,36 @@ impl AestheticContext {
         }
     }
 
+    /// Map internal aesthetic to user-facing name (reverse of map_user_to_internal).
+    ///
+    /// Positional: "pos1" → "x", "pos2min" → "ymin", "pos1" → "theta" (for polar)
+    /// Facet: "facet1" → "panel" (wrap), "facet1" → "row" (grid), "facet2" → "column" (grid)
+    /// Non-positional: "color" → "color" (unchanged)
+    ///
+    /// Returns None if the internal aesthetic is not recognized.
+    pub fn map_internal_to_user(&self, internal_aesthetic: &str) -> String {
+        // Check internal facet (facet1, facet2)
+        if let Some(idx) = self
+            .internal_facet
+            .iter()
+            .position(|i| i == internal_aesthetic)
+        {
+            return self.user_facet[idx].to_string();
+        }
+
+        // Check internal positional (pos1, pos1min, pos2, etc.)
+        // Iterate through user_to_internal to find reverse mapping
+        for (user, internal) in &self.user_to_internal {
+            if internal == internal_aesthetic {
+                return user.to_string();
+            }
+        }
+
+        // Non-positional aesthetics (color, size, etc.)
+        // Internal is the same as external
+        internal_aesthetic.to_string()
+    }
+
     // === Checking (O(1) HashMap lookups) ===
 
     /// Check if internal aesthetic is primary positional (pos1, pos2, ...)

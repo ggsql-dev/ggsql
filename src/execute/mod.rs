@@ -48,14 +48,18 @@ use crate::reader::DuckDBReader;
 /// - Partition_by columns exist in schema
 /// - Remapping target aesthetics are supported by geom
 /// - Remapping source columns are valid stat columns for geom
-fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
+fn validate(
+    layers: &[Layer],
+    layer_schemas: &[Schema],
+    aesthetic_context: &Option<AestheticContext>,
+) -> Result<()> {
     for (idx, (layer, schema)) in layers.iter().zip(layer_schemas.iter()).enumerate() {
         let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
         let supported = layer.geom.aesthetics().supported();
 
         // Validate required aesthetics for this geom
         layer
-            .validate_mapping()
+            .validate_mapping(aesthetic_context)
             .map_err(|e| GgsqlError::ValidationError(format!("Layer {}: {}", idx + 1, e)))?;
 
         // Validate SETTING parameters are valid for this geom
@@ -1018,7 +1022,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Validate all layers against their schemas
     // This must happen BEFORE build_layer_query because stat transforms remove consumed aesthetics
-    validate(&specs[0].layers, &layer_schemas)?;
+    validate(&specs[0].layers, &layer_schemas, &specs[0].aesthetic_context)?;
 
     // Create scales for all mapped aesthetics that don't have explicit SCALE clauses
     scale::create_missing_scales(&mut specs[0]);
