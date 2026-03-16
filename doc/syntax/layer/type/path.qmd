@@ -26,7 +26,7 @@ The following aesthetics are recognised by the path layer.
 The path layer does not transform its data but passes it through unchanged
 
 ## Orientation
-The path layer is symmetric in how it regards its axes and thus doesn't exhibit any orientation.
+The path layer has no orientation. The axes are treated symmetrically.
 
 ## Examples
 

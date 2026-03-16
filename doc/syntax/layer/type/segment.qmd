@@ -31,7 +31,7 @@ If one is missing, it takes on the value of the start point.
 The segment layer does not transform its data but passes it through unchanged.
 
 ## Orientation
-The segment layer is symmetric in how it regards its axes and thus doesn't exhibit any orientation.
+The segment layer has no orientations. The axes are treated symmetrically.
 
 ## Examples
 

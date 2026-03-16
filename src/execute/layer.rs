@@ -3,7 +3,7 @@
 //! This module handles building SQL queries for layers, applying pre-stat
 //! transformations, stat transforms, and post-query operations.
 
-use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
+use crate::plot::aesthetic::AestheticContext;
 use crate::plot::layer::is_transposed;
 use crate::plot::layer::orientation::{flip_positional_aesthetics, resolve_orientation};
 use crate::plot::{
@@ -618,69 +618,13 @@ fn normalize_mapping_column_names(layer: &mut Layer) {
         .collect();
 
     for aesthetic in aesthetics_to_update {
-        if let Some(value) = layer.mappings.aesthetics.get_mut(&aesthetic) {
-            let expected_col = naming::aesthetic_column(&aesthetic);
-            match value {
-                AestheticValue::Column { name, .. } => {
-                    *name = expected_col;
-                }
-                AestheticValue::Literal(_) => {
-                    *value = AestheticValue::standard_column(expected_col);
-                }
-            }
+        // Literals are already converted to Columns by update_mappings_for_aesthetic_columns()
+        if let Some(AestheticValue::Column { name, .. }) =
+            layer.mappings.aesthetics.get_mut(&aesthetic)
+        {
+            *name = naming::aesthetic_column(&aesthetic);
         }
     }
-}
-
-/// Flip positional column names in a DataFrame for Transposed orientation layers.
-///
-/// Swaps column names like `__ggsql_aes_pos1__` ↔ `__ggsql_aes_pos2__` so that
-/// the data matches the flipped mapping names.
-///
-/// This is called after query execution for layers with Transposed orientation,
-/// in coordination with `normalize_mapping_column_names` which updates the mappings.
-pub fn flip_dataframe_positional_columns(
-    df: DataFrame,
-    aesthetic_ctx: &AestheticContext,
-) -> DataFrame {
-    use polars::prelude::*;
-
-    // Collect renames needed before consuming df
-    let renames: Vec<(String, String)> = df
-        .get_column_names()
-        .iter()
-        .filter_map(|col_name| {
-            naming::extract_aesthetic_name(col_name).and_then(|aesthetic| {
-                if is_positional_aesthetic(aesthetic) {
-                    let flipped = aesthetic_ctx.flip_positional(aesthetic);
-                    if flipped != aesthetic {
-                        return Some((col_name.to_string(), naming::aesthetic_column(&flipped)));
-                    }
-                }
-                None
-            })
-        })
-        .collect();
-
-    if renames.is_empty() {
-        return df;
-    }
-
-    let mut lazy = df.lazy();
-
-    // First pass: rename to temp names
-    for (from, to) in &renames {
-        let temp = format!("{}_temp", to);
-        lazy = lazy.rename([from.as_str()], [temp.as_str()], true);
-    }
-
-    // Second pass: remove temp suffix
-    for (_, to) in &renames {
-        let temp = format!("{}_temp", to);
-        lazy = lazy.rename([temp.as_str()], [to.as_str()], true);
-    }
-
-    lazy.collect().expect("rename should not fail")
 }
 
 /// Resolve orientation for all layers and apply mapping flips.

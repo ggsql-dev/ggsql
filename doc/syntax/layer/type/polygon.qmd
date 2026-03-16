@@ -28,7 +28,7 @@ The following aesthetics are recognised by the polygon layer.
 The polygon layer does not transform its data but passes it through unchanged
 
 ## Orientation
-The polygon layer is symmetric in how it regards its axes and thus doesn't exhibit any orientation.
+The polygon layer has no orientation. The axes are treated symmetrically.
 
 ## Examples
 

@@ -6,7 +6,7 @@ title: "Rule"
 
 The rule layer is used to draw reference lines perpendicular to an axis at specified values. This is useful for adding thresholds, means, medians, event markers, cutoff dates or other guides to the plot. The lines span the full width or height of the panels.
 
-> The rule layer doesn't have a natural extend along the secondary axis and the scale range can thus not be deduced from it. If the rule layer is the only layer in the visualisation you must specify the position scale range manually.
+> The rule layer doesn't have a natural extent along the secondary axis. The secondary scale range can thus not be deduced from rule layers. If the rule layer is the only layer in the visualisation, you must specify the position scale range manually.
 
 ## Aesthetics
 The following aesthetics are recognised by the rule layer.
@@ -27,7 +27,7 @@ The rule layer has no additional settings.
 The rule layer does not transform its data but passes it through unchanged.
 
 ## Orientation
-Rules are drawn perpendicular to their primary axis. The orientation can be deduced purely from the mapping. To create a horizontal rule you map the values to `y` instead of `x` (assuming a default Cartesian coordinate system).
+Rules are drawn perpendicular to their primary axis. The orientation is deduced directly from the mapping. To create a horizontal rule you map the values to `y` instead of `x` (assuming a default Cartesian coordinate system).
 
 ## Examples
 

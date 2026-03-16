@@ -2,6 +2,7 @@
 
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::plot::types::DefaultAestheticValue;
+use crate::plot::{DefaultParam, DefaultParamValue};
 use crate::{naming, Mappings};
 
 /// Ribbon geom - confidence bands and ranges
@@ -26,6 +27,13 @@ impl GeomTrait for Ribbon {
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[DefaultParam {
+            name: "position",
+            default: DefaultParamValue::String("identity"),
+        }]
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {

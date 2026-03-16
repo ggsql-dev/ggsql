@@ -28,7 +28,7 @@ The following aesthetics are recognised by the point layer.
 The point layer does not transform its data but passes it through unchanged
 
 ## Orientation
-The point layer is symmetric in how it regards its axes and thus doesn't exhibit any orientation.
+The point layer has no orientation. The axes are treated symmetrically.
 
 ## Examples
 

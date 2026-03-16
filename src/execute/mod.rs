@@ -1192,7 +1192,10 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                     // First time flipping this data key
                     if let Some(df) = data_map.remove(key) {
                         let flipped_df =
-                            layer::flip_dataframe_positional_columns(df, &aesthetic_ctx);
+                            crate::plot::layer::orientation::flip_dataframe_positional_columns(
+                                df,
+                                &aesthetic_ctx,
+                            );
                         data_map.insert(key.clone(), flipped_df);
                     }
                 }

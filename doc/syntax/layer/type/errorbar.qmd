@@ -11,8 +11,8 @@ The following aesthetics are recognised by the errorbar layer.
 
 ### Required
 * Primary axis (e.g. `x`): Position along the primary axis
-* Secondary axis min (e.g. `ymin`): Lower position along the secondary axis.
-* Secondary axis max (e.g. `ymax`): Upper position along the secondary axis.
+* Secondary axis minimum (e.g. `ymin`): Lower position along the secondary axis.
+* Secondary axis maximum (e.g. `ymax`): Upper position along the secondary axis.
 
 ### Optional
 * `stroke`/`colour`: The colour of the lines in the errorbar.
@@ -27,7 +27,7 @@ The following aesthetics are recognised by the errorbar layer.
 The errorbar layer does not transform its data but passes it through unchanged.
 
 ## Orientation
-Ribbon layers are sorted and connected along their primary axis. The orientation can be deduced purely from the mapping since interval is mapped to the secodnary axis. To create a vertical ribbon layer you map the independent variable to `y` instead of `x` and the interval to `xmin` and `xmax` (assuming a default Cartesian coordinate system).
+The orientation of errorbar layers is deduced directly from the mapping, because the interval is mapped to the secondary axis. To create a horizontal errorbar layer, you map the independent variable to `y` instead of `x` and the interval to `xmin` and `xmax` (assuming a default Cartesian coordinate system).
 
 ## Examples
 

@@ -950,12 +950,34 @@ pub fn coerce_aesthetic_columns(
 ///
 /// Scales that were already resolved pre-stat (Binned scales) are skipped.
 pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>) -> Result<()> {
+    use crate::plot::projection::CoordKind;
     use crate::plot::scale::ScaleDataContext;
 
     let aesthetic_ctx = spec.get_aesthetic_context();
 
-    // Get coord_kind from projection (for disabling expansion on polar theta)
-    let coord_kind = spec.project.as_ref().map(|p| p.coord.coord_kind());
+    // Determine if polar is a full circle (for zero expansion on theta)
+    // A polar coord is "full circle" when end is None or equals start
+    let (is_polar, polar_is_full_circle) = spec
+        .project
+        .as_ref()
+        .map(|p| {
+            let is_polar = p.coord.coord_kind() == CoordKind::Polar;
+            if !is_polar {
+                return (false, false);
+            }
+            // Check if it's a full circle: end is None or equals start
+            let start = match p.properties.get("start") {
+                Some(ParameterValue::Number(n)) => *n,
+                _ => 0.0,
+            };
+            let end = match p.properties.get("end") {
+                Some(ParameterValue::Number(n)) => Some(*n),
+                _ => None,
+            };
+            let is_full_circle = end.is_none() || end == Some(start);
+            (true, is_full_circle)
+        })
+        .unwrap_or((false, false));
 
     for idx in 0..spec.scales.len() {
         // Clone aesthetic to avoid borrow issues with find_columns_for_aesthetic
@@ -1005,7 +1027,11 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
 
             // Build context from actual data columns
             let mut context = ScaleDataContext::from_columns(&column_refs, use_discrete_range);
-            context.coord_kind = coord_kind;
+
+            // For polar full-circle theta (pos2), use zero expansion
+            if is_polar && polar_is_full_circle && aesthetic == "pos2" {
+                context.default_expand = Some((0.0, 0.0));
+            }
 
             // Use unified resolve method (includes resolve_output_range)
             st.resolve(&mut spec.scales[idx], &context, &aesthetic)

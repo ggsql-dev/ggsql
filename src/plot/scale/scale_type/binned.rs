@@ -1980,7 +1980,7 @@ mod tests {
             ])),
             dtype: Some(DataType::Float64),
             is_discrete: false,
-            coord_kind: None,
+            default_expand: None,
         };
 
         binned.resolve(&mut scale, &context, "fill").unwrap();
@@ -2037,7 +2037,7 @@ mod tests {
             ])),
             dtype: Some(DataType::Float64),
             is_discrete: false,
-            coord_kind: None,
+            default_expand: None,
         };
 
         binned.resolve(&mut scale, &context, "fill").unwrap();

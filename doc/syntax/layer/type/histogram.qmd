@@ -43,7 +43,7 @@ The histogram layer will bin the records in each group and count them. By defaul
 * `count AS <secondary axis>`: By default the histogram will show count as the height of the bars
 
 ## Orientation
-The histogram has its primary axis along the binned variable. The orientation can be deduced from the mapping. To create a horizontal histogram you map the variable to `y` instead of `x` (assuming a default Cartesian coordinate system).
+The histogram has its primary axis along the binned variable. The orientation is deduced directly from the mapping. To create a horizontal histogram, you map the variable to `y` instead of `x` (assuming a default Cartesian coordinate system).
 
 ## Examples
 
@@ -90,7 +90,7 @@ DRAW histogram
     SETTING binwidth => 100
 ```
 
-Create a horizontal histogram by changing the mapping
+Create a histogram along the y axis by changing the mapping
 
 ```{ggsql}
 VISUALISE FROM ggsql:penguins

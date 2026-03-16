@@ -22,7 +22,9 @@ The following aesthetics are recognised by the area layer.
 
 ## Settings
 * `position`: Determines the position adjustment to use for the layer (default is `'stack'`)
-* `orientation`: The orientation of the layer. Either `'aligned'` (default), or `'transposed'`. Determines if the layers primary axis is aligned with the coordinate systems first axis or not
+* `orientation`: The orientation of the layer, see the [Orientation section](#orientation). One of the following: 
+    * `'aligned'` to align the layer's primary axis with the coordinate system's first axis.
+    * `'transposed'` to align the layer's primary axis with the coordinate system's second axis.
 
 ## Data transformation
 The area layer sorts the data along its primary axis
@@ -76,4 +78,12 @@ An alternative is to center the stacks to create a steamgraph
 ```{ggsql}
 VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
   DRAW area SETTING position => 'stack', center => true
+```
+
+You can combine this with the `orientation` setting to make a vertical steamgraph
+
+```{ggsql}
+VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
+DRAW area 
+  SETTING position => 'stack', center => true, orientation => 'transposed'
 ```

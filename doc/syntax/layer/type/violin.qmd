@@ -86,7 +86,7 @@ VISUALISE species AS x, bill_dep AS y, island AS fill FROM ggsql:penguins
   DRAW violin
 ```
 
-Create horizontal violins by swapping x and y:
+Create horizontal violins by swapping `x` and `y`:
 
 ```{ggsql}
 VISUALISE species AS y, bill_dep AS x FROM ggsql:penguins

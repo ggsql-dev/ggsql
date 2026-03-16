@@ -292,6 +292,7 @@ impl GeomRenderer for BarRenderer {
             json!({
                 "type": "bar",
                 "height": size_value,
+                "baseline": "middle",
                 "clip": true
             })
         } else {

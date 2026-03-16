@@ -27,7 +27,6 @@ use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_positional_aesthetic};
-use crate::plot::projection::CoordKind;
 use crate::plot::types::{DefaultParam, DefaultParamValue};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
@@ -71,8 +70,8 @@ pub struct ScaleDataContext {
     pub dtype: Option<DataType>,
     /// Whether this is discrete data
     pub is_discrete: bool,
-    /// Coordinate system type (for disabling expansion on polar theta)
-    pub coord_kind: Option<CoordKind>,
+    /// Override for default expand factors (set by caller based on coord context)
+    pub default_expand: Option<(f64, f64)>,
 }
 
 impl ScaleDataContext {
@@ -82,7 +81,7 @@ impl ScaleDataContext {
             range: None,
             dtype: None,
             is_discrete: false,
-            coord_kind: None,
+            default_expand: None,
         }
     }
 
@@ -126,7 +125,7 @@ impl ScaleDataContext {
             range,
             dtype,
             is_discrete,
-            coord_kind: None,
+            default_expand: None,
         }
     }
 
@@ -152,7 +151,7 @@ impl ScaleDataContext {
             range,
             dtype,
             is_discrete,
-            coord_kind: None,
+            default_expand: None,
         }
     }
 
@@ -1652,11 +1651,11 @@ pub(crate) fn get_expand_factors(properties: &HashMap<String, ParameterValue>) -
 
 /// Get expand factors with aesthetic-aware defaults.
 ///
-/// For polar coordinates, pos2 (theta) defaults to zero expansion since it's angular/categorical.
+/// Uses `context.default_expand` if set (e.g., for polar full-circle theta).
 /// Users can still explicitly set expand via SETTING if they want expansion.
 pub(crate) fn get_expand_factors_for_aesthetic(
     properties: &HashMap<String, ParameterValue>,
-    aesthetic: &str,
+    _aesthetic: &str,
     context: &ScaleDataContext,
     user_explicit_expand: bool,
 ) -> (f64, f64) {
@@ -1667,10 +1666,9 @@ pub(crate) fn get_expand_factors_for_aesthetic(
         }
     }
 
-    // For polar coordinates, pos2 (theta) defaults to zero expansion
-    // since it's angular/categorical and shouldn't have padding
-    if context.coord_kind == Some(CoordKind::Polar) && aesthetic == "pos2" {
-        return (0.0, 0.0);
+    // Use context-provided default expand if set (e.g., zero for polar full-circle theta)
+    if let Some(expand) = context.default_expand {
+        return expand;
     }
 
     // Use the resolved (possibly default) expand value for other aesthetics
