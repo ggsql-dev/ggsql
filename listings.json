@@ -9,5 +9,16 @@
       "/gallery/examples/multi-layer.html",
       "/gallery/examples/faceted.html"
     ]
+  },
+  {
+    "listing": "/index.html",
+    "items": [
+      "/gallery/examples/scatterplot.html",
+      "/gallery/examples/line-chart.html",
+      "/gallery/examples/bar-chart.html",
+      "/gallery/examples/histogram.html",
+      "/gallery/examples/multi-layer.html",
+      "/gallery/examples/faceted.html"
+    ]
   }
 ]
