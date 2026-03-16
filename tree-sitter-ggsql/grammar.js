@@ -180,6 +180,17 @@ module.exports = grammar({
       ')'
     )),
 
+    // Scalar subquery for use inside expressions (e.g. function arguments)
+    // Matches (SELECT ...) or (WITH ... SELECT ...),
+    scalar_subquery: $ => prec(2, seq(
+      '(',
+      choice(
+        $.with_statement,
+        $.select_statement,
+      ),
+      ')'
+    )),
+
     // Token-by-token fallback for any other subquery content
     subquery_body: $ => repeat1(choice(
       $.window_function,
@@ -318,6 +329,8 @@ module.exports = grammar({
       $.cast_expression,
       // Nested function call
       $.function_call,
+      // Scalar subquery: (SELECT ...) or (WITH ... SELECT ...)
+      $.scalar_subquery,
       // Arithmetic/comparison expression (binary operators)
       seq($.positional_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>'), $.positional_arg),
       // Parenthesized expression
@@ -675,7 +688,8 @@ module.exports = grammar({
     literal_value: $ => choice(
       $.string,
       $.number,
-      $.boolean
+      $.boolean,
+      $.null_literal
     ),
 
     // SCALE clause - SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]

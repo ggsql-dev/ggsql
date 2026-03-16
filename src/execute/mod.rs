@@ -142,6 +142,14 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 // Global Mapping & Color Splitting
 // =============================================================================
 
+/// Check if an aesthetic value is a null sentinel (explicit removal marker)
+fn is_null_sentinel(value: &AestheticValue) -> bool {
+    matches!(
+        value,
+        AestheticValue::Literal(crate::plot::ParameterValue::Null)
+    )
+}
+
 /// Merge global mappings into layer aesthetics and expand wildcards
 ///
 /// This function performs smart wildcard expansion with schema awareness:
@@ -191,6 +199,12 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
 
             // Clear wildcard flag since it's been resolved
             layer.mappings.wildcard = false;
+
+            // Remove null sentinel mappings (explicit "don't inherit" markers)
+            layer
+                .mappings
+                .aesthetics
+                .retain(|_, value| !is_null_sentinel(value));
         }
     }
 }
@@ -876,7 +890,7 @@ pub struct PreparedData {
 /// * `reader` - A Reader implementation for executing SQL
 pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<PreparedData> {
     let execute_query = |sql: &str| reader.execute_sql(sql);
-    let type_names = reader.sql_type_names();
+    let dialect = reader.dialect();
 
     // Parse once and create SourceTree
     let source_tree = parser::SourceTree::new(query)?;
@@ -1014,7 +1028,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Determine which columns need type casting
     let type_requirements =
-        casting::determine_type_requirements(&specs[0], &layer_type_info, &type_names);
+        casting::determine_type_requirements(&specs[0], &layer_type_info, dialect);
 
     // Update type info with post-cast dtypes
     // This ensures subsequent schema extraction and scale resolution see the correct types
@@ -1083,7 +1097,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             &layer_base_queries[idx],
             &layer_schemas[idx],
             &scales,
-            &type_names,
+            dialect,
             &execute_query,
         )?;
         layer_queries.push(layer_query);
@@ -2248,6 +2262,35 @@ mod tests {
             line_df.height(),
             2,
             "line layer with facet column should not be expanded"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_null_mapping_removes_global_aesthetic() {
+        // Global mapping sets fill=region, but second layer uses null AS fill to opt out
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT 1 as x, 2 as y, 'A' as region
+            VISUALISE x, y, region AS fill
+            DRAW point
+            DRAW line MAPPING null AS fill
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Point layer (first) should have fill inherited from global
+        let point_layer = &result.specs[0].layers[0];
+        assert!(
+            point_layer.mappings.aesthetics.contains_key("fill"),
+            "point layer should inherit fill from global mapping"
+        );
+
+        // Line layer (second) should NOT have fill because of null AS fill
+        let line_layer = &result.specs[0].layers[1];
+        assert!(
+            !line_layer.mappings.aesthetics.contains_key("fill"),
+            "line layer should not have fill due to null AS fill"
         );
     }
 }
