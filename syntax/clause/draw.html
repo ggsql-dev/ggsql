@@ -609,6 +609,7 @@ gradient teal.
   <li><a href="#partition-by" id="toc-partition-by" class="nav-link" data-scroll-target="#partition-by"><code>PARTITION BY</code></a></li>
   <li><a href="#order-by" id="toc-order-by" class="nav-link" data-scroll-target="#order-by"><code>ORDER BY</code></a></li>
   </ul></li>
+  <li><a href="#layer-orientation" id="toc-layer-orientation" class="nav-link" data-scroll-target="#layer-orientation">Layer orientation</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
@@ -710,9 +711,13 @@ gradient teal.
 <h3 class="anchored" data-anchor-id="order-by"><code>ORDER BY</code></h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> <span class="op">&lt;</span>column<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>For some layers the order of records in the data is important, e.g.&nbsp;the path layer which connect records in the order they are provided. Since databases often doesn’t guarantee a specific order of the data, the <code>ORDER BY</code> clause can be used to enforce such and order. Even for layers where the order doesn’t immediately seem to matter it may have an effect, e.g.&nbsp;an overplottet scatterplot where the records in the end of the data are plottet on top of the one in the start.</p>
-
-
 </section>
+</section>
+<section id="layer-orientation" class="level2">
+<h2 class="anchored" data-anchor-id="layer-orientation">Layer orientation</h2>
+<p>Some layer types treat the two axes differently. For instance, a boxplot has categories along a discrete axis and summary statistics along a continuous one. While we are used to seeing boxplots with categories along the x-axis, this is not a necessity. The orientation can be deduced directly from the mappings in the layer. So, if you map discrete data to the x axis and continuous data to the y axis you get a boxplot in the standard orientation, whereas if you switch the mapping the boxes will “lay down” instead. The vast majority of layers that have an orientation also have a unique mapping pattern that allows us to deduce the orientation directly from the mapping. The few layers where the mapping is ambiguous (e.g.&nbsp;<code>line</code>) have an <code>orientation</code> setting that allows you to set the orientation explicitly.</p>
+
+
 </section>
 
 </main> <!-- /main -->
