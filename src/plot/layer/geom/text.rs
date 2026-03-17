@@ -1,6 +1,9 @@
 //! Text geom implementation
 
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
+use super::types::POSITION_VALUES;
+use super::{
+    DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, ParamConstraint,
+};
 use crate::plot::types::DefaultAestheticValue;
 
 /// Text geom - text labels at positions
@@ -30,10 +33,12 @@ impl GeomTrait for Text {
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
+        const PARAMS: &[DefaultParam] = &[DefaultParam {
             name: "position",
             default: DefaultParamValue::String("identity"),
-        }]
+            constraint: ParamConstraint::string_enum(POSITION_VALUES),
+        }];
+        PARAMS
     }
 }
 

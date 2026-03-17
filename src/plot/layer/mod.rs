@@ -26,7 +26,9 @@ pub use geom::{
 // Re-export position types for convenience
 pub use position::{Position, PositionTrait, PositionType};
 
-use crate::plot::types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression};
+use crate::plot::types::{
+    validate_parameter, AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression,
+};
 
 /// A single visualization layer (from DRAW clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -319,6 +321,29 @@ impl Layer {
                 ));
             }
         }
+
+        // Validate parameter values against constraints
+        for (param_name, value) in self.parameters.iter() {
+            // Check geom constraints first
+            if let Some(param) = self
+                .geom
+                .default_params()
+                .iter()
+                .find(|p| p.name == param_name)
+            {
+                validate_parameter(param_name, value, &param.constraint)?;
+            }
+            // Then check position constraints
+            else if let Some(param) = self
+                .position
+                .default_params()
+                .iter()
+                .find(|p| p.name == param_name)
+            {
+                validate_parameter(param_name, value, &param.constraint)?;
+            }
+        }
+
         Ok(())
     }
 

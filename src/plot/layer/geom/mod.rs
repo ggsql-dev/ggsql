@@ -50,7 +50,7 @@ mod tile;
 mod violin;
 
 // Re-export types
-pub use types::{DefaultAesthetics, DefaultParam, DefaultParamValue, StatResult};
+pub use types::{DefaultAesthetics, DefaultParam, DefaultParamValue, ParamConstraint, StatResult};
 
 // Re-export geom structs for direct access if needed
 pub use area::Area;

@@ -2,12 +2,13 @@
 
 use std::collections::HashMap;
 
+use super::types::POSITION_VALUES;
 use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
-        ParameterValue, StatResult,
+        ParamConstraint, ParameterValue, StatResult,
     },
     reader::SqlDialect,
     DataFrame, GgsqlError, Mappings, Result,
@@ -50,24 +51,29 @@ impl GeomTrait for Boxplot {
     }
 
     fn default_params(&self) -> &'static [super::DefaultParam] {
-        &[
+        const PARAMS: &[DefaultParam] = &[
             DefaultParam {
                 name: "outliers",
-                default: super::DefaultParamValue::Boolean(true),
+                default: DefaultParamValue::Boolean(true),
+                constraint: ParamConstraint::boolean(),
             },
             DefaultParam {
                 name: "coef",
                 default: DefaultParamValue::Number(1.5),
+                constraint: ParamConstraint::number_min(0.0),
             },
             DefaultParam {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
+                constraint: ParamConstraint::number_range(0.0, 1.0),
             },
             DefaultParam {
                 name: "position",
                 default: DefaultParamValue::String("dodge"),
+                constraint: ParamConstraint::string_enum(POSITION_VALUES),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {

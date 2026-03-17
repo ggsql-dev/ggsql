@@ -1,7 +1,9 @@
 //! Linear geom implementation
 
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
-use crate::plot::layer::orientation::ALIGNED;
+use super::{
+    DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, ParamConstraint,
+};
+use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::types::DefaultAestheticValue;
 
 /// Linear geom - lines with coefficient and intercept
@@ -27,10 +29,12 @@ impl GeomTrait for Linear {
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
+        const PARAMS: &[DefaultParam] = &[DefaultParam {
             name: "orientation",
             default: DefaultParamValue::String(ALIGNED),
-        }]
+            constraint: ParamConstraint::string_enum(ORIENTATION_VALUES),
+        }];
+        PARAMS
     }
 }
 

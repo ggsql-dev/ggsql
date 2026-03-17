@@ -1,16 +1,29 @@
 //! Violin geom implementation
 
+use super::types::POSITION_VALUES;
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::{
     naming,
     plot::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
-        ParameterValue,
+        ParamConstraint, ParameterValue,
     },
     DataFrame, GgsqlError, Mappings, Result,
 };
 use polars::prelude::*;
 use std::collections::HashMap;
+
+/// Valid kernel types for violin density estimation
+const KERNEL_VALUES: &[&str] = &[
+    "gaussian",
+    "epanechnikov",
+    "triangular",
+    "rectangular",
+    "uniform",
+    "biweight",
+    "quartic",
+    "cosine",
+];
 
 /// Violin geom - violin plots (mirrored density)
 #[derive(Debug, Clone, Copy)]
@@ -42,28 +55,34 @@ impl GeomTrait for Violin {
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[
+        const PARAMS: &[DefaultParam] = &[
             DefaultParam {
                 name: "bandwidth",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             DefaultParam {
                 name: "adjust",
                 default: DefaultParamValue::Number(1.0),
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             DefaultParam {
                 name: "kernel",
                 default: DefaultParamValue::String("gaussian"),
+                constraint: ParamConstraint::string_enum(KERNEL_VALUES),
             },
             DefaultParam {
                 name: "position",
                 default: DefaultParamValue::String("dodge"),
+                constraint: ParamConstraint::string_enum(POSITION_VALUES),
             },
             DefaultParam {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
+                constraint: ParamConstraint::number_range(0.0, 1.0),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {

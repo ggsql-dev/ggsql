@@ -868,7 +868,494 @@ pub enum DefaultParamValue {
     Null,
 }
 
-/// Property definition: name and default value
+// =============================================================================
+// Parameter Constraint Types
+// =============================================================================
+
+/// Constraint state for a specific type
+#[derive(Debug, Clone, Copy)]
+pub enum TypeConstraint<T> {
+    /// Type not allowed for this parameter
+    Forbidden,
+    /// Type allowed, any value accepted
+    Any,
+    /// Type allowed with specific constraints
+    Constrained(T),
+}
+
+/// Constraint for Number values
+#[derive(Debug, Clone, Copy)]
+pub struct NumberConstraint {
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub min_exclusive: bool,
+    pub max_exclusive: bool,
+}
+
+impl NumberConstraint {
+    /// No constraints on value
+    pub const fn unconstrained() -> Self {
+        Self {
+            min: None,
+            max: None,
+            min_exclusive: false,
+            max_exclusive: false,
+        }
+    }
+
+    /// Minimum value (inclusive)
+    pub const fn min(min: f64) -> Self {
+        Self {
+            min: Some(min),
+            max: None,
+            min_exclusive: false,
+            max_exclusive: false,
+        }
+    }
+
+    /// Minimum value (exclusive)
+    pub const fn min_exclusive(min: f64) -> Self {
+        Self {
+            min: Some(min),
+            max: None,
+            min_exclusive: true,
+            max_exclusive: false,
+        }
+    }
+
+    /// Value within range (inclusive on both ends)
+    pub const fn range(min: f64, max: f64) -> Self {
+        Self {
+            min: Some(min),
+            max: Some(max),
+            min_exclusive: false,
+            max_exclusive: false,
+        }
+    }
+}
+
+/// Constraint for String values
+#[derive(Debug, Clone, Copy)]
+pub struct StringConstraint {
+    /// String must be one of these values (empty = any string allowed)
+    pub allowed_values: &'static [&'static str],
+}
+
+impl StringConstraint {
+    /// Any string allowed (empty slice = no restriction)
+    pub const fn unconstrained() -> Self {
+        Self { allowed_values: &[] }
+    }
+
+    /// String must be one of the specified values
+    pub const fn one_of(values: &'static [&'static str]) -> Self {
+        Self {
+            allowed_values: values,
+        }
+    }
+}
+
+/// Element constraint - specifies type AND value constraints for array elements
+#[derive(Debug, Clone, Copy)]
+pub enum ArrayElementConstraint {
+    /// Any element type allowed, no constraints
+    Any,
+    /// Must be numbers, with optional value constraint
+    Number(NumberConstraint),
+    /// Must be strings, with optional value constraint
+    String(StringConstraint),
+    /// Must be booleans
+    Boolean,
+}
+
+/// Constraint for Array values
+#[derive(Debug, Clone, Copy)]
+pub struct ArrayConstraint {
+    pub element: ArrayElementConstraint,
+    pub min_len: Option<usize>,
+    pub max_len: Option<usize>,
+    pub allow_null_elements: bool,
+}
+
+impl ArrayConstraint {
+    /// Array of numbers with value constraint
+    pub const fn of_numbers(constraint: NumberConstraint) -> Self {
+        Self {
+            element: ArrayElementConstraint::Number(constraint),
+            min_len: None,
+            max_len: None,
+            allow_null_elements: false,
+        }
+    }
+
+    /// Array of numbers with exact length and value constraint
+    pub const fn of_numbers_len(len: usize, constraint: NumberConstraint) -> Self {
+        Self {
+            element: ArrayElementConstraint::Number(constraint),
+            min_len: Some(len),
+            max_len: Some(len),
+            allow_null_elements: false,
+        }
+    }
+
+    /// Array of strings with value constraint
+    pub const fn of_strings(constraint: StringConstraint) -> Self {
+        Self {
+            element: ArrayElementConstraint::String(constraint),
+            min_len: None,
+            max_len: None,
+            allow_null_elements: false,
+        }
+    }
+
+    /// Array of strings with exact length and value constraint
+    #[allow(dead_code)]
+    pub const fn of_strings_len(len: usize, constraint: StringConstraint) -> Self {
+        Self {
+            element: ArrayElementConstraint::String(constraint),
+            min_len: Some(len),
+            max_len: Some(len),
+            allow_null_elements: false,
+        }
+    }
+
+    /// Any element types allowed (including nulls)
+    #[allow(dead_code)]
+    pub const fn any_elements() -> Self {
+        Self {
+            element: ArrayElementConstraint::Any,
+            min_len: None,
+            max_len: None,
+            allow_null_elements: true,
+        }
+    }
+
+    /// Builder method to allow null elements
+    #[allow(dead_code)]
+    pub const fn with_null_elements(mut self) -> Self {
+        self.allow_null_elements = true;
+        self
+    }
+}
+
+/// Validation constraint for a parameter value.
+///
+/// Each field specifies whether a type is forbidden, allowed (any value), or constrained.
+/// Used by `DefaultParam` to specify validation rules for parameters.
+#[derive(Debug, Clone, Copy)]
+pub struct ParamConstraint {
+    pub number: TypeConstraint<NumberConstraint>,
+    pub string: TypeConstraint<StringConstraint>,
+    pub boolean: TypeConstraint<()>,
+    pub array: TypeConstraint<ArrayConstraint>,
+    pub allow_null: bool,
+}
+
+impl ParamConstraint {
+    /// All types allowed, no constraints (default)
+    pub const fn unconstrained() -> Self {
+        Self {
+            number: TypeConstraint::Any,
+            string: TypeConstraint::Any,
+            boolean: TypeConstraint::Any,
+            array: TypeConstraint::Any,
+            allow_null: true,
+        }
+    }
+
+    /// Number only with constraint
+    pub const fn number(constraint: NumberConstraint) -> Self {
+        Self {
+            number: TypeConstraint::Constrained(constraint),
+            string: TypeConstraint::Forbidden,
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Forbidden,
+            allow_null: true,
+        }
+    }
+
+    /// Number only, any value
+    #[allow(dead_code)]
+    pub const fn number_any() -> Self {
+        Self {
+            number: TypeConstraint::Any,
+            string: TypeConstraint::Forbidden,
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Forbidden,
+            allow_null: true,
+        }
+    }
+
+    /// String only with enum constraint
+    pub const fn string_enum(values: &'static [&'static str]) -> Self {
+        Self {
+            number: TypeConstraint::Forbidden,
+            string: TypeConstraint::Constrained(StringConstraint::one_of(values)),
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Forbidden,
+            allow_null: true,
+        }
+    }
+
+    /// Boolean only
+    pub const fn boolean() -> Self {
+        Self {
+            number: TypeConstraint::Forbidden,
+            string: TypeConstraint::Forbidden,
+            boolean: TypeConstraint::Any,
+            array: TypeConstraint::Forbidden,
+            allow_null: true,
+        }
+    }
+
+    /// Number or Array of numbers - for `expand` parameter
+    pub const fn number_or_numeric_array(num: NumberConstraint, arr: ArrayConstraint) -> Self {
+        Self {
+            number: TypeConstraint::Constrained(num),
+            string: TypeConstraint::Forbidden,
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Constrained(arr),
+            allow_null: true,
+        }
+    }
+
+    /// Number, Array of numbers, or String (any) - for `breaks` parameter
+    pub const fn number_or_array_or_string(num: NumberConstraint, arr: ArrayConstraint) -> Self {
+        Self {
+            number: TypeConstraint::Constrained(num),
+            string: TypeConstraint::Any, // Any string (temporal interval validated elsewhere)
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Constrained(arr),
+            allow_null: true,
+        }
+    }
+
+    /// String enum or Array of strings from same enum - for `free` parameter
+    #[allow(dead_code)]
+    pub const fn string_or_string_array(values: &'static [&'static str]) -> Self {
+        Self {
+            number: TypeConstraint::Forbidden,
+            string: TypeConstraint::Constrained(StringConstraint::one_of(values)),
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Constrained(ArrayConstraint::of_strings(StringConstraint::one_of(
+                values,
+            ))),
+            allow_null: true,
+        }
+    }
+
+    /// Builder method to disallow null values
+    #[allow(dead_code)]
+    pub const fn required(mut self) -> Self {
+        self.allow_null = false;
+        self
+    }
+
+    // =========================================================================
+    // Convenience constructors
+    // =========================================================================
+
+    /// Create a constraint requiring a minimum value (inclusive)
+    pub const fn number_min(min: f64) -> Self {
+        Self::number(NumberConstraint::min(min))
+    }
+
+    /// Create a constraint requiring a minimum value (exclusive)
+    pub const fn number_min_exclusive(min: f64) -> Self {
+        Self::number(NumberConstraint::min_exclusive(min))
+    }
+
+    /// Create a constraint requiring a value within a range (inclusive on both ends)
+    pub const fn number_range(min: f64, max: f64) -> Self {
+        Self::number(NumberConstraint::range(min, max))
+    }
+}
+
+/// Validate a parameter value against a constraint.
+///
+/// Returns Ok(()) if the value passes validation, or Err with a descriptive
+/// error message if validation fails.
+pub fn validate_parameter(
+    param_name: &str,
+    value: &ParameterValue,
+    constraint: &ParamConstraint,
+) -> Result<(), String> {
+    match value {
+        ParameterValue::Number(n) => match &constraint.number {
+            TypeConstraint::Forbidden => {
+                Err(type_not_allowed_error(param_name, "Number", constraint))
+            }
+            TypeConstraint::Any => Ok(()),
+            TypeConstraint::Constrained(c) => validate_number(param_name, *n, c),
+        },
+        ParameterValue::String(s) => match &constraint.string {
+            TypeConstraint::Forbidden => {
+                Err(type_not_allowed_error(param_name, "String", constraint))
+            }
+            TypeConstraint::Any => Ok(()),
+            TypeConstraint::Constrained(c) => validate_string(param_name, s, c),
+        },
+        ParameterValue::Boolean(_) => match &constraint.boolean {
+            TypeConstraint::Forbidden => {
+                Err(type_not_allowed_error(param_name, "Boolean", constraint))
+            }
+            TypeConstraint::Any | TypeConstraint::Constrained(()) => Ok(()),
+        },
+        ParameterValue::Array(arr) => match &constraint.array {
+            TypeConstraint::Forbidden => {
+                Err(type_not_allowed_error(param_name, "Array", constraint))
+            }
+            TypeConstraint::Any => Ok(()),
+            TypeConstraint::Constrained(c) => validate_array(param_name, arr, c),
+        },
+        ParameterValue::Null => {
+            if constraint.allow_null {
+                Ok(())
+            } else {
+                Err(format!(
+                    "Parameter '{}' is required (cannot be null)",
+                    param_name
+                ))
+            }
+        }
+    }
+}
+
+fn validate_number(name: &str, n: f64, c: &NumberConstraint) -> Result<(), String> {
+    if let Some(min) = c.min {
+        let ok = if c.min_exclusive { n > min } else { n >= min };
+        if !ok {
+            let op = if c.min_exclusive { ">" } else { ">=" };
+            return Err(format!(
+                "Parameter '{}' must be {} {} (got {})",
+                name, op, min, n
+            ));
+        }
+    }
+    if let Some(max) = c.max {
+        let ok = if c.max_exclusive { n < max } else { n <= max };
+        if !ok {
+            let op = if c.max_exclusive { "<" } else { "<=" };
+            return Err(format!(
+                "Parameter '{}' must be {} {} (got {})",
+                name, op, max, n
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_string(name: &str, s: &str, c: &StringConstraint) -> Result<(), String> {
+    // Empty allowed_values = unconstrained (any string)
+    if c.allowed_values.is_empty() {
+        return Ok(());
+    }
+    if !c.allowed_values.contains(&s) {
+        let quoted: Vec<String> = c.allowed_values.iter().map(|v| format!("'{}'", v)).collect();
+        return Err(format!(
+            "Invalid value '{}' for '{}'. Allowed: {}",
+            s,
+            name,
+            quoted.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+fn validate_array(name: &str, arr: &[ArrayElement], c: &ArrayConstraint) -> Result<(), String> {
+    // Length validation
+    if let Some(min) = c.min_len {
+        if arr.len() < min {
+            return Err(format!(
+                "Parameter '{}' array must have at least {} element(s) (got {})",
+                name,
+                min,
+                arr.len()
+            ));
+        }
+    }
+    if let Some(max) = c.max_len {
+        if arr.len() > max {
+            return Err(format!(
+                "Parameter '{}' array must have at most {} element(s) (got {})",
+                name,
+                max,
+                arr.len()
+            ));
+        }
+    }
+    // Element type and value validation
+    for (i, elem) in arr.iter().enumerate() {
+        match (&c.element, elem) {
+            // Handle null elements
+            (_, ArrayElement::Null) if c.allow_null_elements => {}
+            (_, ArrayElement::Null) => {
+                return Err(format!(
+                    "Parameter '{}' array element {} cannot be null",
+                    name, i
+                ));
+            }
+            // Any element type allowed
+            (ArrayElementConstraint::Any, _) => {}
+            // Number elements
+            (ArrayElementConstraint::Number(nc), ArrayElement::Number(n)) => {
+                validate_number(&format!("{}[{}]", name, i), *n, nc)?;
+            }
+            (ArrayElementConstraint::Number(_), _) => {
+                return Err(format!(
+                    "Parameter '{}' array element {} must be a Number",
+                    name, i
+                ));
+            }
+            // String elements
+            (ArrayElementConstraint::String(sc), ArrayElement::String(s)) => {
+                // Only validate if allowed_values is non-empty (empty = any string)
+                if !sc.allowed_values.is_empty() {
+                    validate_string(&format!("{}[{}]", name, i), s, sc)?;
+                }
+            }
+            (ArrayElementConstraint::String(_), _) => {
+                return Err(format!(
+                    "Parameter '{}' array element {} must be a String",
+                    name, i
+                ));
+            }
+            // Boolean elements
+            (ArrayElementConstraint::Boolean, ArrayElement::Boolean(_)) => {}
+            (ArrayElementConstraint::Boolean, _) => {
+                return Err(format!(
+                    "Parameter '{}' array element {} must be a Boolean",
+                    name, i
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn type_not_allowed_error(name: &str, got: &str, c: &ParamConstraint) -> String {
+    let mut allowed = Vec::new();
+    if !matches!(c.number, TypeConstraint::Forbidden) {
+        allowed.push("Number");
+    }
+    if !matches!(c.string, TypeConstraint::Forbidden) {
+        allowed.push("String");
+    }
+    if !matches!(c.boolean, TypeConstraint::Forbidden) {
+        allowed.push("Boolean");
+    }
+    if !matches!(c.array, TypeConstraint::Forbidden) {
+        allowed.push("Array");
+    }
+    format!(
+        "Parameter '{}' expects {} (got {})",
+        name,
+        allowed.join(", "),
+        got
+    )
+}
+
+/// Property definition: name, default value, and validation constraint.
 ///
 /// Used by `CoordTrait`, `ScaleTypeTrait`, and `GeomTrait` to declare their
 /// allowed properties and default values in a single place.
@@ -876,6 +1363,7 @@ pub enum DefaultParamValue {
 pub struct DefaultParam {
     pub name: &'static str,
     pub default: DefaultParamValue,
+    pub constraint: ParamConstraint,
 }
 
 impl DefaultParam {
@@ -1325,5 +1813,274 @@ mod tests {
         let elem = ArrayElement::DateTime(100000);
         let result = elem.coerce_to(ArrayElementType::Date);
         assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // ParamConstraint validation tests
+    // =========================================================================
+
+    #[test]
+    fn test_number_constraint_accepts_valid() {
+        let constraint = ParamConstraint::number_min(0.0);
+        assert!(validate_parameter("test", &ParameterValue::Number(5.0), &constraint).is_ok());
+        assert!(validate_parameter("test", &ParameterValue::Number(0.0), &constraint).is_ok());
+    }
+
+    #[test]
+    fn test_number_constraint_rejects_invalid() {
+        let constraint = ParamConstraint::number_min(0.0);
+        let result = validate_parameter("test", &ParameterValue::Number(-1.0), &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains(">= 0"));
+    }
+
+    #[test]
+    fn test_number_constraint_rejects_wrong_type() {
+        let constraint = ParamConstraint::number_min(0.0);
+        let result =
+            validate_parameter("test", &ParameterValue::String("hello".to_string()), &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expects Number"));
+    }
+
+    #[test]
+    fn test_string_enum_accepts_valid() {
+        let constraint = ParamConstraint::string_enum(&["a", "b", "c"]);
+        assert!(
+            validate_parameter("test", &ParameterValue::String("a".to_string()), &constraint)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn test_string_enum_rejects_invalid() {
+        let constraint = ParamConstraint::string_enum(&["a", "b", "c"]);
+        let result =
+            validate_parameter("test", &ParameterValue::String("d".to_string()), &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid value 'd'"));
+    }
+
+    #[test]
+    fn test_string_enum_rejects_wrong_type() {
+        let constraint = ParamConstraint::string_enum(&["a", "b", "c"]);
+        let result = validate_parameter("test", &ParameterValue::Number(1.0), &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expects String"));
+    }
+
+    #[test]
+    fn test_boolean_accepts_valid() {
+        let constraint = ParamConstraint::boolean();
+        assert!(validate_parameter("reverse", &ParameterValue::Boolean(true), &constraint).is_ok());
+        assert!(validate_parameter("reverse", &ParameterValue::Boolean(false), &constraint).is_ok());
+    }
+
+    #[test]
+    fn test_boolean_rejects_wrong_type() {
+        let constraint = ParamConstraint::boolean();
+        let result =
+            validate_parameter("reverse", &ParameterValue::String("true".to_string()), &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expects Boolean"));
+    }
+
+    #[test]
+    fn test_multi_type_number_or_array_accepts_number() {
+        let constraint = ParamConstraint::number_or_numeric_array(
+            NumberConstraint::min(0.0),
+            ArrayConstraint::of_numbers_len(2, NumberConstraint::unconstrained()),
+        );
+        assert!(validate_parameter("expand", &ParameterValue::Number(0.05), &constraint).is_ok());
+    }
+
+    #[test]
+    fn test_multi_type_number_or_array_accepts_array() {
+        let constraint = ParamConstraint::number_or_numeric_array(
+            NumberConstraint::min(0.0),
+            ArrayConstraint::of_numbers_len(2, NumberConstraint::min(0.0)),
+        );
+        let arr = ParameterValue::Array(vec![
+            ArrayElement::Number(0.05),
+            ArrayElement::Number(10.0),
+        ]);
+        assert!(validate_parameter("expand", &arr, &constraint).is_ok());
+    }
+
+    #[test]
+    fn test_multi_type_number_or_array_rejects_wrong_array_length() {
+        let constraint = ParamConstraint::number_or_numeric_array(
+            NumberConstraint::min(0.0),
+            ArrayConstraint::of_numbers_len(2, NumberConstraint::min(0.0)),
+        );
+        let arr = ParameterValue::Array(vec![ArrayElement::Number(0.05)]);
+        let result = validate_parameter("expand", &arr, &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("at least 2"));
+    }
+
+    #[test]
+    fn test_multi_type_number_or_array_rejects_string() {
+        let constraint = ParamConstraint::number_or_numeric_array(
+            NumberConstraint::min(0.0),
+            ArrayConstraint::of_numbers_len(2, NumberConstraint::min(0.0)),
+        );
+        let result =
+            validate_parameter("expand", &ParameterValue::String("0.05".to_string()), &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expects Number, Array"));
+    }
+
+    #[test]
+    fn test_multi_type_number_or_array_validates_element_values() {
+        let constraint = ParamConstraint::number_or_numeric_array(
+            NumberConstraint::min(0.0),
+            ArrayConstraint::of_numbers_len(2, NumberConstraint::min(0.0)),
+        );
+        let arr = ParameterValue::Array(vec![
+            ArrayElement::Number(0.05),
+            ArrayElement::Number(-10.0), // Invalid: negative
+        ]);
+        let result = validate_parameter("expand", &arr, &constraint);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("expand[1]"));
+        assert!(err.contains(">= 0"));
+    }
+
+    #[test]
+    fn test_breaks_constraint_accepts_number() {
+        let constraint = ParamConstraint::number_or_array_or_string(
+            NumberConstraint::min(1.0),
+            ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
+        );
+        assert!(validate_parameter("breaks", &ParameterValue::Number(10.0), &constraint).is_ok());
+    }
+
+    #[test]
+    fn test_breaks_constraint_accepts_array() {
+        let constraint = ParamConstraint::number_or_array_or_string(
+            NumberConstraint::min(1.0),
+            ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
+        );
+        let arr = ParameterValue::Array(vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(25.0),
+            ArrayElement::Number(50.0),
+        ]);
+        assert!(validate_parameter("breaks", &arr, &constraint).is_ok());
+    }
+
+    #[test]
+    fn test_breaks_constraint_accepts_string() {
+        let constraint = ParamConstraint::number_or_array_or_string(
+            NumberConstraint::min(1.0),
+            ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
+        );
+        assert!(validate_parameter(
+            "breaks",
+            &ParameterValue::String("1 month".to_string()),
+            &constraint
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn test_breaks_constraint_rejects_boolean() {
+        let constraint = ParamConstraint::number_or_array_or_string(
+            NumberConstraint::min(1.0),
+            ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
+        );
+        let result = validate_parameter("breaks", &ParameterValue::Boolean(true), &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expects Number, String, Array"));
+    }
+
+    #[test]
+    fn test_breaks_constraint_validates_number_value() {
+        let constraint = ParamConstraint::number_or_array_or_string(
+            NumberConstraint::min(1.0),
+            ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
+        );
+        let result = validate_parameter("breaks", &ParameterValue::Number(0.0), &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains(">= 1"));
+    }
+
+    #[test]
+    fn test_array_element_type_validation() {
+        let constraint = ParamConstraint::number_or_numeric_array(
+            NumberConstraint::min(0.0),
+            ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
+        );
+        let arr = ParameterValue::Array(vec![
+            ArrayElement::Number(1.0),
+            ArrayElement::String("fifty".to_string()),
+            ArrayElement::Number(100.0),
+        ]);
+        let result = validate_parameter("breaks", &arr, &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("element 1 must be a Number"));
+    }
+
+    #[test]
+    fn test_null_allowed_by_default() {
+        let constraint = ParamConstraint::number_min(1.0);
+        assert!(validate_parameter("test", &ParameterValue::Null, &constraint).is_ok());
+    }
+
+    #[test]
+    fn test_null_rejected_when_required() {
+        let constraint = ParamConstraint::number_min(1.0).required();
+        let result = validate_parameter("test", &ParameterValue::Null, &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("required"));
+    }
+
+    #[test]
+    fn test_array_null_elements_rejected_by_default() {
+        let constraint = ParamConstraint::number_or_numeric_array(
+            NumberConstraint::min(0.0),
+            ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
+        );
+        let arr = ParameterValue::Array(vec![
+            ArrayElement::Number(1.0),
+            ArrayElement::Null,
+            ArrayElement::Number(3.0),
+        ]);
+        let result = validate_parameter("values", &arr, &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("element 1 cannot be null"));
+    }
+
+    #[test]
+    fn test_string_or_string_array_accepts_string() {
+        let constraint = ParamConstraint::string_or_string_array(&["x", "y"]);
+        assert!(
+            validate_parameter("free", &ParameterValue::String("x".to_string()), &constraint)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn test_string_or_string_array_accepts_array() {
+        let constraint = ParamConstraint::string_or_string_array(&["x", "y"]);
+        let arr = ParameterValue::Array(vec![
+            ArrayElement::String("x".to_string()),
+            ArrayElement::String("y".to_string()),
+        ]);
+        assert!(validate_parameter("free", &arr, &constraint).is_ok());
+    }
+
+    #[test]
+    fn test_string_or_string_array_validates_array_elements() {
+        let constraint = ParamConstraint::string_or_string_array(&["x", "y"]);
+        let arr = ParameterValue::Array(vec![
+            ArrayElement::String("x".to_string()),
+            ArrayElement::String("z".to_string()),
+        ]);
+        let result = validate_parameter("free", &arr, &constraint);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid value 'z'"));
     }
 }

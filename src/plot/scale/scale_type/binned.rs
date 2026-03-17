@@ -6,9 +6,11 @@ use polars::prelude::DataType;
 
 use super::{
     expand_numeric_range, resolve_common_steps, ScaleDataContext, ScaleTypeKind, ScaleTypeTrait,
-    TransformKind, OOB_CENSOR, OOB_SQUISH,
+    TransformKind, CLOSED_VALUES, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_BINNED,
 };
-use crate::plot::types::{DefaultParam, DefaultParamValue};
+use crate::plot::types::{
+    ArrayConstraint, DefaultParam, DefaultParamValue, NumberConstraint, ParamConstraint,
+};
 use crate::plot::{ArrayElement, ParameterValue};
 
 use super::InputRange;
@@ -147,36 +149,51 @@ impl ScaleTypeTrait for Binned {
     }
 
     fn default_properties(&self) -> &'static [DefaultParam] {
-        &[
+        const PARAMS: &[DefaultParam] = &[
             DefaultParam {
                 name: "expand",
                 default: DefaultParamValue::Number(super::DEFAULT_EXPAND_MULT),
+                // Number (multiplier >= 0) or Array of exactly 2 numbers [mult, add] (both >= 0)
+                constraint: ParamConstraint::number_or_numeric_array(
+                    NumberConstraint::min(0.0),
+                    ArrayConstraint::of_numbers_len(2, NumberConstraint::min(0.0)),
+                ),
             },
-            // Binned scales always use "censor" - "keep" is not valid for binned
+            // Binned scales support "censor" and "squish", but not "keep"
             DefaultParam {
                 name: "oob",
                 default: DefaultParamValue::String(OOB_CENSOR),
+                constraint: ParamConstraint::string_enum(OOB_VALUES_BINNED),
             },
             DefaultParam {
                 name: "reverse",
                 default: DefaultParamValue::Boolean(false),
+                constraint: ParamConstraint::boolean(),
             },
             DefaultParam {
                 name: "breaks",
                 default: DefaultParamValue::Number(
                     super::super::breaks::DEFAULT_BREAK_COUNT as f64,
                 ),
+                // Number (count >= 1), Array of numbers (explicit breaks), or String (temporal interval)
+                constraint: ParamConstraint::number_or_array_or_string(
+                    NumberConstraint::min(1.0),
+                    ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
+                ),
             },
             DefaultParam {
                 name: "pretty",
                 default: DefaultParamValue::Boolean(true),
+                constraint: ParamConstraint::boolean(),
             },
             // "left" means bins are [lower, upper), "right" means (lower, upper]
             DefaultParam {
                 name: "closed",
                 default: DefaultParamValue::String("left"),
+                constraint: ParamConstraint::string_enum(CLOSED_VALUES),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn default_output_range(

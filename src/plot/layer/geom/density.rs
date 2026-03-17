@@ -1,11 +1,12 @@
 //! Density geom implementation
 
+use super::types::POSITION_VALUES;
 use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
-        ParameterValue, StatResult,
+        ParamConstraint, ParameterValue, StatResult,
     },
     reader::SqlDialect,
     GgsqlError, Mappings, Result,
@@ -15,6 +16,18 @@ use std::collections::HashMap;
 /// Gaussian kernel normalization constant: 1/sqrt(2*pi)
 /// Precomputed at compile time to avoid repeated SQRT and PI() calls in SQL
 const GAUSSIAN_NORM: f64 = 0.3989422804014327; // 1.0 / (2.0 * std::f64::consts::PI).sqrt()
+
+/// Valid kernel types for density estimation
+const KERNEL_VALUES: &[&str] = &[
+    "gaussian",
+    "epanechnikov",
+    "triangular",
+    "rectangular",
+    "uniform",
+    "biweight",
+    "quartic",
+    "cosine",
+];
 
 /// Density geom - kernel density estimation
 #[derive(Debug, Clone, Copy)]
@@ -45,24 +58,29 @@ impl GeomTrait for Density {
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[
+        const PARAMS: &[DefaultParam] = &[
             DefaultParam {
                 name: "position",
                 default: DefaultParamValue::String("identity"),
+                constraint: ParamConstraint::string_enum(POSITION_VALUES),
             },
             DefaultParam {
                 name: "bandwidth",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             DefaultParam {
                 name: "adjust",
                 default: DefaultParamValue::Number(1.0),
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             DefaultParam {
                 name: "kernel",
                 default: DefaultParamValue::String("gaussian"),
+                constraint: ParamConstraint::string_enum(KERNEL_VALUES),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {

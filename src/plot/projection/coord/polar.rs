@@ -1,7 +1,7 @@
 //! Polar coordinate system implementation
 
 use super::{CoordKind, CoordTrait};
-use crate::plot::types::{DefaultParam, DefaultParamValue};
+use crate::plot::types::{DefaultParam, DefaultParamValue, ParamConstraint};
 
 /// Polar coordinate system - for pie charts, rose plots
 #[derive(Debug, Clone, Copy)]
@@ -21,24 +21,29 @@ impl CoordTrait for Polar {
     }
 
     fn default_properties(&self) -> &'static [DefaultParam] {
-        &[
+        const PARAMS: &[DefaultParam] = &[
             DefaultParam {
                 name: "clip",
-                default: DefaultParamValue::Null,
+                default: DefaultParamValue::Boolean(true),
+                constraint: ParamConstraint::boolean(),
             },
             DefaultParam {
                 name: "start",
                 default: DefaultParamValue::Number(0.0), // 0 degrees = 12 o'clock
+                constraint: ParamConstraint::number_range(-360.0, 360.0),
             },
             DefaultParam {
                 name: "end",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_range(-360.0, 360.0),
             },
             DefaultParam {
                 name: "inner",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_range(0.0, 1.0),
             },
-        ]
+        ];
+        PARAMS
     }
 }
 

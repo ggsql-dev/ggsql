@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::plot::types::DefaultParam;
+use crate::plot::types::{validate_parameter, DefaultParam};
 use crate::plot::ParameterValue;
 
 // Coord type implementations
@@ -102,6 +102,13 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                     self.name(),
                     valid_props
                 ));
+            }
+        }
+
+        // Validate values against constraints
+        for (key, value) in properties.iter() {
+            if let Some(param) = defaults.iter().find(|p| p.name == key) {
+                validate_parameter(key, value, &param.constraint)?;
             }
         }
 

@@ -18,10 +18,13 @@ use super::{
     compute_dodge_offsets, compute_group_indices, is_continuous_scale, Layer, PositionTrait,
     PositionType,
 };
-use crate::plot::types::{DefaultParam, DefaultParamValue, ParameterValue};
+use crate::plot::types::{DefaultParam, DefaultParamValue, ParamConstraint, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use rand::Rng;
+
+/// Valid distribution types for jitter position
+const DISTRIBUTION_VALUES: &[&str] = &["uniform", "normal", "density", "intensity"];
 
 /// Jitter distribution type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -266,29 +269,35 @@ impl PositionTrait for Jitter {
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[
+        const PARAMS: &[DefaultParam] = &[
             DefaultParam {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
+                constraint: ParamConstraint::number_range(0.0, 1.0),
             },
             DefaultParam {
                 name: "dodge",
                 default: DefaultParamValue::Boolean(true),
+                constraint: ParamConstraint::boolean(),
             },
             DefaultParam {
                 name: "distribution",
                 default: DefaultParamValue::String("uniform"),
+                constraint: ParamConstraint::string_enum(DISTRIBUTION_VALUES),
             },
             // Density distribution parameters (match violin/density geoms)
             DefaultParam {
                 name: "bandwidth",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             DefaultParam {
                 name: "adjust",
                 default: DefaultParamValue::Number(1.0),
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn creates_pos1offset(&self) -> bool {

@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_positional_aesthetic};
-use crate::plot::types::{DefaultParam, DefaultParamValue};
+use crate::plot::types::{validate_parameter, DefaultParam, DefaultParamValue};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -659,6 +659,13 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             }
         }
 
+        // Validate values against constraints
+        for (key, value) in properties.iter() {
+            if let Some(param) = defaults.iter().find(|p| p.name == key) {
+                validate_parameter(key, value, &param.constraint)?;
+            }
+        }
+
         // Start with user properties, add defaults for missing ones
         let mut resolved = properties.clone();
         for param in defaults {
@@ -680,10 +687,8 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             }
         }
 
-        // Validate oob value if present
+        // Additional semantic validation for oob (scale-specific restrictions beyond the constraint)
         if let Some(ParameterValue::String(oob)) = resolved.get("oob") {
-            validate_oob(oob)?;
-
             // Discrete and Ordinal scales only support "censor" - no way to map unmapped values to output
             let kind = self.scale_type_kind();
             if (kind == ScaleTypeKind::Discrete || kind == ScaleTypeKind::Ordinal)
@@ -697,15 +702,8 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                 ));
             }
 
-            // Binned scales support "censor" and "squish", but not "keep"
-            // Values outside bins have no bin to map to, but can be squished to nearest bin edge
-            if kind == ScaleTypeKind::Binned && oob == OOB_KEEP {
-                return Err(format!(
-                    "{} scale does not support oob='keep'. Use 'censor' to exclude values \
-                     outside bins, or 'squish' to clamp them to the nearest bin edge.",
-                    self.name()
-                ));
-            }
+            // Note: Binned scale's oob constraint already restricts to ["censor", "squish"],
+            // so no additional check needed here.
         }
 
         Ok(resolved)
@@ -1387,6 +1385,13 @@ pub const OOB_SQUISH: &str = "squish";
 /// Out-of-bounds mode: don't modify values (default for positional aesthetics)
 pub const OOB_KEEP: &str = "keep";
 
+/// Valid OOB values for continuous scales (all three options)
+pub const OOB_VALUES_CONTINUOUS: &[&str] = &[OOB_CENSOR, OOB_SQUISH, OOB_KEEP];
+/// Valid OOB values for binned scales (keep is not supported)
+pub const OOB_VALUES_BINNED: &[&str] = &[OOB_CENSOR, OOB_SQUISH];
+/// Valid closed side values for binned data
+pub const CLOSED_VALUES: &[&str] = &["left", "right"];
+
 /// Default oob mode for an aesthetic.
 /// Positional aesthetics default to "keep", others default to "censor".
 pub fn default_oob(aesthetic: &str) -> &'static str {
@@ -1394,17 +1399,6 @@ pub fn default_oob(aesthetic: &str) -> &'static str {
         OOB_KEEP
     } else {
         OOB_CENSOR
-    }
-}
-
-/// Validate oob value is one of the allowed modes.
-pub(super) fn validate_oob(value: &str) -> Result<(), String> {
-    match value {
-        OOB_CENSOR | OOB_SQUISH | OOB_KEEP => Ok(()),
-        _ => Err(format!(
-            "Invalid oob value '{}'. Must be 'censor', 'squish', or 'keep'",
-            value
-        )),
     }
 }
 
@@ -2354,7 +2348,12 @@ mod tests {
         );
         let result = ScaleType::binned().resolve_properties("x", &keep_props);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("does not support oob='keep'"));
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Invalid value 'keep' for 'oob'"),
+            "Expected error about invalid oob value, got: {}",
+            err
+        );
     }
 
     #[test]
@@ -2519,7 +2518,11 @@ mod tests {
         let result = ScaleType::continuous().resolve_properties("x", &props);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("Invalid oob value"));
+        assert!(
+            err.contains("Invalid value 'invalid' for 'oob'"),
+            "Expected error about invalid oob value, got: {}",
+            err
+        );
     }
 
     #[test]

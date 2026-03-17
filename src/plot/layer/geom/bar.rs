@@ -3,8 +3,11 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use super::types::get_column_name;
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
+use super::types::{get_column_name, POSITION_VALUES};
+use super::{
+    DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, ParamConstraint,
+    StatResult,
+};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::reader::SqlDialect;
@@ -54,16 +57,19 @@ impl GeomTrait for Bar {
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[
+        const PARAMS: &[DefaultParam] = &[
             DefaultParam {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
+                constraint: ParamConstraint::number_range(0.0, 1.0),
             },
             DefaultParam {
                 name: "position",
                 default: DefaultParamValue::String("stack"),
+                constraint: ParamConstraint::string_enum(POSITION_VALUES),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {

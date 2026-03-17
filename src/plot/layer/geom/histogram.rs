@@ -2,8 +2,11 @@
 
 use std::collections::HashMap;
 
-use super::types::get_column_name;
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
+use super::types::{get_column_name, CLOSED_VALUES, POSITION_VALUES};
+use super::{
+    DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, ParamConstraint,
+    StatResult,
+};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::reader::SqlDialect;
@@ -49,24 +52,29 @@ impl GeomTrait for Histogram {
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[
+        const PARAMS: &[DefaultParam] = &[
             DefaultParam {
                 name: "bins",
                 default: DefaultParamValue::Number(30.0),
+                constraint: ParamConstraint::number_min(1.0),
             },
             DefaultParam {
                 name: "closed",
                 default: DefaultParamValue::String("right"),
+                constraint: ParamConstraint::string_enum(CLOSED_VALUES),
             },
             DefaultParam {
                 name: "binwidth",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             DefaultParam {
                 name: "position",
                 default: DefaultParamValue::String("stack"),
+                constraint: ParamConstraint::string_enum(POSITION_VALUES),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {

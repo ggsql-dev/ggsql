@@ -7,7 +7,7 @@
 //! - If both are discrete → 2D grid dodge (both offsets, arranged in a grid)
 
 use super::{compute_dodge_offsets, is_continuous_scale, Layer, PositionTrait, PositionType};
-use crate::plot::types::{DefaultParam, DefaultParamValue, ParameterValue};
+use crate::plot::types::{DefaultParam, DefaultParamValue, ParamConstraint, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use std::collections::HashMap;
@@ -96,10 +96,12 @@ impl PositionTrait for Dodge {
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
+        const PARAMS: &[DefaultParam] = &[DefaultParam {
             name: "width",
             default: DefaultParamValue::Number(0.9),
-        }]
+            constraint: ParamConstraint::number_range(0.0, 1.0),
+        }];
+        PARAMS
     }
 
     fn creates_pos1offset(&self) -> bool {

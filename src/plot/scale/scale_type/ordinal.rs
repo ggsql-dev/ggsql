@@ -8,7 +8,7 @@ use polars::prelude::DataType;
 
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait};
-use crate::plot::types::{DefaultParam, DefaultParamValue};
+use crate::plot::types::{DefaultParam, DefaultParamValue, ParamConstraint};
 use crate::plot::ArrayElement;
 
 /// Ordinal scale type - for ordered categorical data with interpolated output
@@ -140,10 +140,12 @@ impl ScaleTypeTrait for Ordinal {
 
     fn default_properties(&self) -> &'static [DefaultParam] {
         // Ordinal scales always censor OOB values (no OOB setting needed)
-        &[DefaultParam {
+        const PARAMS: &[DefaultParam] = &[DefaultParam {
             name: "reverse",
             default: DefaultParamValue::Boolean(false),
-        }]
+            constraint: ParamConstraint::boolean(),
+        }];
+        PARAMS
     }
 
     fn default_output_range(
