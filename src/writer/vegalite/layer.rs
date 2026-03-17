@@ -896,12 +896,23 @@ impl TextRenderer {
         // Build base mark object with fixed parameters
         let mut base_mark = json!({"type": "text"});
         if let Some(mark_map) = base_mark.as_object_mut() {
-            // Extract offset parameters (offset_x → xOffset, offset_y → yOffset)
-            if let Some(ParameterValue::Number(x_offset)) = layer.parameters.get("offset_x") {
-                mark_map.insert("xOffset".to_string(), json!(x_offset * POINTS_TO_PIXELS));
-            }
-            if let Some(ParameterValue::Number(y_offset)) = layer.parameters.get("offset_y") {
-                mark_map.insert("yOffset".to_string(), json!(-y_offset * POINTS_TO_PIXELS));
+            // Extract offset parameter (offset => [x, y] or offset => n)
+            match layer.parameters.get("offset") {
+                Some(ParameterValue::Array(offset_array)) if offset_array.len() == 2 => {
+                    // Array case: [x, y]
+                    if let ParameterValue::Number(x_offset) = offset_array[0] {
+                        mark_map.insert("xOffset".to_string(), json!(x_offset * POINTS_TO_PIXELS));
+                    }
+                    if let ParameterValue::Number(y_offset) = offset_array[1] {
+                        mark_map.insert("yOffset".to_string(), json!(-y_offset * POINTS_TO_PIXELS));
+                    }
+                }
+                Some(ParameterValue::Number(offset)) => {
+                    // Single number case: applies to both x and y
+                    mark_map.insert("xOffset".to_string(), json!(offset * POINTS_TO_PIXELS));
+                    mark_map.insert("yOffset".to_string(), json!(-offset * POINTS_TO_PIXELS));
+                }
+                _ => {}
             }
         }
 
@@ -2225,11 +2236,11 @@ mod tests {
         use crate::writer::vegalite::VegaLiteWriter;
         use crate::writer::Writer;
 
-        // Integration test: offset_x and offset_y parameters should map to xOffset/yOffset
+        // Integration test: offset parameter should map to xOffset/yOffset
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
-        // Query with offset parameters
+        // Query with offset parameter
         let query = r#"
             SELECT
                 n::INTEGER as x,
@@ -2237,7 +2248,7 @@ mod tests {
                 chr(65 + n::INTEGER) as label
             FROM generate_series(0, 2) as t(n)
             VISUALISE x, y, label
-            DRAW text SETTING offset_x => 5, offset_y => -10
+            DRAW text SETTING offset => [5, -10]
         "#;
 
         // Execute and prepare data
@@ -2265,7 +2276,7 @@ mod tests {
 
             assert!(
                 mark.contains_key("xOffset"),
-                "Mark should have xOffset from offset_x"
+                "Mark should have xOffset from offset"
             );
             assert_eq!(
                 mark["xOffset"].as_f64().unwrap(),
@@ -2275,12 +2286,12 @@ mod tests {
 
             assert!(
                 mark.contains_key("yOffset"),
-                "Mark should have yOffset from offset_y"
+                "Mark should have yOffset from offset"
             );
             assert_eq!(
                 mark["yOffset"].as_f64().unwrap(),
                 10.0 * POINTS_TO_PIXELS,
-                "yOffset should be 10 * POINTS_TO_PIXELS (negated from offset_y = -10)"
+                "yOffset should be 10 * POINTS_TO_PIXELS (negated from offset[1] = -10)"
             );
         }
     }

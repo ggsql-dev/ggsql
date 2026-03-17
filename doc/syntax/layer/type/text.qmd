@@ -28,8 +28,9 @@ The following aesthetics are recognised by the text layer.
 * `angle` Rotation of the text in degrees.
 
 ## Settings
-* `offset_x` Horizontal offset expressed in absolute points.
-* `offset_y` Vertical offset expressed in absolute points.
+* `offset` Position offset expressed in absolute points. Can be one of the following:
+    * a single number that applies both horizontally and vertically
+    * an numeric array `[h, v]` where the first number is the horizontal offset and the second number is the vertical offset.
 * `format` Formatting specifier, see explanation below.
 * `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
 
@@ -119,7 +120,7 @@ VISUALISE island AS x, n AS y
   DRAW bar
   DRAW text
     MAPPING n AS label
-    SETTING vjust => 'top', offset_y => -11, fill => 'white'
+    SETTING vjust => 'top', offset => [0, -11], fill => 'white'
 ```
 
 If you label bars at the extreme end, you may to expand the scale to accommodate the labels.
@@ -130,7 +131,7 @@ VISUALISE island AS x, n AS y
   DRAW bar
   DRAW text
     MAPPING n AS label
-    SETTING vjust => 'bottom', offset_y => 11
+    SETTING vjust => 'bottom', offset => [0, 11]
   SCALE y FROM [0, 200]
 ```
 

@@ -38,11 +38,7 @@ impl GeomTrait for Text {
     fn default_params(&self) -> &'static [DefaultParam] {
         &[
             DefaultParam {
-                name: "offset_x",
-                default: DefaultParamValue::Null,
-            },
-            DefaultParam {
-                name: "offset_y",
+                name: "offset",
                 default: DefaultParamValue::Null,
             },
             DefaultParam {
