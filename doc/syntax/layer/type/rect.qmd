@@ -92,17 +92,15 @@ VISUALISE start AS xmin, end AS xmax, min AS ymin, max AS ymax
   DRAW rect
 ```
 
-Using a rectangle as an annotation.
-
-<!-- When annotations work, replace this with an annotation layer -->
+Using a rectangle as an annotation. Note we're using the `PLACE` clause here instead of `DRAW` because we're not mapping from data.
 
 ```{ggsql}
 VISUALISE FROM ggsql:airquality
-  DRAW rect MAPPING
-    '1973-06-01' AS xmin,
-    '1973-06-30' AS xmax,
-    50 AS ymin, 
-    100 AS ymax,
-    'June' AS colour
+  PLACE rect SETTING
+    xmin => '1973-06-01', 
+    xmax => '1973-06-30',
+    ymin => 50, 
+    ymax => 100,
+    colour => 'dodgerblue'
   DRAW line MAPPING Date AS x, Temp AS y
 ```
