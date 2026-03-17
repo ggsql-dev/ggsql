@@ -1,7 +1,7 @@
 //! Label geom implementation
 use crate::plot::{DefaultParam, DefaultParamValue};
 
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 
 /// Label geom - text labels with background

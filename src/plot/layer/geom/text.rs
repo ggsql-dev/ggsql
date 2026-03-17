@@ -1,6 +1,6 @@
 //! Text geom implementation
 
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::{DefaultParam, DefaultParamValue};
 
