@@ -6,6 +6,7 @@ use super::types::get_column_name;
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
+use crate::plot::{DefaultParam, DefaultParamValue};
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
 use super::types::Schema;
@@ -63,6 +64,13 @@ impl GeomTrait for Rect {
             ("width", DefaultAestheticValue::Column("width")),
             ("height", DefaultAestheticValue::Column("height")),
         ]
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[DefaultParam {
+            name: "position",
+            default: DefaultParamValue::String("identity"),
+        }]
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
