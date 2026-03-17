@@ -90,6 +90,7 @@ impl GeomTrait for Rect {
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        _dialect: &dyn crate::reader::SqlDialect,
     ) -> Result<StatResult> {
         stat_rect(query, schema, aesthetics, group_by, parameters)
     }

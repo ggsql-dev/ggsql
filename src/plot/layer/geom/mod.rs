@@ -28,7 +28,6 @@ use std::sync::Arc;
 pub mod types;
 
 // Geom implementations
-mod abline;
 mod area;
 mod arrow;
 mod bar;
@@ -36,25 +35,24 @@ mod boxplot;
 mod density;
 mod errorbar;
 mod histogram;
-mod hline;
 mod label;
 mod line;
+mod linear;
 mod path;
 mod point;
 mod polygon;
 mod rect;
 mod ribbon;
+mod rule;
 mod segment;
 mod smooth;
 mod text;
 mod violin;
-mod vline;
 
 // Re-export types
 pub use types::{DefaultAesthetics, DefaultParam, DefaultParamValue, StatResult};
 
 // Re-export geom structs for direct access if needed
-pub use abline::AbLine;
 pub use area::Area;
 pub use arrow::Arrow;
 pub use bar::Bar;
@@ -62,21 +60,22 @@ pub use boxplot::Boxplot;
 pub use density::Density;
 pub use errorbar::ErrorBar;
 pub use histogram::Histogram;
-pub use hline::HLine;
 pub use label::Label;
 pub use line::Line;
+pub use linear::Linear;
 pub use path::Path;
 pub use point::Point;
 pub use polygon::Polygon;
 pub use rect::Rect;
 pub use ribbon::Ribbon;
+pub use rule::Rule;
 pub use segment::Segment;
 pub use smooth::Smooth;
 pub use text::Text;
 pub use violin::Violin;
-pub use vline::VLine;
 
 use crate::plot::types::{DefaultAestheticValue, ParameterValue, Schema};
+use crate::reader::SqlDialect;
 
 /// Enum of all geom types for pattern matching and serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -99,9 +98,8 @@ pub enum GeomType {
     Label,
     Segment,
     Arrow,
-    HLine,
-    VLine,
-    AbLine,
+    Rule,
+    Linear,
     ErrorBar,
 }
 
@@ -125,9 +123,8 @@ impl std::fmt::Display for GeomType {
             GeomType::Label => "label",
             GeomType::Segment => "segment",
             GeomType::Arrow => "arrow",
-            GeomType::HLine => "hline",
-            GeomType::VLine => "vline",
-            GeomType::AbLine => "abline",
+            GeomType::Rule => "rule",
+            GeomType::Linear => "linear",
             GeomType::ErrorBar => "errorbar",
         };
         write!(f, "{}", s)
@@ -194,6 +191,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Apply statistical transformation to the layer query.
     ///
     /// The default implementation returns identity (no transformation).
+    #[allow(clippy::too_many_arguments)]
     fn apply_stat_transform(
         &self,
         _query: &str,
@@ -202,13 +200,30 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _group_by: &[String],
         _parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        _dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         Ok(StatResult::Identity)
     }
 
+    /// Post-process the DataFrame after stat query execution.
+    ///
+    /// This method is called after the stat transform query has been executed
+    /// and allows geoms to modify the resulting data. The default implementation
+    /// returns the data unchanged.
+    ///
+    /// Used by violin to scale the offset column to [0, 0.5 * width] using global
+    /// max normalization before Vega-Lite rendering.
+    fn post_process(
+        &self,
+        df: DataFrame,
+        _parameters: &HashMap<String, ParameterValue>,
+    ) -> Result<DataFrame> {
+        Ok(df)
+    }
+
     /// Returns valid parameter names for SETTING clause.
     ///
-    /// Combines supported aesthetics with non-aesthetic parameters.
+    /// Combines supported aesthetics with non-aesthetic parameters from default_params.
     fn valid_settings(&self) -> Vec<&'static str> {
         let mut valid: Vec<&'static str> = self.aesthetics().supported();
         for param in self.default_params() {
@@ -311,19 +326,14 @@ impl Geom {
         Self(Arc::new(Arrow))
     }
 
-    /// Create an HLine geom
-    pub fn hline() -> Self {
-        Self(Arc::new(HLine))
+    /// Create an Rule geom
+    pub fn rule() -> Self {
+        Self(Arc::new(Rule))
     }
 
-    /// Create a VLine geom
-    pub fn vline() -> Self {
-        Self(Arc::new(VLine))
-    }
-
-    /// Create an AbLine geom
-    pub fn abline() -> Self {
-        Self(Arc::new(AbLine))
+    /// Create an Linear geom
+    pub fn linear() -> Self {
+        Self(Arc::new(Linear))
     }
 
     /// Create an ErrorBar geom
@@ -351,9 +361,8 @@ impl Geom {
             GeomType::Label => Self::label(),
             GeomType::Segment => Self::segment(),
             GeomType::Arrow => Self::arrow(),
-            GeomType::HLine => Self::hline(),
-            GeomType::VLine => Self::vline(),
-            GeomType::AbLine => Self::abline(),
+            GeomType::Rule => Self::rule(),
+            GeomType::Linear => Self::linear(),
             GeomType::ErrorBar => Self::errorbar(),
         }
     }
@@ -394,6 +403,7 @@ impl Geom {
     }
 
     /// Apply stat transform
+    #[allow(clippy::too_many_arguments)]
     pub fn apply_stat_transform(
         &self,
         query: &str,
@@ -402,6 +412,7 @@ impl Geom {
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         self.0.apply_stat_transform(
             query,
@@ -410,7 +421,17 @@ impl Geom {
             group_by,
             parameters,
             execute_query,
+            dialect,
         )
+    }
+
+    /// Post-process DataFrame after stat query execution
+    pub fn post_process(
+        &self,
+        df: DataFrame,
+        parameters: &HashMap<String, ParameterValue>,
+    ) -> Result<DataFrame> {
+        self.0.post_process(df, parameters)
     }
 
     /// Get valid settings
