@@ -1,6 +1,6 @@
 //! Text geom implementation
 
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::{DefaultParam, DefaultParamValue};
 
@@ -45,6 +45,10 @@ impl GeomTrait for Text {
             DefaultParam {
                 name: "format",
                 default: DefaultParamValue::Null,
+            },
+            DefaultParam {
+                name: "position",
+                default: DefaultParamValue::String("identity"),
             },
         ]
     }
