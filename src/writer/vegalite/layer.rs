@@ -704,7 +704,7 @@ impl TextRenderer {
             }
             _ => {
                 // Column value: try to parse
-                column_value.and_then(|s| Self::parse_fontweight_to_numeric(s))
+                column_value.and_then(Self::parse_fontweight_to_numeric)
             }
         }?;
 
@@ -714,17 +714,6 @@ impl TextRenderer {
     }
 
     /// Parse fontweight value from string to numeric value
-    /// Keywords map to standard CSS numeric values:
-    /// - 'thin'/'hairline' → 100
-    /// - 'extra-light'/'ultra-light' → 200
-    /// - 'light' → 300
-    /// - 'normal'/'regular'/'lighter' → 400
-    /// - 'medium' → 500
-    /// - 'semi-bold'/'demi-bold' → 600
-    /// - 'bold'/'bolder' → 700
-    /// - 'extra-bold'/'ultra-bold' → 800
-    /// - 'black'/'heavy' → 900
-    /// Returns None for invalid values
     fn parse_fontweight_to_numeric(value: &str) -> Option<f64> {
         // Try parsing as number first
         if let Ok(num) = value.parse::<f64>() {
