@@ -10,8 +10,8 @@ The text layer displays rows in the data as text. It can be used as a visualisat
 The following aesthetics are recognised by the text layer.
 
 ### Required
-* `x` Position on the x-axis.
-* `y` Position on the y-axis.
+* Primary axis (e.g. `x`): Position along the primary axis.
+* Secondary axis (e.g. `y`): Position along the secondary axis.
 * `label` The text to dislay.
 
 ### Optional
@@ -30,9 +30,9 @@ The following aesthetics are recognised by the text layer.
 * `nudge_x` Horizontal offset expressed in absolute points.
 * `nudge_y` Vertical offset expressed in absolute points.
 * `format` Formatting specifier, see explanation below.
+* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
 
 ### Format
-
 The `format` setting can take a string that will be used in formatting the `label` aesthetic. 
 The basic syntax for this is that the `label` value will be inserted into any place where `{}` appears.
 This means that e.g. `SETTING format => '{} species'` will result in the label "adelie species" for a row where the `label` value is "adelie".
@@ -63,6 +63,9 @@ Known formatters are:
 
 ## Data transformation
 The text layer does not transform its data but passed it through unchanged.
+
+## Orientation
+The text layer has no orientation. The axes are treated symmetrically.
 
 ## Examples
 
