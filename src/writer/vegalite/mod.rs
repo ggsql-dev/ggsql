@@ -349,24 +349,16 @@ fn build_layer_encoding(
         );
     }
 
-    // Disable Vega-Lite's automatic stacking - we handle position adjustments ourselves
-    // This prevents Vega-Lite from applying its own stack/dodge logic on top of ours
-    // Set stack: null on both y and y2 channels (pos2 and pos2end in our terminology)
+    // Disable Vega-Lite's automatic stacking - we handle position adjustments ourselves.
+    // This prevents Vega-Lite from applying its own stack/dodge logic on top of ours.
+    // Only set stack: null on primary position channels (y/radius) — Vega-Lite does
+    // not support 'stack' on secondary channels (y2/radius2) and Altair rejects it.
     let y_channel = match coord_kind {
         CoordKind::Cartesian => "y",
         CoordKind::Polar => "radius",
     };
-    let y2_channel = match coord_kind {
-        CoordKind::Cartesian => "y2",
-        CoordKind::Polar => "radius2",
-    };
     if let Some(y_enc) = encoding.get_mut(y_channel) {
         if let Some(obj) = y_enc.as_object_mut() {
-            obj.insert("stack".to_string(), Value::Null);
-        }
-    }
-    if let Some(y2_enc) = encoding.get_mut(y2_channel) {
-        if let Some(obj) = y2_enc.as_object_mut() {
             obj.insert("stack".to_string(), Value::Null);
         }
     }
@@ -2703,8 +2695,15 @@ mod tests {
                         enc.get("axis").is_none(),
                         "{channel} should not have 'axis': {enc}"
                     );
+                    assert!(
+                        enc.get("stack").is_none(),
+                        "{channel} should not have 'stack': {enc}"
+                    );
                 }
             }
         }
+
+        // The spec must also pass Vega-Lite schema validation
+        assert_valid_vegalite(&json_str);
     }
 }
