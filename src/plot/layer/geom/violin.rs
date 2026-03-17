@@ -397,6 +397,75 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_violin_tails_parameter() {
+        // Verify that the violin geom has a tails parameter with default 3.0
+        let violin = Violin;
+        let params = violin.default_params();
+
+        let tails_param = params.iter().find(|p| p.name == "tails");
+        assert!(
+            tails_param.is_some(),
+            "Violin should have a 'tails' parameter"
+        );
+
+        if let Some(param) = tails_param {
+            match param.default {
+                DefaultParamValue::Number(n) => {
+                    assert!(
+                        (n - 3.0).abs() < 1e-6,
+                        "Default tails should be 3.0, got {}",
+                        n
+                    );
+                }
+                _ => panic!("Tails parameter should have a numeric default"),
+            }
+        }
+
+        // Test with custom tails value
+        let query = "SELECT species, flipper_length FROM penguins";
+        let aesthetics = create_basic_aesthetics();
+        let groups: Vec<String> = vec![];
+        let mut parameters = HashMap::new();
+        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
+        parameters.insert(
+            "kernel".to_string(),
+            ParameterValue::String("gaussian".to_string()),
+        );
+        parameters.insert("tails".to_string(), ParameterValue::Number(1.5)); // Custom tails
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data
+        let setup_sql = "CREATE TABLE penguins AS SELECT * FROM (VALUES
+            ('Adelie', 181.0), ('Adelie', 186.0), ('Adelie', 195.0),
+            ('Gentoo', 217.0), ('Gentoo', 221.0), ('Gentoo', 230.0)
+        ) AS t(species, flipper_length)";
+        reader.execute_sql(setup_sql).unwrap();
+
+        let execute = |sql: &str| reader.execute_sql(sql);
+
+        let result = stat_violin(query, &aesthetics, &groups, &parameters, &AnsiDialect)
+            .expect("stat_violin with custom tails should succeed");
+
+        // Verify the SQL includes the tails constraint
+        match result {
+            StatResult::Transformed { query: stat_query, .. } => {
+                // The generated SQL should include the tails filtering
+                // We verify this by checking the SQL contains the bandwidth filtering
+                assert!(
+                    stat_query.contains("1.5"),
+                    "SQL should contain the custom tails value 1.5"
+                );
+
+                // Execute and verify it produces results
+                let df = execute(&stat_query).expect("Generated SQL should execute");
+                assert!(df.height() > 0, "Should produce density data");
+            }
+            _ => panic!("Expected Transformed result"),
+        }
+    }
+
     // ==================== Post-Process Tests ====================
 
     #[test]
