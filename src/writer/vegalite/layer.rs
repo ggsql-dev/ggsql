@@ -664,21 +664,74 @@ impl TextRenderer {
 
     /// Convert fontweight to Vega-Lite fontWeight value
     /// Prefers literal over column value
+    /// Accepts all CSS font-weight keywords and numeric values:
+    /// - Keywords: 'thin', 'hairline', 'extra-light', 'ultra-light', 'light',
+    ///   'normal', 'regular', 'lighter', 'medium', 'semi-bold', 'demi-bold',
+    ///   'bold', 'bolder', 'extra-bold', 'ultra-bold', 'black', 'heavy'
+    /// - Numeric values: any number
+    /// - Numeric strings from columns: '100', '400', '700', etc.
+    ///
+    /// Always outputs 'normal' or 'bold' for Vega-Lite compatibility:
+    /// - < 500 → 'normal' (thin, light, normal, regular, lighter)
+    /// - >= 500 → 'bold' (medium, semi-bold, bold, bolder, extra-bold, black, heavy)
     fn convert_fontweight(
         literal: Option<&ParameterValue>,
         column_value: Option<&str>,
     ) -> Option<Value> {
         // First select which value to use (prefer literal)
-        let value = if let Some(ParameterValue::String(s)) = literal {
-            s.as_str()
-        } else if let Some(s) = column_value {
-            s
-        } else {
-            return None;
-        };
+        let numeric = match literal {
+            Some(ParameterValue::String(s)) => {
+                // String literal: keyword or numeric string
+                Self::parse_fontweight_to_numeric(s.as_str())
+            }
+            Some(ParameterValue::Number(n)) => {
+                // Numeric literal: use directly
+                Some(*n)
+            }
+            _ => {
+                // Column value: try to parse
+                column_value.and_then(|s| Self::parse_fontweight_to_numeric(s))
+            }
+        }?;
 
-        // Valid values: 'normal' and 'bold'
-        Some(json!(value))
+        // Apply >= 500 rule to determine bold/normal
+        let is_bold = numeric >= 500.0;
+        Some(json!(if is_bold { "bold" } else { "normal" }))
+    }
+
+    /// Parse fontweight value from string to numeric value
+    /// Keywords map to standard CSS numeric values:
+    /// - 'thin'/'hairline' → 100
+    /// - 'extra-light'/'ultra-light' → 200
+    /// - 'light' → 300
+    /// - 'normal'/'regular'/'lighter' → 400
+    /// - 'medium' → 500
+    /// - 'semi-bold'/'demi-bold' → 600
+    /// - 'bold'/'bolder' → 700
+    /// - 'extra-bold'/'ultra-bold' → 800
+    /// - 'black'/'heavy' → 900
+    /// Returns None for invalid values
+    fn parse_fontweight_to_numeric(value: &str) -> Option<f64> {
+        // Try parsing as number first
+        if let Ok(num) = value.parse::<f64>() {
+            return Some(num);
+        }
+
+        // Map CSS font-weight keywords to numeric values
+        // Normalize: convert to lowercase and remove hyphens for flexible matching
+        let normalized = value.to_lowercase().replace("-", "");
+        match normalized.as_str() {
+            "thin" | "hairline" => Some(100.0),
+            "extralight" | "ultralight" => Some(200.0),
+            "light" => Some(300.0),
+            "normal" | "regular" | "lighter" => Some(400.0),
+            "medium" => Some(500.0),
+            "semibold" | "demibold" => Some(600.0),
+            "bold" | "bolder" => Some(700.0),
+            "extrabold" | "ultrabold" => Some(800.0),
+            "black" | "heavy" => Some(900.0),
+            _ => None,
+        }
     }
 
     /// Convert italic to Vega-Lite fontStyle value
@@ -2451,6 +2504,241 @@ mod tests {
                 "fontWeight should be bold"
             );
         }
+    }
+
+    #[test]
+    fn test_text_setting_fontweight_numeric() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Test numeric fontweight values (700 should map to 'bold')
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                chr(65 + n::INTEGER) as label
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 700
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        // Numeric 700 should map to 'bold'
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert_eq!(mark["fontWeight"].as_str().unwrap(), "bold");
+        }
+    }
+
+    #[test]
+    fn test_text_setting_fontweight_numeric_normal() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Test numeric fontweight values (400 should map to 'normal')
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                chr(65 + n::INTEGER) as label
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 400
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        // Numeric 400 should map to 'normal'
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert_eq!(mark["fontWeight"].as_str().unwrap(), "normal");
+        }
+    }
+
+    #[test]
+    fn test_text_setting_fontweight_keywords() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Test 'bolder' keyword (should map to 'bold')
+        let query = r#"
+            SELECT 1 as x, 1 as y, 'A' as label
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 'bolder'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert_eq!(mark["fontWeight"].as_str().unwrap(), "bold");
+        }
+
+        // Test 'lighter' keyword (should map to 'normal')
+        let query = r#"
+            SELECT 1 as x, 1 as y, 'A' as label
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 'lighter'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert_eq!(mark["fontWeight"].as_str().unwrap(), "normal");
+        }
+
+        // Test 'semi-bold' keyword (should map to 'bold' since 600 >= 500)
+        let query = r#"
+            SELECT 1 as x, 1 as y, 'A' as label
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 'semi-bold'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert_eq!(mark["fontWeight"].as_str().unwrap(), "bold");
+        }
+
+        // Test 'light' keyword (should map to 'normal' since 300 < 500)
+        let query = r#"
+            SELECT 1 as x, 1 as y, 'A' as label
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 'light'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert_eq!(mark["fontWeight"].as_str().unwrap(), "normal");
+        }
+    }
+
+    #[test]
+    fn test_fontweight_keyword_to_numeric_conversion() {
+        // Test parse_fontweight_to_numeric helper function - all CSS keywords
+
+        // 100 - thin/hairline
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("thin"), Some(100.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("hairline"), Some(100.0));
+
+        // 200 - extra-light/ultra-light
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("extra-light"), Some(200.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("extralight"), Some(200.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("ultra-light"), Some(200.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("ultralight"), Some(200.0));
+
+        // 300 - light
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("light"), Some(300.0));
+
+        // 400 - normal/regular/lighter
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("normal"), Some(400.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("regular"), Some(400.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("lighter"), Some(400.0));
+
+        // 500 - medium
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("medium"), Some(500.0));
+
+        // 600 - semi-bold/demi-bold
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("semi-bold"), Some(600.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("semibold"), Some(600.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("demi-bold"), Some(600.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("demibold"), Some(600.0));
+
+        // 700 - bold/bolder
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("bold"), Some(700.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("bolder"), Some(700.0));
+
+        // 800 - extra-bold/ultra-bold
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("extra-bold"), Some(800.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("extrabold"), Some(800.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("ultra-bold"), Some(800.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("ultrabold"), Some(800.0));
+
+        // 900 - black/heavy
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("black"), Some(900.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("heavy"), Some(900.0));
+
+        // Case insensitive
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("BOLD"), Some(700.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("Normal"), Some(400.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("SEMI-BOLD"), Some(600.0));
+
+        // Numeric strings pass through
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("100"), Some(100.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("400"), Some(400.0));
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("700"), Some(700.0));
+
+        // Invalid values
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("invalid"), None);
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric(""), None);
     }
 
     #[test]

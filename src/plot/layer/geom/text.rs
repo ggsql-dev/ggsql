@@ -26,7 +26,7 @@ impl GeomTrait for Text {
                 ("opacity", DefaultAestheticValue::Number(1.0)),
                 ("family", DefaultAestheticValue::Null),
                 ("fontsize", DefaultAestheticValue::Number(11.0)),
-                ("fontweight", DefaultAestheticValue::String("normal")),
+                ("fontweight", DefaultAestheticValue::String("normal")), // Accepts: CSS keywords or numeric values
                 ("italic", DefaultAestheticValue::Boolean(false)),
                 ("hjust", DefaultAestheticValue::Number(0.5)),
                 ("vjust", DefaultAestheticValue::Number(0.5)),
