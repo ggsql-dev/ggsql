@@ -596,7 +596,6 @@ impl GeomRenderer for RibbonRenderer {
 /// For discrete scales: keeps x/y as-is and applies width/height as band fractions
 pub struct RectRenderer;
 
-
 impl GeomRenderer for RectRenderer {
     fn modify_encoding(
         &self,
