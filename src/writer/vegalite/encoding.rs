@@ -553,7 +553,7 @@ fn convert_range_element(elem: &crate::plot::ArrayElement, aesthetic: &str) -> V
                 // Size: convert radius (points) to area (pixels²)
                 "size" => json!(n * n * POINTS_TO_AREA),
                 // Linewidth: convert points to pixels
-                "linewidth" => json!(n * POINTS_TO_PIXELS),
+                "linewidth" | "fontsize" => json!(n * POINTS_TO_PIXELS),
                 // Other aesthetics: pass through unchanged
                 _ => json!(n),
             }
@@ -938,7 +938,7 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
                 // Size: radius (points) → area (pixels²)
                 "size" => json!(n * n * POINTS_TO_AREA),
                 // Linewidth: points → pixels
-                "linewidth" => json!(n * POINTS_TO_PIXELS),
+                "linewidth" | "fontsize" => json!(n * POINTS_TO_PIXELS),
                 _ => json!(n),
             }
         }
@@ -982,8 +982,10 @@ pub(super) fn map_aesthetic_name(
         "linewidth" => "strokeWidth".to_string(),
         // Text aesthetics
         "label" => "text".to_string(),
+        "fontsize" => "size".to_string(),
         // All other aesthetics pass through directly
         // (fill and stroke map to Vega-Lite's separate fill/stroke channels)
+        // typeface/fontweight/italic/rotation are parsed explicitly
         _ => aesthetic.to_string(),
     }
 }

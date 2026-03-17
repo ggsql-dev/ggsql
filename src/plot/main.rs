@@ -522,7 +522,7 @@ mod tests {
         // Text geom - requires label
         let text = Geom::text().aesthetics();
         assert!(text.is_supported("label"));
-        assert!(text.is_supported("family"));
+        assert!(text.is_supported("typeface"));
         assert_eq!(text.required(), &["pos1", "pos2", "label"]);
 
         // Statistical geoms only require pos1
@@ -775,8 +775,8 @@ mod tests {
         let labels = spec.labels.as_ref().unwrap();
         assert_eq!(labels.labels.get("pos1"), Some(&"X Axis".to_string()));
         assert_eq!(labels.labels.get("pos2"), Some(&"Y Axis".to_string()));
-        assert!(labels.labels.get("x").is_none());
-        assert!(labels.labels.get("y").is_none());
+        assert!(!labels.labels.contains_key("x"));
+        assert!(!labels.labels.contains_key("y"));
     }
 
     #[test]

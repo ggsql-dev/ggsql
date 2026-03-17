@@ -332,11 +332,11 @@ pub struct Layer {
 
 pub enum Geom {
     // Basic geoms
-    Point, Line, Path, Bar, Col, Area, Tile, Polygon, Ribbon,
+    Point, Line, Path, Bar, Col, Area, Rect, Polygon, Ribbon,
     // Statistical geoms
     Histogram, Density, Smooth, Boxplot, Violin,
     // Annotation geoms
-    Text, Label, Segment, Arrow, Rule, Linear, ErrorBar,
+    Text, Segment, Arrow, Rule, Linear, ErrorBar,
 }
 
 pub enum DataSource {
@@ -1217,7 +1217,7 @@ All clauses (MAPPING, SETTING, PARTITION BY, FILTER) are optional.
 
 **Geom Types**:
 
-- **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `tile`, `polygon`, `ribbon`
+- **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `rect`, `polygon`, `ribbon`
 - **Statistical**: `histogram`, `density`, `smooth`, `boxplot`, `violin`
 - **Annotation**: `text`, `label`, `segment`, `arrow`, `rule`, `linear`, `errorbar`
 
@@ -1228,7 +1228,7 @@ Maps data values (columns or literals) to visual aesthetics. Syntax: `value AS a
 - **Position**: `x`, `y`, `xmin`, `xmax`, `ymin`, `ymax`
 - **Color**: `color`, `fill`, `stroke`, `opacity`
 - **Size/Shape**: `size`, `shape`, `linetype`, `linewidth`
-- **Text**: `label`, `family`, `fontface`
+- **Text**: `label`, `typeface`, `fontweight`, `italic`
 
 **Literal vs Column**:
 
