@@ -11,21 +11,21 @@ The following aesthetics are recognised by the rectangle layer.
 
 ### Required
 
-* Pick two of the following:
-    * `x`: The center along the x-axis.
-    * `width`: The size of the rectangle in the horizontal dimension.
-    * `xmin`: The left position along the x-axis. Unavailable when `x` is discrete.
-    * `xmax`: The right position laong the x-axis. Unavailable when `x` is discrete.
+* Pick two of the following for the primary axis:
+    * Center (e.g. `x`)
+    * `width`
+    * Start position (e.g. `xmin`). Unavailable when the center is discrete.
+    * End position (e.g. `xmax`). Unavailable when the center is discrete.
 
-Alternatively, use only `x`, which will set `width` to 1 by default.
+Alternatively, use only the center, which will set `width` to 1 by default.
 
-* Pick two of the following:
-    * `y`: The center along the y-axis.
+* Pick two of the following for the secondary axis:
+    * Center (e.g. `y`)
     * `height`: The size of the rectangle in the vertical dimension.
-    * `ymin`: The bottom position along the y-axis. Unavailable when `y` is discrete.
-    * `ymax`: The top position along the y-axis. Unailable when `y` is discrete.
+    * Start position (e.g. `ymin`). Unavailable when the center is discrete.
+    * End position (e.g. `ymax`) Unavailable when the center is discrete.
 
-Alternatively, use only `y`, which will set `height` to 1 by default.
+Alternatively, use only the center, which will set `height` to 1 by default.
 
 ### Optional
 * `stroke`: The colour of the contour lines.
@@ -36,11 +36,14 @@ Alternatively, use only `y`, which will set `height` to 1 by default.
 * `linetype`: The dash pattern of the contour line.
 
 ## Settings
-The rectangle layer has no additional settings.
+* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
 
 ## Data transformation.
-When the x-aesthetics are continuous, x-data is reparameterised to `xmin` and `xmax`.
-When the y-aesthetics are continuous, y-data is reparameterised to `ymin` and `ymax`.
+When the primary aesthetics are continuous, primary data is reparameterised to {start, end}, e.g. `xmin` and `xmax`.
+When the secondary aesthetics are continuous, secondary data is reparameterised to {start, end}, e.g. `ymin` and `ymax`.
+
+## Orientation
+The rectangle layer has no orientation. The axes are treated symmetrically.
 
 ## Examples
 
@@ -90,6 +93,8 @@ VISUALISE start AS xmin, end AS xmax, min AS ymin, max AS ymax
 ```
 
 Using a rectangle as an annotation.
+
+<!-- When annotations work, replace this with an annotation layer -->
 
 ```{ggsql}
 VISUALISE FROM ggsql:airquality
