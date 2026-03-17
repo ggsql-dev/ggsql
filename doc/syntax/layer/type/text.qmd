@@ -19,7 +19,7 @@ The following aesthetics are recognised by the text layer.
 * `fill` The colour of the glyphs.
 * `colour` Shorthand for setting `stroke` and `fill` simultaneously.
 * `opacity` The opacity of the fill colour.
-* `family` The typeface to style the lettering.
+* `typeface` The typeface to style the lettering.
 * `fontsize` The size of the text in points.
 * `fontweight` Font weight. Interpretation is writer dependent. Vega-Lite converts everything to 'normal' or 'bold'. Can be one of the following:
     * CSS keywords: `'thin'`, `'hairline'`, `'extra-light'`, `'ultra-light'`, `'light'`, `'normal'` (default), `'regular'`, `'lighter'`, `'medium'`, `'semi-bold'`, `'demi-bold'`, `'bold'`, `'bolder'`, `'extra-bold'`, `'ultra-bold'`, `'black'`, `'heavy'`
@@ -101,7 +101,7 @@ DRAW text
   SETTING
     opacity => 0.8,
     fontweight => 'bold',
-    family => 'Times New Roman'
+    typeface => 'Times New Roman'
   SCALE fontsize TO [6, 20]
 ```
 

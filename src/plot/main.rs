@@ -506,7 +506,7 @@ mod tests {
         // Text geom
         let text = Geom::text().aesthetics();
         assert!(text.is_supported("label"));
-        assert!(text.is_supported("family"));
+        assert!(text.is_supported("typeface"));
         assert_eq!(text.required(), &["pos1", "pos2", "label"]);
 
         // Statistical geoms only require pos1

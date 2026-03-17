@@ -576,7 +576,7 @@ impl TextRenderer {
         let mut changed = BooleanChunked::full("changed".into(), false, nrows);
         let mut font_columns: HashMap<&str, &polars::prelude::Column> = HashMap::new();
 
-        for aesthetic in ["family", "fontweight", "italic", "hjust", "vjust", "angle"] {
+        for aesthetic in ["typeface", "fontweight", "italic", "hjust", "vjust", "angle"] {
             if let Ok(col) = df.column(&naming::aesthetic_column(aesthetic)) {
                 let col_changed = col.not_equal(&col.shift(1)).map_err(|e| {
                     GgsqlError::InternalError(format!("Failed to compare column: {}", e))
@@ -618,7 +618,7 @@ impl TextRenderer {
             "indices".into(),
             change_indices.iter().map(|&i| i as u32).collect(),
         );
-        let font_aesthetics = ["family", "fontweight", "italic", "hjust", "vjust", "angle"];
+        let font_aesthetics = ["typeface", "fontweight", "italic", "hjust", "vjust", "angle"];
 
         let mut result_cols = Vec::new();
         for aesthetic in font_aesthetics {
@@ -641,9 +641,9 @@ impl TextRenderer {
         Ok((result_df, run_lengths))
     }
 
-    /// Convert family to Vega-Lite font value
+    /// Convert typeface to Vega-Lite font value
     /// Prefers literal over column value
-    fn convert_family(
+    fn convert_typeface(
         literal: Option<&ParameterValue>,
         column_value: Option<&str>,
     ) -> Option<Value> {
@@ -876,10 +876,10 @@ impl TextRenderer {
         };
 
         // Convert and apply font properties
-        if let Some(family_val) =
-            Self::convert_family(layer.get_literal("family"), get_str("family").as_deref())
+        if let Some(typeface_val) =
+            Self::convert_typeface(layer.get_literal("typeface"), get_str("typeface").as_deref())
         {
-            mark_obj.insert("font".to_string(), family_val);
+            mark_obj.insert("font".to_string(), typeface_val);
         }
 
         if let Some(weight) = Self::convert_fontweight(
@@ -1048,7 +1048,7 @@ impl GeomRenderer for TextRenderer {
         _context: &RenderContext,
     ) -> Result<()> {
         // Remove font aesthetics from encoding - they only work as mark properties
-        for &aesthetic in &["family", "fontweight", "italic", "hjust", "vjust", "angle"] {
+        for &aesthetic in &["typeface", "fontweight", "italic", "hjust", "vjust", "angle"] {
             encoding.remove(aesthetic);
         }
 
@@ -1927,7 +1927,7 @@ mod tests {
             naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
             naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
             naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
-            naming::aesthetic_column("family").as_str() => &["Arial", "Arial", "Arial"],
+            naming::aesthetic_column("typeface").as_str() => &["Arial", "Arial", "Arial"],
         }
         .unwrap();
 
@@ -1959,7 +1959,7 @@ mod tests {
             naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
             naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
             naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
-            naming::aesthetic_column("family").as_str() => &["Arial", "Courier", "Times"],
+            naming::aesthetic_column("typeface").as_str() => &["Arial", "Courier", "Times"],
         }
         .unwrap();
 
@@ -1993,7 +1993,7 @@ mod tests {
             naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
             naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
             naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
-            naming::aesthetic_column("family").as_str() => &["Arial", "Courier", "Arial"],
+            naming::aesthetic_column("typeface").as_str() => &["Arial", "Courier", "Arial"],
             naming::aesthetic_column("fontweight").as_str() => &["bold", "normal", "bold"],
             naming::aesthetic_column("italic").as_str() => &["false", "true", "false"],
         }

@@ -52,7 +52,7 @@
   "width"
   "height"
   "label"
-  "family"
+  "typeface"
   "fontweight"
   "italic"
   "hjust"
