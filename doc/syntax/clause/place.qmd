@@ -2,7 +2,7 @@
 title: "Create annotation layers with `PLACE`"
 ---
 
-The `PLACE` clause is the little sibling of the [`DRAW` clause](../clause/draw.qmd) that also creates layers.
+The `PLACE` clause is the little sibling of the [`DRAW` clause](draw.qmd) that also creates layers.
 A layer created with `PLACE` has no mappings to data, all aesthetics are set using literal values instead.
 
 ## Clause syntax
@@ -25,7 +25,7 @@ everything is declared inline.
 SETTING <parameter/aesthetic> => <value>, ...
 ```
 
-The `SETTING` clause can be used for to different things:
+The `SETTING` clause can be used for two different things:
 
 * *Setting aesthetics*: All aesthetics in `PLACE` layers are specified using literal value, e.g. 'red' (as in the color red). 
 Aesthetics that are set will not go through a scale but will use the provided value as-is. 
