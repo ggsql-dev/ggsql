@@ -769,8 +769,8 @@ mod integration_tests {
         let query = r#"
             SELECT 1 AS x, 10 AS y UNION ALL SELECT 2 AS x, 20 AS y
             VISUALISE x, y
-            DRAW point
-            PLACE text SETTING x => 5, y => 30, label => 'Annotation', size => 16, stroke => 'red'
+            DRAW line
+            PLACE point SETTING x => 5, y => 30, size => 100, stroke => 'red'
         "#;
 
         let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
@@ -780,18 +780,18 @@ mod integration_tests {
         let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
-        // Find the text layer (should be second layer)
-        let text_layer = &vl_spec["layer"][1];
+        // Find the point annotation layer (should be second layer)
+        let point_layer = &vl_spec["layer"][1];
 
         // Mark can be either a string or an object with type
-        let mark_type = if text_layer["mark"].is_string() {
-            text_layer["mark"].as_str().unwrap()
+        let mark_type = if point_layer["mark"].is_string() {
+            point_layer["mark"].as_str().unwrap()
         } else {
-            text_layer["mark"]["type"].as_str().unwrap()
+            point_layer["mark"]["type"].as_str().unwrap()
         };
-        assert_eq!(mark_type, "text", "Second layer should be text");
+        assert_eq!(mark_type, "point", "Second layer should be point annotation");
 
-        let encoding = &text_layer["encoding"];
+        let encoding = &point_layer["encoding"];
 
         // Positional aesthetics should be field encodings (have "field" key)
         assert!(
@@ -806,7 +806,6 @@ mod integration_tests {
         );
 
         // Non-positional aesthetics should be value encodings (have "value" key)
-        // Note: size may be scaled/transformed, so just check it's present as a value
         assert!(
             encoding["size"]["value"].is_number(),
             "size should be a value encoding with numeric value: {:?}",
@@ -815,12 +814,11 @@ mod integration_tests {
 
         // Note: stroke color goes through resolve_aesthetics and may be in different location
         // Just verify it's present somewhere as a literal
-        let text_mark = &text_layer["mark"];
         let has_stroke_value = encoding
             .get("stroke")
             .and_then(|s| s.get("value"))
             .is_some()
-            || text_mark.get("stroke").is_some();
+            || point_layer["mark"].get("stroke").is_some();
         assert!(has_stroke_value, "stroke should be present as a value");
     }
 

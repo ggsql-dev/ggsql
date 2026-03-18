@@ -2341,7 +2341,7 @@ mod tests {
             SELECT * FROM test_place
             VISUALISE x, y
             DRAW point
-            PLACE text SETTING x => 2, y => 25, label => 'Annotation', size => 14
+            PLACE text SETTING x => 2, y => 25, label => 'Annotation', fontsize => 14
         "#;
 
         let result = prepare_data_with_reader(query, &reader).unwrap();
@@ -2592,13 +2592,27 @@ mod tests {
             !annotation_layer.mappings.contains_key("color"),
             "PLACE layer should not inherit color from global mappings"
         );
+
+        // PLACE layer should have geom default fill='black', not global color='red'
         assert!(
-            !annotation_layer.mappings.contains_key("fill"),
-            "PLACE layer should not inherit fill from global mappings"
+            annotation_layer.mappings.contains_key("fill"),
+            "PLACE layer should have default fill from text geom"
         );
+        match annotation_layer.mappings.aesthetics.get("fill") {
+            Some(AestheticValue::Literal(crate::plot::types::ParameterValue::String(s))) if s == "black" => {
+                // Correct: geom default fill
+            }
+            Some(AestheticValue::Column { name, .. }) if name == "color" => {
+                panic!("PLACE layer incorrectly inherited global color mapping as fill");
+            }
+            other => {
+                panic!("Expected fill=Literal('black'), got: {:?}", other);
+            }
+        }
+
         assert!(
             !annotation_layer.mappings.contains_key("stroke"),
-            "PLACE layer should not inherit stroke from global mappings"
+            "PLACE layer should not have stroke (text geom default is null)"
         );
     }
     #[cfg(feature = "duckdb")]
