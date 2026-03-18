@@ -9,8 +9,8 @@ Smooth layers are used to display a trendline among a series of observations.
 ## Aesthetics
 
 ### Required
-* `x`: Position along the x-axis
-* `y`: Position along the y-axis
+* Primary axis (e.g. `x`): Position along the primary axis.
+* Secondary axis (e.g. `y`): Position along the secondary axis.
 
 ### Optional
 * `colour`/`stroke`: The colour of the line
@@ -79,9 +79,10 @@ $$
 
 ### Total least squares
 
-The `method => 'tls'` setting uses total least squares to compute the intercept $a$ and sloep $b$ of a straight line.
+The `method => 'tls'` setting uses total least squares to compute the intercept $a$ and slope $b$ of a straight line.
 The method minimizes the 2-dimensiontal distance between a point and the perpendicular projection of that point on the line.
-The perpendicular distances imply having measurement error in both $x$ and $y$.
+Minimising the perpendicular distances (rather than just the vertical distances) makes sense if there is uncertainty or measurement error in not just $y$, but in $x$ as well.
+In such case, it is a more accurate depiction of the relationship between $x$ and $y$, but it isn't the best predictor of $y$ given $x$.
 
 $$
 y = a + bx
