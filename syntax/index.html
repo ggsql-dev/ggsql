@@ -141,6 +141,10 @@ gradient teal.
  <span class="dropdown-text"><code>DRAW</code></span></a>
   </li>  
         <li>
+    <a class="dropdown-item" href="../syntax/clause/place.html">
+ <span class="dropdown-text"><code>PLACE</code></span></a>
+  </li>  
+        <li>
     <a class="dropdown-item" href="../syntax/clause/scale.html">
  <span class="dropdown-text"><code>SCALE</code></span></a>
   </li>  
@@ -246,6 +250,12 @@ gradient teal.
   <div class="sidebar-item-container"> 
   <a href="../syntax/clause/draw.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text"><code>DRAW</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../syntax/clause/place.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>PLACE</code></span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -619,7 +629,10 @@ gradient teal.
 <p>ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:</p>
 <ul>
 <li><a href="../syntax/clause/visualise.html"><code>VISUALISE</code></a> initiates the visualisation part of the query</li>
-<li><a href="../syntax/clause/draw.html"><code>DRAW</code></a> adds a new layer to the visualisation</li>
+<li><a href="../syntax/clause/draw.html"><code>DRAW</code></a> adds a new layer to the visualisation
+<ul>
+<li><a href="../syntax/clause/place.html"><code>PLACE</code></a> adds an annotation layer</li>
+</ul></li>
 <li><a href="../syntax/clause/scale.html"><code>SCALE</code></a> specify how an aesthetic should be scaled</li>
 <li><a href="../syntax/clause/facet.html"><code>FACET</code></a> describes how data should be split into small multiples</li>
 <li><a href="../syntax/clause/project.html"><code>PROJECT</code></a> is used for selecting the coordinate system to use</li>
