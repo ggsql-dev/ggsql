@@ -89,6 +89,18 @@ pub const SOURCE_COLUMN: &str = concatcp!(GGSQL_PREFIX, "source", GGSQL_SUFFIX);
 pub const SCHEMA_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "schema", GGSQL_SUFFIX);
 
 // ============================================================================
+// Quoting
+// ============================================================================
+
+/// Quote a SQL identifier with double quotes (ANSI SQL).
+///
+/// This ensures case-preserving behavior on backends like Snowflake that
+/// uppercase unquoted identifiers.
+pub fn quote_ident(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
+}
+
+// ============================================================================
 // Constructor Functions
 // ============================================================================
 
