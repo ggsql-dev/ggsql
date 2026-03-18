@@ -280,6 +280,7 @@ fn build_layer_encoding(
             let secondary_encoding = match value {
                 AestheticValue::Column { name: col, .. } => json!({"field": col}),
                 AestheticValue::Literal(lit) => json!({"value": lit.to_json()}),
+                AestheticValue::AnnotationColumn { name: col } => json!({"field": col}),
             };
             encoding.insert(channel_name, secondary_encoding);
             continue;

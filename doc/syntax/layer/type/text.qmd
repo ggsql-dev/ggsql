@@ -137,3 +137,13 @@ VISUALISE island AS x, n AS y
   SCALE y FROM [0, 200]
 ```
 
+You can use `PLACE` to annotate a plot directly without needing to map data.
+
+```{ggsql}
+VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
+  DRAW point MAPPING species AS colour
+  PLACE text SETTING
+    label => ['Adelie', 'Chinstrap', 'Gentoo'],
+    x => [40, 50, 50],
+    y => [19, 19, 15]
+```
