@@ -60,7 +60,7 @@ fn validate(
 
         // Validate required aesthetics for this geom
         layer
-            .validate_mapping(aesthetic_context)
+            .validate_mapping(aesthetic_context, false)
             .map_err(|e| GgsqlError::ValidationError(format!("Layer {}: {}", idx + 1, e)))?;
 
         // Validate SETTING parameters are valid for this geom
@@ -1033,7 +1033,11 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Validate all layers against their schemas
     // This must happen BEFORE build_layer_query because stat transforms remove consumed aesthetics
-    validate(&specs[0].layers, &layer_schemas, &specs[0].aesthetic_context)?;
+    validate(
+        &specs[0].layers,
+        &layer_schemas,
+        &specs[0].aesthetic_context,
+    )?;
 
     // Create scales for all mapped aesthetics that don't have explicit SCALE clauses
     scale::create_missing_scales(&mut specs[0]);

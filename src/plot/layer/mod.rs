@@ -173,6 +173,7 @@ impl Layer {
     pub fn validate_mapping(
         &self,
         context: &Option<AestheticContext>,
+        skip_supported: bool,
     ) -> std::result::Result<(), String> {
         // If there is aesthetic context, translate to user-facing form
         let translate = |aes: &str| -> String {
@@ -227,6 +228,9 @@ impl Layer {
                     self.geom, translate(missing)
                 ));
             }
+        }
+        if skip_supported {
+            return Ok(());
         }
 
         // Check if any unsupported mappings are present
