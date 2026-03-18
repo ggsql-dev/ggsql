@@ -35,7 +35,90 @@ pub enum OdbcVariant {
     SqlServer,
 }
 
-impl super::SqlDialect for OdbcDialect {}
+impl super::SqlDialect for OdbcDialect {
+    fn sql_list_catalogs(&self) -> String {
+        match self.variant {
+            OdbcVariant::Snowflake => {
+                "SELECT database_name AS catalog_name \
+                 FROM snowflake.information_schema.databases \
+                 ORDER BY database_name"
+                    .into()
+            }
+            _ => {
+                "SELECT DISTINCT catalog_name FROM information_schema.schemata \
+                 ORDER BY catalog_name"
+                    .into()
+            }
+        }
+    }
+
+    fn sql_list_schemas(&self, catalog: &str) -> String {
+        let catalog = catalog.replace('\'', "''");
+        match self.variant {
+            OdbcVariant::Snowflake => {
+                let catalog_ident = catalog.replace('"', "\"\"");
+                format!(
+                    "SELECT schema_name \
+                     FROM \"{catalog_ident}\".information_schema.schemata \
+                     ORDER BY schema_name"
+                )
+            }
+            _ => {
+                format!(
+                    "SELECT DISTINCT schema_name FROM information_schema.schemata \
+                     WHERE catalog_name = '{catalog}' ORDER BY schema_name"
+                )
+            }
+        }
+    }
+
+    fn sql_list_tables(&self, catalog: &str, schema: &str) -> String {
+        let schema = schema.replace('\'', "''");
+        match self.variant {
+            OdbcVariant::Snowflake => {
+                let catalog_ident = catalog.replace('"', "\"\"");
+                format!(
+                    "SELECT table_name, table_type \
+                     FROM \"{catalog_ident}\".information_schema.tables \
+                     WHERE table_schema = '{schema}' \
+                     ORDER BY table_name"
+                )
+            }
+            _ => {
+                let catalog = catalog.replace('\'', "''");
+                format!(
+                    "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
+                     WHERE table_catalog = '{catalog}' AND table_schema = '{schema}' \
+                     ORDER BY table_name"
+                )
+            }
+        }
+    }
+
+    fn sql_list_columns(&self, catalog: &str, schema: &str, table: &str) -> String {
+        let schema = schema.replace('\'', "''");
+        let table = table.replace('\'', "''");
+        match self.variant {
+            OdbcVariant::Snowflake => {
+                let catalog_ident = catalog.replace('"', "\"\"");
+                format!(
+                    "SELECT column_name, data_type \
+                     FROM \"{catalog_ident}\".information_schema.columns \
+                     WHERE table_schema = '{schema}' AND table_name = '{table}' \
+                     ORDER BY ordinal_position"
+                )
+            }
+            _ => {
+                let catalog = catalog.replace('\'', "''");
+                format!(
+                    "SELECT column_name, data_type FROM information_schema.columns \
+                     WHERE table_catalog = '{catalog}' AND table_schema = '{schema}' \
+                     AND table_name = '{table}' ORDER BY ordinal_position"
+                )
+            }
+        }
+    }
+}
 
 /// Generic ODBC reader implementing the `Reader` trait.
 pub struct OdbcReader {
