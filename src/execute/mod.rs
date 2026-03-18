@@ -2511,8 +2511,8 @@ mod tests {
         match result {
             Err(GgsqlError::ValidationError(msg)) => {
                 assert!(
-                    msg.contains("pos2"),
-                    "Error should mention missing pos2 aesthetic: {}",
+                    msg.contains("y"),
+                    "Error should mention missing y aesthetic: {}",
                     msg
                 );
             }

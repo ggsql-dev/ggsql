@@ -1602,7 +1602,7 @@ mod tests {
                 AestheticValue::standard_column("y".to_string()),
             )
             .with_aesthetic(
-                "color".to_string(),
+                "stroke".to_string(),
                 AestheticValue::Literal(ParameterValue::String("red".to_string())),
             );
         spec.layers.push(layer);
@@ -1618,7 +1618,7 @@ mod tests {
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["value"], "red");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["stroke"]["value"], "red");
     }
 
     #[test]
@@ -1820,13 +1820,13 @@ mod tests {
                 AestheticValue::standard_column("y".to_string()),
             )
             .with_aesthetic(
-                "color".to_string(),
+                "size".to_string(),
                 AestheticValue::standard_column("value".to_string()),
             );
         spec.layers.push(layer);
 
-        // Add binned color scale (symbol legend case)
-        let mut scale = Scale::new("color");
+        // Add binned size scale (symbol legend case)
+        let mut scale = Scale::new("size");
         scale.scale_type = Some(ScaleType::binned());
         scale.properties.insert(
             "breaks".to_string(),
@@ -1860,7 +1860,7 @@ mod tests {
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that labelExpr contains VL's range-style format
-        let label_expr = &vl_spec["layer"][0]["encoding"]["color"]["legend"]["labelExpr"];
+        let label_expr = &vl_spec["layer"][0]["encoding"]["size"]["legend"]["labelExpr"];
         assert!(label_expr.is_string());
         let expr = label_expr.as_str().unwrap();
 
