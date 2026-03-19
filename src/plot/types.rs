@@ -1502,7 +1502,7 @@ fn validate_string(name: &str, s: &str, c: &StringConstraint) -> Result<(), Stri
         return Err(format!(
             "'{}' should be {}, not '{}'",
             name,
-            crate::or_list_quoted(&c.allowed_values, '\''),
+            crate::or_list_quoted(c.allowed_values, '\''),
             s
         ));
     }
