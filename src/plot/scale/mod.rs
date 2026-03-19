@@ -55,7 +55,7 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
         return true;
     }
 
-    // Material visual aesthetics that get default scales
+    // Material aesthetics that get default scales
     matches!(
         aesthetic,
         // Color aesthetics (color/colour/col already split to fill/stroke)
@@ -64,7 +64,7 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
         | "size" | "linewidth"
         // Dimension aesthetics
         | "width" | "height"
-        // Other visual aesthetics
+        // Other material aesthetics
         | "opacity" | "shape" | "linetype"
     )
 }

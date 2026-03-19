@@ -205,10 +205,10 @@ pub(super) fn count_binned_legend_scales(spec: &Plot) -> usize {
                 .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
                 .unwrap_or(false);
 
-            // Check if material (legend aesthetic)
-            let is_legend_aesthetic = !is_position_aesthetic(&scale.aesthetic);
+            // Check if material aesthetic
+            let is_material_aesthetic = !is_position_aesthetic(&scale.aesthetic);
 
-            is_binned && is_legend_aesthetic
+            is_binned && is_material_aesthetic
         })
         .count()
 }
@@ -297,7 +297,7 @@ enum LegendStyle {
 /// Determine legend style for a binned aesthetic
 ///
 /// - fill/stroke alone: gradient legend
-/// - fill/stroke with other binned legend aesthetics: symbol legend
+/// - fill/stroke with other binned material aesthetics: symbol legend
 /// - all other aesthetics: symbol legend
 fn determine_legend_style(aesthetic: &str, spec: &Plot) -> LegendStyle {
     let is_gradient_aesthetic = matches!(aesthetic, "fill" | "stroke");
@@ -674,7 +674,7 @@ fn apply_breaks_to_encoding(
 
         insert_axis_property(encoding, "values", json!(axis_values));
     } else {
-        // For legend aesthetics, determine values based on legend style
+        // For material aesthetics, determine values based on legend style
         let legend_values = if is_binned_legend {
             let legend_style = determine_legend_style(aesthetic, spec);
             if legend_style == LegendStyle::Symbol && !all_values.is_empty() {

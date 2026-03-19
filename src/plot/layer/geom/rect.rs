@@ -40,7 +40,7 @@ impl GeomTrait for Rect {
                 ("pos2min", DefaultAestheticValue::Null), // ymin
                 ("pos2max", DefaultAestheticValue::Null), // ymax
                 ("height", DefaultAestheticValue::Null), // height (aesthetic, can map to column)
-                // Visual aesthetics
+                // Material aesthetics
                 ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(0.8)),
