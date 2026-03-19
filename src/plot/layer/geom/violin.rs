@@ -63,6 +63,10 @@ impl GeomTrait for Violin {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
             },
+            DefaultParam {
+                name: "ridge",
+                default: DefaultParamValue::String("both"),
+            },
         ]
     }
 

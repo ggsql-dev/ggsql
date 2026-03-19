@@ -1311,7 +1311,18 @@ impl GeomRenderer for ViolinRenderer {
         let offset_col = naming::aesthetic_column("offset");
 
         // It'll be implemented as an offset.
-        let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
+        let mut violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
+        if let Some(ParameterValue::String(ridge)) = layer.parameters.get("ridge") {
+            match ridge.as_str() {
+                "left" | "top" => {
+                    violin_offset = format!("[-datum.{offset}]", offset = offset_col);
+                }
+                "right" | "bottom" => {
+                    violin_offset = format!("[datum.{offset}]", offset = offset_col);
+                }
+                _ => {}
+            }
+        }
 
         // Read orientation from layer (already resolved during execution)
         let is_horizontal = is_transposed(layer);
