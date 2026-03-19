@@ -343,11 +343,26 @@ mod tests {
         let mut layer = crate::plot::Layer::new(Geom::bar());
         layer.mappings = {
             let mut m = Mappings::new();
-            m.insert("pos1", AestheticValue::standard_column("__ggsql_aes_pos1__"));
-            m.insert("pos2", AestheticValue::standard_column("__ggsql_aes_pos2__"));
-            m.insert("pos2end", AestheticValue::standard_column("__ggsql_aes_pos2end__"));
-            m.insert("fill", AestheticValue::standard_column("__ggsql_aes_fill__"));
-            m.insert("facet1", AestheticValue::standard_column("__ggsql_aes_facet1__"));
+            m.insert(
+                "pos1",
+                AestheticValue::standard_column("__ggsql_aes_pos1__"),
+            );
+            m.insert(
+                "pos2",
+                AestheticValue::standard_column("__ggsql_aes_pos2__"),
+            );
+            m.insert(
+                "pos2end",
+                AestheticValue::standard_column("__ggsql_aes_pos2end__"),
+            );
+            m.insert(
+                "fill",
+                AestheticValue::standard_column("__ggsql_aes_fill__"),
+            );
+            m.insert(
+                "facet1",
+                AestheticValue::standard_column("__ggsql_aes_facet1__"),
+            );
             m
         };
         layer.partition_by = vec![
@@ -381,8 +396,16 @@ mod tests {
             .collect()
             .unwrap();
 
-        let pos2 = result_df.column("__ggsql_aes_pos2__").unwrap().f64().unwrap();
-        let pos2end = result_df.column("__ggsql_aes_pos2end__").unwrap().f64().unwrap();
+        let pos2 = result_df
+            .column("__ggsql_aes_pos2__")
+            .unwrap()
+            .f64()
+            .unwrap();
+        let pos2end = result_df
+            .column("__ggsql_aes_pos2end__")
+            .unwrap()
+            .f64()
+            .unwrap();
 
         let pos2_vals: Vec<f64> = pos2.into_iter().flatten().collect();
         let pos2end_vals: Vec<f64> = pos2end.into_iter().flatten().collect();
