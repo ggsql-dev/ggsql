@@ -266,6 +266,20 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
     // 2. stack_end_col = lag(stack_col, 1, 0) - the bar bottom/start (previous stack top)
     // The cumsum naturally stacks across the grouping column values
 
+    // Build the partition columns for .over(): group column + facet columns.
+    // Facet columns must be included so stacking resets per facet panel,
+    // matching ggplot2 where position adjustments are computed per-panel.
+    let mut over_cols: Vec<Expr> = vec![col(&group_col)];
+    for partition_col in &layer.partition_by {
+        if naming::is_aesthetic_column(partition_col) {
+            if let Some(aes) = naming::extract_aesthetic_name(partition_col) {
+                if aes.starts_with("facet") {
+                    over_cols.push(col(partition_col));
+                }
+            }
+        }
+    }
+
     // Treat NA heights as 0 for stacking
     // Compute cumulative sums (shared by all modes)
     let lf = lf
@@ -273,7 +287,7 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
         .with_column(
             col(&stack_col)
                 .cum_sum(false)
-                .over([col(&group_col)])
+                .over(&over_cols)
                 .alias("__cumsum__"),
         )
         .with_column(
@@ -281,7 +295,7 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
                 .cum_sum(false)
                 .shift(lit(1))
                 .fill_null(lit(0.0))
-                .over([col(&group_col)])
+                .over(&over_cols)
                 .alias("__cumsum_lag__"),
         );
 
@@ -293,7 +307,7 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
             vec!["__cumsum__", "__cumsum_lag__"],
         ),
         StackMode::Fill(target) => {
-            let total = col(&stack_col).sum().over([col(&group_col)]);
+            let total = col(&stack_col).sum().over(&over_cols);
             (
                 (col("__cumsum__") / total.clone() * lit(target)).alias(&stack_col),
                 (col("__cumsum_lag__") / total * lit(target)).alias(&stack_end_col),
@@ -301,7 +315,7 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
             )
         }
         StackMode::Center => {
-            let half_total = col(&stack_col).sum().over([col(&group_col)]) / lit(2.0);
+            let half_total = col(&stack_col).sum().over(&over_cols) / lit(2.0);
             (
                 (col("__cumsum__") - half_total.clone()).alias(&stack_col),
                 (col("__cumsum_lag__") - half_total).alias(&stack_end_col),
