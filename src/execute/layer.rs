@@ -271,7 +271,7 @@ pub fn apply_pre_stat_transform(
         .collect();
 
     format!(
-        "SELECT {} FROM ({}) AS __ggsql_pre__",
+        "SELECT {} FROM ({}) AS \"__ggsql_pre__\"",
         select_exprs.join(", "),
         query
     )
@@ -315,14 +315,14 @@ pub fn build_layer_base_query(
     // Build query with optional WHERE clause
     if let Some(ref f) = layer.filter {
         format!(
-            "SELECT {} FROM ({}) AS __ggsql_src__ WHERE {}",
+            "SELECT {} FROM ({}) AS \"__ggsql_src__\" WHERE {}",
             select_clause,
             source_query,
             f.as_str()
         )
     } else {
         format!(
-            "SELECT {} FROM ({}) AS __ggsql_src__",
+            "SELECT {} FROM ({}) AS \"__ggsql_src__\"",
             select_clause, source_query
         )
     }
@@ -542,14 +542,14 @@ where
                         .and_then(super::cte::split_with_query)
                 {
                     format!(
-                        "{}, __ggsql_stat__ AS ({}) SELECT *, {} FROM __ggsql_stat__",
+                        "{}, \"__ggsql_stat__\" AS ({}) SELECT *, {} FROM \"__ggsql_stat__\"",
                         cte_prefix,
                         trailing_select,
                         stat_rename_exprs.join(", ")
                     )
                 } else {
                     format!(
-                        "SELECT *, {} FROM ({}) AS __ggsql_stat__",
+                        "SELECT *, {} FROM ({}) AS \"__ggsql_stat__\"",
                         stat_rename_exprs.join(", "),
                         transformed_query
                     )

@@ -272,7 +272,7 @@ fn density_sql_bandwidth(
             SELECT
               {rule} AS bw{comma}
               {groups_str}
-            FROM ({from}) AS __ggsql_qt__
+            FROM ({from}) AS {qt}
             WHERE {value} IS NOT NULL
             {group_by}
           )",
@@ -282,6 +282,7 @@ fn density_sql_bandwidth(
         groups_str = groups_str,
         comma = comma,
         from = from,
+        qt = "\"__ggsql_qt__\"",
     )
 }
 
@@ -408,8 +409,8 @@ fn build_grid_cte(
     if !has_groups {
         return format!(
             "{seq}, grid AS (
-          SELECT {min} + (__ggsql_seq__.n * {diff} / {n_points}) AS x
-          FROM __ggsql_seq__
+          SELECT {min} + (\"__ggsql_seq__\".n * {diff} / {n_points}) AS x
+          FROM \"__ggsql_seq__\"
         )",
             seq = seq,
             min = min,
@@ -423,8 +424,8 @@ fn build_grid_cte(
         "{seq}, grid AS (
           SELECT
             {groups},
-            {min} + (__ggsql_seq__.n * {diff} / {n_points}) AS x
-          FROM __ggsql_seq__
+            {min} + (\"__ggsql_seq__\".n * {diff} / {n_points}) AS x
+          FROM \"__ggsql_seq__\"
           CROSS JOIN (SELECT DISTINCT {groups} FROM ({from})) AS groups
         )",
         seq = seq,
@@ -494,16 +495,16 @@ fn compute_density(
         {data_cte},
         {grid_cte}
         SELECT
-          {x_column},
+          \"{x_column}\",
           {groups}
-          {intensity_column},
-          {intensity_column} / __norm AS {density_column}
+          \"{intensity_column}\",
+          \"{intensity_column}\" / \"__norm\" AS \"{density_column}\"
         FROM (
           SELECT
-            grid.x AS {x_column},
+            grid.x AS \"{x_column}\",
             {grid_groups}
-            {kernel} AS {intensity_column},
-            SUM(data.weight) AS __norm
+            {kernel} AS \"{intensity_column}\",
+            SUM(data.weight) AS \"__norm\"
           {join_logic}
           {aggregation}
         )",
@@ -543,32 +544,32 @@ mod tests {
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
-        let expected = "WITH RECURSIVE bandwidth AS (SELECT 0.5 AS bw),
+        let expected = r#"WITH RECURSIVE bandwidth AS (SELECT 0.5 AS bw),
         data AS (
           SELECT x AS val, 1.0 AS weight
           FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x))
           WHERE x IS NOT NULL
         ),
-        __ggsql_base__(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM __ggsql_base__ WHERE n < 7),__ggsql_seq__(n) AS (SELECT CAST(a.n * 64 + b.n * 8 + c.n AS REAL) AS n FROM __ggsql_base__ a, __ggsql_base__ b, __ggsql_base__ c WHERE a.n * 64 + b.n * 8 + c.n < 512),
+        "__ggsql_base__"(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM "__ggsql_base__" WHERE n < 7),"__ggsql_seq__"(n) AS (SELECT CAST(a.n * 64 + b.n * 8 + c.n AS REAL) AS n FROM "__ggsql_base__" a, "__ggsql_base__" b, "__ggsql_base__" c WHERE a.n * 64 + b.n * 8 + c.n < 512),
         grid AS (
-          SELECT -0.5 + (__ggsql_seq__.n * 11 / 511) AS x
-          FROM __ggsql_seq__
+          SELECT -0.5 + ("__ggsql_seq__".n * 11 / 511) AS x
+          FROM "__ggsql_seq__"
         )
         SELECT
-          __ggsql_stat_x,
-          __ggsql_stat_intensity,
-          __ggsql_stat_intensity / __norm AS __ggsql_stat_density
+          "__ggsql_stat_x",
+          "__ggsql_stat_intensity",
+          "__ggsql_stat_intensity" / "__norm" AS "__ggsql_stat_density"
         FROM (
           SELECT
-            grid.x AS __ggsql_stat_x,
-            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / MIN(bandwidth.bw) AS __ggsql_stat_intensity,
-            SUM(data.weight) AS __norm
+            grid.x AS "__ggsql_stat_x",
+            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / MIN(bandwidth.bw) AS "__ggsql_stat_intensity",
+            SUM(data.weight) AS "__norm"
           FROM data
           INNER JOIN bandwidth ON true
           CROSS JOIN grid
           GROUP BY grid.x
           ORDER BY grid.x
-        )";
+        )"#;
 
         // Normalize whitespace for comparison
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -606,38 +607,38 @@ mod tests {
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
-        let expected = "WITH RECURSIVE bandwidth AS (SELECT 0.5 AS bw, region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)) GROUP BY region, category),
+        let expected = r#"WITH RECURSIVE bandwidth AS (SELECT 0.5 AS bw, region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)) GROUP BY region, category),
         data AS (
           SELECT region, category, x AS val, 1.0 AS weight
           FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))
           WHERE x IS NOT NULL
         ),
-        __ggsql_base__(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM __ggsql_base__ WHERE n < 7),__ggsql_seq__(n) AS (SELECT CAST(a.n * 64 + b.n * 8 + c.n AS REAL) AS n FROM __ggsql_base__ a, __ggsql_base__ b, __ggsql_base__ c WHERE a.n * 64 + b.n * 8 + c.n < 512),
+        "__ggsql_base__"(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM "__ggsql_base__" WHERE n < 7),"__ggsql_seq__"(n) AS (SELECT CAST(a.n * 64 + b.n * 8 + c.n AS REAL) AS n FROM "__ggsql_base__" a, "__ggsql_base__" b, "__ggsql_base__" c WHERE a.n * 64 + b.n * 8 + c.n < 512),
         grid AS (
           SELECT
             region, category,
-            -11 + (__ggsql_seq__.n * 22 / 511) AS x
-          FROM __ggsql_seq__
+            -11 + ("__ggsql_seq__".n * 22 / 511) AS x
+          FROM "__ggsql_seq__"
           CROSS JOIN (SELECT DISTINCT region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))) AS groups
         )
         SELECT
-          __ggsql_stat_x,
+          "__ggsql_stat_x",
           region, category,
-          __ggsql_stat_intensity,
-          __ggsql_stat_intensity / __norm AS __ggsql_stat_density
+          "__ggsql_stat_intensity",
+          "__ggsql_stat_intensity" / "__norm" AS "__ggsql_stat_density"
         FROM (
           SELECT
-            grid.x AS __ggsql_stat_x,
+            grid.x AS "__ggsql_stat_x",
             grid.region, grid.category,
-            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / MIN(bandwidth.bw) AS __ggsql_stat_intensity,
-            SUM(data.weight) AS __norm
+            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / MIN(bandwidth.bw) AS "__ggsql_stat_intensity",
+            SUM(data.weight) AS "__norm"
           FROM data
           INNER JOIN bandwidth ON data.region IS NOT DISTINCT FROM bandwidth.region AND data.category IS NOT DISTINCT FROM bandwidth.category
           CROSS JOIN grid
           WHERE grid.region IS NOT DISTINCT FROM data.region AND grid.category IS NOT DISTINCT FROM data.category
           GROUP BY grid.x, grid.region, grid.category
           ORDER BY grid.x, grid.region, grid.category
-        )";
+        )"#;
 
         // Normalize whitespace for comparison
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");

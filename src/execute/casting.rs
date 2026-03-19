@@ -216,7 +216,7 @@ pub fn determine_layer_source(
     match &layer.source {
         Some(DataSource::Identifier(name)) => {
             if materialized_ctes.contains(name) {
-                naming::quote_ident(&naming::cte_table(name))
+                format!("\"{}\"", naming::cte_table(name))
             } else {
                 name.clone()
             }
@@ -227,7 +227,7 @@ pub fn determine_layer_source(
         None => {
             // Layer uses global data - caller must ensure has_global is true
             debug_assert!(has_global, "Layer has no source and no global data");
-            naming::quote_ident(&naming::global_table())
+            format!("\"{}\"", naming::global_table())
         }
     }
 }

@@ -185,7 +185,7 @@ pub fn rewrite_namespaced_sql(sql: &str) -> Result<String, GgsqlError> {
                 replacements.push((
                     node.start_byte(),
                     node.end_byte(),
-                    naming::builtin_data_table(name),
+                    format!("\"{}\"", naming::builtin_data_table(name)),
                 ));
             }
         }
@@ -315,7 +315,7 @@ mod tests {
     fn test_rewrite_namespaced_sql_simple() {
         let sql = "SELECT * FROM ggsql:penguins";
         let rewritten = rewrite_namespaced_sql(sql).unwrap();
-        assert_eq!(rewritten, "SELECT * FROM __ggsql_data_penguins__");
+        assert_eq!(rewritten, "SELECT * FROM \"__ggsql_data_penguins__\"");
     }
 
     #[test]
@@ -324,7 +324,7 @@ mod tests {
         let rewritten = rewrite_namespaced_sql(sql).unwrap();
         assert_eq!(
             rewritten,
-            "SELECT * FROM __ggsql_data_penguins__ p, __ggsql_data_airquality__ a WHERE p.id = a.id"
+            "SELECT * FROM \"__ggsql_data_penguins__\" p, \"__ggsql_data_airquality__\" a WHERE p.id = a.id"
         );
     }
 
@@ -339,7 +339,7 @@ mod tests {
     fn test_rewrite_namespaced_sql_with_visualise() {
         let sql = "SELECT * FROM ggsql:penguins VISUALISE DRAW point MAPPING bill_len AS x, bill_dep AS y";
         let rewritten = rewrite_namespaced_sql(sql).unwrap();
-        assert!(rewritten.starts_with("SELECT * FROM __ggsql_data_penguins__"));
+        assert!(rewritten.starts_with("SELECT * FROM \"__ggsql_data_penguins__\""));
         assert!(!rewritten.contains("ggsql:"));
     }
 }

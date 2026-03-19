@@ -144,7 +144,7 @@ fn stat_histogram(
 
     // Query min/max to compute bin width
     let stats_query = format!(
-        "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query}) AS __ggsql_stats__",
+        "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query}) AS \"__ggsql_stats__\"",
         x = x_col,
         query = query
     );
@@ -227,11 +227,11 @@ fn stat_histogram(
     let (binned_select, final_select) = if group_by.is_empty() {
         (
             format!(
-                "{} AS {}, {} AS {}, {} AS {}",
+                "{} AS \"{}\", {} AS \"{}\", {} AS \"{}\"",
                 bin_expr, stat_bin, bin_end_expr, stat_bin_end, agg_expr, stat_count
             ),
             format!(
-                "*, {count} * 1.0 / SUM({count}) OVER () AS {density}",
+                "*, \"{count}\" * 1.0 / SUM(\"{count}\") OVER () AS \"{density}\"",
                 count = stat_count,
                 density = stat_density
             ),
@@ -240,11 +240,11 @@ fn stat_histogram(
         let grp_cols = group_by.join(", ");
         (
             format!(
-                "{}, {} AS {}, {} AS {}, {} AS {}",
+                "{}, {} AS \"{}\", {} AS \"{}\", {} AS \"{}\"",
                 grp_cols, bin_expr, stat_bin, bin_end_expr, stat_bin_end, agg_expr, stat_count
             ),
             format!(
-                "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {density}",
+                "*, \"{count}\" * 1.0 / SUM(\"{count}\") OVER (PARTITION BY {grp}) AS \"{density}\"",
                 count = stat_count,
                 grp = grp_cols,
                 density = stat_density
@@ -253,7 +253,7 @@ fn stat_histogram(
     };
 
     let transformed_query = format!(
-        "WITH __stat_src__ AS ({query}), __binned__ AS (SELECT {binned} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __binned__",
+        "WITH \"__stat_src__\" AS ({query}), \"__binned__\" AS (SELECT {binned} FROM \"__stat_src__\" GROUP BY {group}) SELECT {final} FROM \"__binned__\"",
         query = query,
         binned = binned_select,
         group = group_cols,

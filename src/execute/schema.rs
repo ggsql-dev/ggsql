@@ -30,7 +30,7 @@ pub fn build_minmax_query(source_query: &str, column_names: &[&str]) -> String {
         .collect();
 
     format!(
-        "WITH __ggsql_source__ AS ({}) SELECT {} FROM __ggsql_source__ UNION ALL SELECT {} FROM __ggsql_source__",
+        "WITH \"__ggsql_source__\" AS ({}) SELECT {} FROM \"__ggsql_source__\" UNION ALL SELECT {} FROM \"__ggsql_source__\"",
         source_query,
         min_exprs.join(", "),
         max_exprs.join(", ")

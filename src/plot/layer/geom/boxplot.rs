@@ -177,6 +177,8 @@ fn boxplot_sql_compute_summary(
     let q1 = dialect.sql_percentile(value, 0.25, from, groups);
     let median = dialect.sql_percentile(value, 0.50, from, groups);
     let q3 = dialect.sql_percentile(value, 0.75, from, groups);
+    let qt = "\"__ggsql_qt__\"";
+    let fn_alias = "\"__ggsql_fn__\"";
     format!(
         "SELECT
           *,
@@ -190,10 +192,10 @@ fn boxplot_sql_compute_summary(
             {q1} AS q1,
             {median} AS median,
             {q3} AS q3
-          FROM ({from}) AS __ggsql_qt__
+          FROM ({from}) AS {qt}
           WHERE {value} IS NOT NULL
           GROUP BY {groups}
-        ) AS __ggsql_fn__",
+        ) AS {fn_alias}",
         lower_expr = lower_expr,
         upper_expr = upper_expr,
         groups = groups_str,
@@ -397,10 +399,10 @@ mod tests {
             {q1} AS q1,
             {median} AS median,
             {q3} AS q3
-          FROM (SELECT * FROM sales) AS __ggsql_qt__
+          FROM (SELECT * FROM sales) AS "__ggsql_qt__"
           WHERE price IS NOT NULL
           GROUP BY category
-        ) AS __ggsql_fn__"#
+        ) AS "__ggsql_fn__""#
         );
 
         assert_eq!(result, expected);
@@ -433,10 +435,10 @@ mod tests {
             {q1} AS q1,
             {median} AS median,
             {q3} AS q3
-          FROM (SELECT * FROM data) AS __ggsql_qt__
+          FROM (SELECT * FROM data) AS "__ggsql_qt__"
           WHERE revenue IS NOT NULL
           GROUP BY region, product
-        ) AS __ggsql_fn__"#
+        ) AS "__ggsql_fn__""#
         );
 
         assert_eq!(result, expected);

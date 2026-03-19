@@ -94,7 +94,7 @@ pub fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> Strin
     let mut result = sql.to_string();
 
     for cte_name in cte_names {
-        let temp_table_name = naming::quote_ident(&naming::cte_table(cte_name));
+        let temp_table_name = format!("\"{}\"", naming::cte_table(cte_name));
 
         // Replace table references: FROM cte_name, JOIN cte_name, cte_name.column
         // Use word boundary matching to avoid replacing substrings

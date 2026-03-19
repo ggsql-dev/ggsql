@@ -36,7 +36,7 @@ impl super::SqlDialect for DuckDbDialect {
 
     fn sql_generate_series(&self, n: usize) -> String {
         format!(
-            "__ggsql_seq__(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {}))",
+            "\"__ggsql_seq__\"(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {}))",
             n - 1
         )
     }
@@ -44,13 +44,13 @@ impl super::SqlDialect for DuckDbDialect {
     fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
         let group_filter = groups
             .iter()
-            .map(|g| format!("AND __ggsql_pct__.{g} IS NOT DISTINCT FROM __ggsql_qt__.{g}"))
+            .map(|g| format!("AND \"__ggsql_pct__\".{g} IS NOT DISTINCT FROM \"__ggsql_qt__\".{g}"))
             .collect::<Vec<_>>()
             .join(" ");
 
         format!(
             "(SELECT QUANTILE_CONT({column}, {fraction}) \
-            FROM ({from}) AS __ggsql_pct__ \
+            FROM ({from}) AS \"__ggsql_pct__\" \
             WHERE {column} IS NOT NULL {group_filter})"
         )
     }

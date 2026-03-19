@@ -167,12 +167,12 @@ pub trait SqlDialect {
         let base_sq = base_size * base_size;
         let base_max = base_size - 1;
         format!(
-            "__ggsql_base__(n) AS (\
-               SELECT 0 UNION ALL SELECT n + 1 FROM __ggsql_base__ WHERE n < {base_max}\
+            "\"__ggsql_base__\"(n) AS (\
+               SELECT 0 UNION ALL SELECT n + 1 FROM \"__ggsql_base__\" WHERE n < {base_max}\
              ),\
-             __ggsql_seq__(n) AS (\
+             \"__ggsql_seq__\"(n) AS (\
                SELECT CAST(a.n * {base_sq} + b.n * {base_size} + c.n AS REAL) AS n \
-               FROM __ggsql_base__ a, __ggsql_base__ b, __ggsql_base__ c \
+               FROM \"__ggsql_base__\" a, \"__ggsql_base__\" b, \"__ggsql_base__\" c \
                WHERE a.n * {base_sq} + b.n * {base_size} + c.n < {n}\
              )"
         )
@@ -186,7 +186,7 @@ pub trait SqlDialect {
         // Uses NTILE(4) to divide data into quartiles, then interpolates between boundaries.
         let group_filter = groups
             .iter()
-            .map(|g| format!("AND __ggsql_pct__.{g} IS NOT DISTINCT FROM __ggsql_qt__.{g}"))
+            .map(|g| format!("AND \"__ggsql_pct__\".{g} IS NOT DISTINCT FROM \"__ggsql_qt__\".{g}"))
             .collect::<Vec<_>>()
             .join(" ");
 
@@ -201,7 +201,7 @@ pub trait SqlDialect {
             FROM (\
               SELECT {column} AS __val, \
                      NTILE(4) OVER (ORDER BY {column}) AS __tile \
-              FROM ({from}) AS __ggsql_pct__ \
+              FROM ({from}) AS \"__ggsql_pct__\" \
               WHERE {column} IS NOT NULL {group_filter}\
             ))"
         )
