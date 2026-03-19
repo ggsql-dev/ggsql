@@ -2,7 +2,7 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, ParamDefinitionValue,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, DefaultParamValue,
 };
 use crate::plot::types::DefaultAestheticValue;
 
@@ -34,7 +34,7 @@ impl GeomTrait for Arrow {
     fn default_params(&self) -> &'static [ParamDefinition] {
         const PARAMS: &[ParamDefinition] = &[ParamDefinition {
             name: "position",
-            default: ParamDefinitionValue::String("identity"),
+            default: DefaultParamValue::String("identity"),
             constraint: ParamConstraint::string_option(POSITION_VALUES),
         }];
         PARAMS

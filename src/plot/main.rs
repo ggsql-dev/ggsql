@@ -32,7 +32,7 @@ pub use super::types::{
 
 // Re-export Geom and related types from the layer::geom module
 pub use super::layer::geom::{
-    DefaultAesthetics, Geom, GeomTrait, GeomType, ParamDefinition, ParamDefinitionValue, StatResult,
+    DefaultAesthetics, Geom, GeomTrait, GeomType, ParamDefinition, DefaultParamValue, StatResult,
 };
 
 // Re-export Layer from the layer module

@@ -6,7 +6,7 @@ use crate::{
     naming,
     plot::{
         geom::types::get_column_name, DefaultAestheticValue, ParamConstraint, ParamDefinition,
-        ParamDefinitionValue, ParameterValue, StatResult,
+        DefaultParamValue, ParameterValue, StatResult,
     },
     reader::SqlDialect,
     GgsqlError, Mappings, Result,
@@ -62,22 +62,22 @@ impl GeomTrait for Density {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "position",
-                default: ParamDefinitionValue::String("identity"),
+                default: DefaultParamValue::String("identity"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
             ParamDefinition {
                 name: "bandwidth",
-                default: ParamDefinitionValue::Null,
+                default: DefaultParamValue::Null,
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             ParamDefinition {
                 name: "adjust",
-                default: ParamDefinitionValue::Number(1.0),
+                default: DefaultParamValue::Number(1.0),
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             ParamDefinition {
                 name: "kernel",
-                default: ParamDefinitionValue::String("gaussian"),
+                default: DefaultParamValue::String("gaussian"),
                 constraint: ParamConstraint::string_option(KERNEL_VALUES),
             },
         ];

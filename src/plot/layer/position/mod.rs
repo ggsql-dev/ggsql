@@ -14,7 +14,7 @@ mod identity;
 mod jitter;
 mod stack;
 
-use crate::plot::types::{ParamDefinition, ParamDefinitionValue, ParameterValue};
+use crate::plot::types::{ParamDefinition, DefaultParamValue, ParameterValue};
 use crate::plot::ScaleTypeKind;
 use crate::{DataFrame, Plot, Result};
 use serde::{Deserialize, Serialize};
@@ -261,10 +261,10 @@ impl Position {
         for param in self.default_params() {
             if !layer.parameters.contains_key(param.name) {
                 let value = match &param.default {
-                    ParamDefinitionValue::String(s) => ParameterValue::String(s.to_string()),
-                    ParamDefinitionValue::Number(n) => ParameterValue::Number(*n),
-                    ParamDefinitionValue::Boolean(b) => ParameterValue::Boolean(*b),
-                    ParamDefinitionValue::Null => continue,
+                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
+                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
+                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
+                    DefaultParamValue::Null => continue,
                 };
                 layer.parameters.insert(param.name.to_string(), value);
             }

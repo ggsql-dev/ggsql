@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_positional_aesthetic};
-use crate::plot::types::{validate_parameter, ParamDefinition, ParamDefinitionValue};
+use crate::plot::types::{validate_parameter, ParamDefinition, DefaultParamValue};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -543,7 +543,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Returns list of allowed properties with their default values.
     ///
     /// Properties that vary by aesthetic (like `expand` for positional-only, or `oob`
-    /// with aesthetic-dependent defaults) should use `ParamDefinitionValue::Null` as their
+    /// with aesthetic-dependent defaults) should use `DefaultParamValue::Null` as their
     /// default value. The `resolve_properties()` method handles these special cases.
     ///
     /// Default: empty (no properties allowed).
@@ -676,7 +676,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
             if !resolved.contains_key(param.name) {
                 // Special case: oob default varies by aesthetic when marked as Null
-                if param.name == "oob" && matches!(param.default, ParamDefinitionValue::Null) {
+                if param.name == "oob" && matches!(param.default, DefaultParamValue::Null) {
                     resolved.insert(
                         "oob".to_string(),
                         ParameterValue::String(default_oob(aesthetic).to_string()),

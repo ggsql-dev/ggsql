@@ -7,7 +7,7 @@
 //! - If pos1 is continuous and pos2 is discrete → stack horizontally (modify pos1/pos1end)
 
 use super::{is_continuous_scale, Layer, PositionTrait, PositionType};
-use crate::plot::types::{ParamConstraint, ParamDefinition, ParamDefinitionValue, ParameterValue};
+use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 
@@ -41,12 +41,12 @@ impl PositionTrait for Stack {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "center",
-                default: ParamDefinitionValue::Boolean(false),
+                default: DefaultParamValue::Boolean(false),
                 constraint: ParamConstraint::boolean(),
             },
             ParamDefinition {
                 name: "total",
-                default: ParamDefinitionValue::Null,
+                default: DefaultParamValue::Null,
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
         ];
@@ -395,10 +395,10 @@ mod tests {
         assert_eq!(params[0].name, "center");
         assert!(matches!(
             params[0].default,
-            ParamDefinitionValue::Boolean(false)
+            DefaultParamValue::Boolean(false)
         ));
         assert_eq!(params[1].name, "total");
-        assert!(matches!(params[1].default, ParamDefinitionValue::Null));
+        assert!(matches!(params[1].default, DefaultParamValue::Null));
     }
 
     #[test]

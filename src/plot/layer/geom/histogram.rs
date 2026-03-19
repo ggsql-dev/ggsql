@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::types::{get_column_name, CLOSED_VALUES, POSITION_VALUES};
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, ParamDefinitionValue,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, DefaultParamValue,
     StatResult,
 };
 use crate::naming;
@@ -58,22 +58,22 @@ impl GeomTrait for Histogram {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "bins",
-                default: ParamDefinitionValue::Number(30.0),
+                default: DefaultParamValue::Number(30.0),
                 constraint: ParamConstraint::count(1.0),
             },
             ParamDefinition {
                 name: "closed",
-                default: ParamDefinitionValue::String("right"),
+                default: DefaultParamValue::String("right"),
                 constraint: ParamConstraint::string_option(CLOSED_VALUES),
             },
             ParamDefinition {
                 name: "binwidth",
-                default: ParamDefinitionValue::Null,
+                default: DefaultParamValue::Null,
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             ParamDefinition {
                 name: "position",
-                default: ParamDefinitionValue::String("stack"),
+                default: DefaultParamValue::String("stack"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
         ];

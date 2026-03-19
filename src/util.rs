@@ -70,30 +70,11 @@ pub fn or_list_quoted<T: Display>(items: &[T], quote: char) -> String {
 }
 
 fn format_quoted_list<T: Display>(items: &[T], quote: char, conjunction: &str) -> String {
-    match items.len() {
-        0 => String::new(),
-        1 => format!("{}{}{}", quote, items[0], quote),
-        2 => format!(
-            "{}{}{} {} {}{}{}",
-            quote, items[0], quote, conjunction, quote, items[1], quote
-        ),
-        _ => {
-            let mut result = String::new();
-            for (i, item) in items.iter().enumerate() {
-                if i > 0 {
-                    result.push_str(", ");
-                }
-                if i == items.len() - 1 {
-                    result.push_str(conjunction);
-                    result.push(' ');
-                }
-                result.push(quote);
-                result.push_str(&item.to_string());
-                result.push(quote);
-            }
-            result
-        }
-    }
+    let quoted: Vec<String> = items
+        .iter()
+        .map(|item| format!("{}{}{}", quote, item, quote))
+        .collect();
+    format_list(&quoted, conjunction)
 }
 
 #[cfg(test)]

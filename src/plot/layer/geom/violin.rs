@@ -6,7 +6,7 @@ use crate::{
     naming,
     plot::{
         geom::types::get_column_name, DefaultAestheticValue, ParamConstraint, ParamDefinition,
-        ParamDefinitionValue, ParameterValue,
+        DefaultParamValue, ParameterValue,
     },
     DataFrame, GgsqlError, Mappings, Result,
 };
@@ -58,32 +58,32 @@ impl GeomTrait for Violin {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "bandwidth",
-                default: ParamDefinitionValue::Null,
+                default: DefaultParamValue::Null,
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             ParamDefinition {
                 name: "adjust",
-                default: ParamDefinitionValue::Number(1.0),
+                default: DefaultParamValue::Number(1.0),
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             ParamDefinition {
                 name: "kernel",
-                default: ParamDefinitionValue::String("gaussian"),
+                default: DefaultParamValue::String("gaussian"),
                 constraint: ParamConstraint::string_option(KERNEL_VALUES),
             },
             ParamDefinition {
                 name: "position",
-                default: ParamDefinitionValue::String("dodge"),
+                default: DefaultParamValue::String("dodge"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
             ParamDefinition {
                 name: "width",
-                default: ParamDefinitionValue::Number(0.9),
+                default: DefaultParamValue::Number(0.9),
                 constraint: ParamConstraint::number_range(0.0, 1.0),
             },
             ParamDefinition {
                 name: "tails",
-                default: ParamDefinitionValue::Number(3.0),
+                default: DefaultParamValue::Number(3.0),
                 constraint: ParamConstraint::number_min(0.0),
             },
         ];
@@ -407,7 +407,7 @@ mod tests {
 
         if let Some(param) = width_param {
             match param.default {
-                ParamDefinitionValue::Number(n) => {
+                DefaultParamValue::Number(n) => {
                     assert!(
                         (n - 0.9).abs() < 1e-6,
                         "Default width should be 0.9, got {}",
@@ -433,7 +433,7 @@ mod tests {
 
         if let Some(param) = tails_param {
             match param.default {
-                ParamDefinitionValue::Number(n) => {
+                DefaultParamValue::Number(n) => {
                     assert!(
                         (n - 3.0).abs() < 1e-6,
                         "Default tails should be 3.0, got {}",

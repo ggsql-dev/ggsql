@@ -20,7 +20,7 @@ pub use orientation::is_transposed;
 
 // Re-export geom types for convenience
 pub use geom::{
-    DefaultAesthetics, Geom, GeomTrait, GeomType, ParamDefinition, ParamDefinitionValue, StatResult,
+    DefaultAesthetics, Geom, GeomTrait, GeomType, ParamDefinition, DefaultParamValue, StatResult,
 };
 
 // Re-export position types for convenience
@@ -317,10 +317,10 @@ impl Layer {
         for param in self.geom.default_params() {
             if !self.parameters.contains_key(param.name) {
                 let value = match &param.default {
-                    ParamDefinitionValue::String(s) => ParameterValue::String(s.to_string()),
-                    ParamDefinitionValue::Number(n) => ParameterValue::Number(*n),
-                    ParamDefinitionValue::Boolean(b) => ParameterValue::Boolean(*b),
-                    ParamDefinitionValue::Null => continue, // Don't insert null defaults
+                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
+                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
+                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
+                    DefaultParamValue::Null => continue, // Don't insert null defaults
                 };
                 self.parameters.insert(param.name.to_string(), value);
             }
@@ -330,10 +330,10 @@ impl Layer {
         for param in self.position.default_params() {
             if !self.parameters.contains_key(param.name) {
                 let value = match &param.default {
-                    ParamDefinitionValue::String(s) => ParameterValue::String(s.to_string()),
-                    ParamDefinitionValue::Number(n) => ParameterValue::Number(*n),
-                    ParamDefinitionValue::Boolean(b) => ParameterValue::Boolean(*b),
-                    ParamDefinitionValue::Null => continue,
+                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
+                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
+                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
+                    DefaultParamValue::Null => continue,
                 };
                 self.parameters.insert(param.name.to_string(), value);
             }

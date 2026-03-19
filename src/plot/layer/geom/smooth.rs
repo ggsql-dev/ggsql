@@ -2,7 +2,7 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, ParamDefinitionValue,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, DefaultParamValue,
 };
 use crate::plot::geom::types::get_column_name;
 use crate::plot::types::DefaultAestheticValue;
@@ -51,27 +51,27 @@ impl GeomTrait for Smooth {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "position",
-                default: ParamDefinitionValue::String("identity"),
+                default: DefaultParamValue::String("identity"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
             ParamDefinition {
                 name: "method",
-                default: ParamDefinitionValue::String("nw"),
+                default: DefaultParamValue::String("nw"),
                 constraint: ParamConstraint::string_option(METHOD_VALUES),
             },
             ParamDefinition {
                 name: "bandwidth",
-                default: ParamDefinitionValue::Null,
+                default: DefaultParamValue::Null,
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             ParamDefinition {
                 name: "adjust",
-                default: ParamDefinitionValue::Number(1.0),
+                default: DefaultParamValue::Number(1.0),
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             ParamDefinition {
                 name: "kernel",
-                default: ParamDefinitionValue::String("gaussian"),
+                default: DefaultParamValue::String("gaussian"),
                 constraint: ParamConstraint::string_option(KERNEL_VALUES),
             },
         ];

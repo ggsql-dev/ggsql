@@ -1,7 +1,7 @@
 //! Cartesian coordinate system implementation
 
 use super::{CoordKind, CoordTrait};
-use crate::plot::types::{ParamConstraint, ParamDefinition, ParamDefinitionValue};
+use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue};
 
 /// Cartesian coordinate system - standard x/y coordinates
 #[derive(Debug, Clone, Copy)]
@@ -24,12 +24,12 @@ impl CoordTrait for Cartesian {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "ratio",
-                default: ParamDefinitionValue::Null,
+                default: DefaultParamValue::Null,
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             ParamDefinition {
                 name: "clip",
-                default: ParamDefinitionValue::Boolean(true),
+                default: DefaultParamValue::Boolean(true),
                 constraint: ParamConstraint::boolean(),
             },
         ];

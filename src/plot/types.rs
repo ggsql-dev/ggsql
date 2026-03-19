@@ -282,7 +282,7 @@ impl std::fmt::Display for AestheticValue {
 
 /// Static version of AestheticValue for use in default remappings.
 ///
-/// Similar to how `ParamDefinitionValue` is the static version of `ParameterValue`,
+/// Similar to how `DefaultParamValue` is the static version of `ParameterValue`,
 /// this type uses `&'static str` instead of `String` so it can be used in
 /// static arrays returned by `GeomTrait::default_remappings()`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1061,7 +1061,7 @@ impl SqlExpression {
 /// in a single declaration, avoiding the need to keep two separate implementations
 /// in sync.
 #[derive(Debug, Clone)]
-pub enum ParamDefinitionValue {
+pub enum DefaultParamValue {
     String(&'static str),
     Number(f64),
     Boolean(bool),
@@ -1621,7 +1621,7 @@ fn type_not_allowed_error(name: &str, got: &str, c: &ParamConstraint) -> String 
 #[derive(Debug, Clone)]
 pub struct ParamDefinition {
     pub name: &'static str,
-    pub default: ParamDefinitionValue,
+    pub default: DefaultParamValue,
     pub constraint: ParamConstraint,
 }
 
@@ -1629,10 +1629,10 @@ impl ParamDefinition {
     /// Convert the default value to a ParameterValue, if not Null
     pub fn to_parameter_value(&self) -> Option<ParameterValue> {
         match &self.default {
-            ParamDefinitionValue::String(s) => Some(ParameterValue::String(s.to_string())),
-            ParamDefinitionValue::Number(n) => Some(ParameterValue::Number(*n)),
-            ParamDefinitionValue::Boolean(b) => Some(ParameterValue::Boolean(*b)),
-            ParamDefinitionValue::Null => None,
+            DefaultParamValue::String(s) => Some(ParameterValue::String(s.to_string())),
+            DefaultParamValue::Number(n) => Some(ParameterValue::Number(*n)),
+            DefaultParamValue::Boolean(b) => Some(ParameterValue::Boolean(*b)),
+            DefaultParamValue::Null => None,
         }
     }
 }

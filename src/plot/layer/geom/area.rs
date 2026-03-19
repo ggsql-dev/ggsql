@@ -2,7 +2,7 @@
 
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::types::DefaultAestheticValue;
-use crate::plot::{ParamDefinition, ParamDefinitionValue};
+use crate::plot::{ParamDefinition, DefaultParamValue};
 use crate::{naming, Mappings};
 
 use super::types::{ParamConstraint, POSITION_VALUES};
@@ -42,12 +42,12 @@ impl GeomTrait for Area {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "position",
-                default: ParamDefinitionValue::String("stack"),
+                default: DefaultParamValue::String("stack"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
             ParamDefinition {
                 name: "orientation",
-                default: ParamDefinitionValue::String(ALIGNED),
+                default: DefaultParamValue::String(ALIGNED),
                 constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
             },
         ];

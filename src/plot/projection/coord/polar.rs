@@ -1,7 +1,7 @@
 //! Polar coordinate system implementation
 
 use super::{CoordKind, CoordTrait};
-use crate::plot::types::{ParamConstraint, ParamDefinition, ParamDefinitionValue};
+use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue};
 
 /// Polar coordinate system - for pie charts, rose plots
 #[derive(Debug, Clone, Copy)]
@@ -24,22 +24,22 @@ impl CoordTrait for Polar {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "clip",
-                default: ParamDefinitionValue::Boolean(true),
+                default: DefaultParamValue::Boolean(true),
                 constraint: ParamConstraint::boolean(),
             },
             ParamDefinition {
                 name: "start",
-                default: ParamDefinitionValue::Number(0.0), // 0 degrees = 12 o'clock
+                default: DefaultParamValue::Number(0.0), // 0 degrees = 12 o'clock
                 constraint: ParamConstraint::number_range(-360.0, 360.0),
             },
             ParamDefinition {
                 name: "end",
-                default: ParamDefinitionValue::Null,
+                default: DefaultParamValue::Null,
                 constraint: ParamConstraint::number_range(-360.0, 360.0),
             },
             ParamDefinition {
                 name: "inner",
-                default: ParamDefinitionValue::Null,
+                default: DefaultParamValue::Null,
                 constraint: ParamConstraint::number_range(0.0, 1.0),
             },
         ];
@@ -85,7 +85,7 @@ mod tests {
         let start_param = defaults.iter().find(|p| p.name == "start").unwrap();
         assert!(matches!(
             start_param.default,
-            ParamDefinitionValue::Number(0.0)
+            DefaultParamValue::Number(0.0)
         ));
     }
 

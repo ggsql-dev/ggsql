@@ -2,7 +2,7 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, ParamDefinitionValue,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, DefaultParamValue,
     ParameterValue,
 };
 use crate::plot::types::DefaultAestheticValue;
@@ -43,12 +43,12 @@ impl GeomTrait for Text {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "position",
-                default: ParamDefinitionValue::String("identity"),
+                default: DefaultParamValue::String("identity"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
             ParamDefinition {
                 name: "offset",
-                default: ParamDefinitionValue::Null,
+                default: DefaultParamValue::Null,
                 constraint: ParamConstraint::number_or_numeric_array(
                     NumberConstraint::unconstrained(),
                     ArrayConstraint::of_numbers_len(NumberConstraint::unconstrained(), 2),
@@ -56,7 +56,7 @@ impl GeomTrait for Text {
             },
             ParamDefinition {
                 name: "format",
-                default: ParamDefinitionValue::Null,
+                default: DefaultParamValue::Null,
                 constraint: ParamConstraint::string(),
             },
         ];

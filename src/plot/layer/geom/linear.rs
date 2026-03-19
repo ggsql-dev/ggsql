@@ -1,7 +1,7 @@
 //! Linear geom implementation
 
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, ParamDefinitionValue,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, DefaultParamValue,
 };
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::types::DefaultAestheticValue;
@@ -31,7 +31,7 @@ impl GeomTrait for Linear {
     fn default_params(&self) -> &'static [ParamDefinition] {
         const PARAMS: &[ParamDefinition] = &[ParamDefinition {
             name: "orientation",
-            default: ParamDefinitionValue::String(ALIGNED),
+            default: DefaultParamValue::String(ALIGNED),
             constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
         }];
         PARAMS

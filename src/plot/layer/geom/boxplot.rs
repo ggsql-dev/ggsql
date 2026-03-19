@@ -8,7 +8,7 @@ use crate::{
     naming,
     plot::{
         geom::types::get_column_name, DefaultAestheticValue, ParamConstraint, ParamDefinition,
-        ParamDefinitionValue, ParameterValue, StatResult,
+        DefaultParamValue, ParameterValue, StatResult,
     },
     reader::SqlDialect,
     DataFrame, GgsqlError, Mappings, Result,
@@ -54,22 +54,22 @@ impl GeomTrait for Boxplot {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "outliers",
-                default: ParamDefinitionValue::Boolean(true),
+                default: DefaultParamValue::Boolean(true),
                 constraint: ParamConstraint::boolean(),
             },
             ParamDefinition {
                 name: "coef",
-                default: ParamDefinitionValue::Number(1.5),
+                default: DefaultParamValue::Number(1.5),
                 constraint: ParamConstraint::number_min(0.0),
             },
             ParamDefinition {
                 name: "width",
-                default: ParamDefinitionValue::Number(0.9),
+                default: DefaultParamValue::Number(0.9),
                 constraint: ParamConstraint::number_range(0.0, 1.0),
             },
             ParamDefinition {
                 name: "position",
-                default: ParamDefinitionValue::String("dodge"),
+                default: DefaultParamValue::String("dodge"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
         ];
@@ -541,26 +541,26 @@ mod tests {
         let outliers_param = params.iter().find(|p| p.name == "outliers").unwrap();
         assert!(matches!(
             outliers_param.default,
-            ParamDefinitionValue::Boolean(true)
+            DefaultParamValue::Boolean(true)
         ));
 
         // Find and verify coef param
         let coef_param = params.iter().find(|p| p.name == "coef").unwrap();
         assert!(
-            matches!(coef_param.default, ParamDefinitionValue::Number(v) if (v - 1.5).abs() < f64::EPSILON)
+            matches!(coef_param.default, DefaultParamValue::Number(v) if (v - 1.5).abs() < f64::EPSILON)
         );
 
         // Find and verify width param
         let width_param = params.iter().find(|p| p.name == "width").unwrap();
         assert!(
-            matches!(width_param.default, ParamDefinitionValue::Number(v) if (v - 0.9).abs() < f64::EPSILON)
+            matches!(width_param.default, DefaultParamValue::Number(v) if (v - 0.9).abs() < f64::EPSILON)
         );
 
         // Find and verify position param (boxplot defaults to dodge)
         let position_param = params.iter().find(|p| p.name == "position").unwrap();
         assert!(matches!(
             position_param.default,
-            ParamDefinitionValue::String("dodge")
+            DefaultParamValue::String("dodge")
         ));
     }
 

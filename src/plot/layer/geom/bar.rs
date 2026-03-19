@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use super::types::{get_column_name, POSITION_VALUES};
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, ParamDefinitionValue,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, DefaultParamValue,
     StatResult,
 };
 use crate::naming;
@@ -63,12 +63,12 @@ impl GeomTrait for Bar {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "width",
-                default: ParamDefinitionValue::Number(0.9),
+                default: DefaultParamValue::Number(0.9),
                 constraint: ParamConstraint::number_range(0.0, 1.0),
             },
             ParamDefinition {
                 name: "position",
-                default: ParamDefinitionValue::String("stack"),
+                default: DefaultParamValue::String("stack"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
         ];

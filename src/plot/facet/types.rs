@@ -2,7 +2,7 @@
 //!
 //! This module defines faceting configuration for small multiples.
 
-use crate::plot::types::{ParamConstraint, ParamDefinition, ParamDefinitionValue};
+use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue};
 use crate::plot::ParameterValue;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -182,22 +182,22 @@ impl FacetLayout {
                 const WRAP_PARAMS: &[ParamDefinition] = &[
                     ParamDefinition {
                         name: "free",
-                        default: ParamDefinitionValue::Null,
+                        default: DefaultParamValue::Null,
                         constraint: ParamConstraint::unconstrained(), // Validated separately due to coord-dependent values
                     },
                     ParamDefinition {
                         name: "ncol",
-                        default: ParamDefinitionValue::Null, // Computed from data
+                        default: DefaultParamValue::Null, // Computed from data
                         constraint: ParamConstraint::count(1.0),
                     },
                     ParamDefinition {
                         name: "nrow",
-                        default: ParamDefinitionValue::Null,
+                        default: DefaultParamValue::Null,
                         constraint: ParamConstraint::count(1.0),
                     },
                     ParamDefinition {
                         name: "missing",
-                        default: ParamDefinitionValue::Null,
+                        default: DefaultParamValue::Null,
                         constraint: ParamConstraint::string_option(MISSING_VALUES),
                     },
                 ];
@@ -207,12 +207,12 @@ impl FacetLayout {
                 const GRID_PARAMS: &[ParamDefinition] = &[
                     ParamDefinition {
                         name: "free",
-                        default: ParamDefinitionValue::Null,
+                        default: DefaultParamValue::Null,
                         constraint: ParamConstraint::unconstrained(), // Validated separately due to coord-dependent values
                     },
                     ParamDefinition {
                         name: "missing",
-                        default: ParamDefinitionValue::Null,
+                        default: DefaultParamValue::Null,
                         constraint: ParamConstraint::string_option(MISSING_VALUES),
                     },
                 ];

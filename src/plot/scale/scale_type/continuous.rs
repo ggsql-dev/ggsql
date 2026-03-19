@@ -6,7 +6,7 @@ use super::{
     ScaleTypeKind, ScaleTypeTrait, TransformKind, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_CONTINUOUS,
 };
 use crate::plot::types::{
-    ArrayConstraint, NumberConstraint, ParamConstraint, ParamDefinition, ParamDefinitionValue,
+    ArrayConstraint, NumberConstraint, ParamConstraint, ParamDefinition, DefaultParamValue,
 };
 use crate::plot::{ArrayElement, ParameterValue};
 
@@ -99,7 +99,7 @@ impl ScaleTypeTrait for Continuous {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "expand",
-                default: ParamDefinitionValue::Number(super::DEFAULT_EXPAND_MULT),
+                default: DefaultParamValue::Number(super::DEFAULT_EXPAND_MULT),
                 // Number (multiplier >= 0) or Array of exactly 2 numbers [mult, add] (both >= 0)
                 constraint: ParamConstraint::number_or_numeric_array(
                     NumberConstraint::min(0.0),
@@ -108,17 +108,17 @@ impl ScaleTypeTrait for Continuous {
             },
             ParamDefinition {
                 name: "oob",
-                default: ParamDefinitionValue::Null, // varies by aesthetic
+                default: DefaultParamValue::Null, // varies by aesthetic
                 constraint: ParamConstraint::string_option(OOB_VALUES_CONTINUOUS),
             },
             ParamDefinition {
                 name: "reverse",
-                default: ParamDefinitionValue::Boolean(false),
+                default: DefaultParamValue::Boolean(false),
                 constraint: ParamConstraint::boolean(),
             },
             ParamDefinition {
                 name: "breaks",
-                default: ParamDefinitionValue::Number(
+                default: DefaultParamValue::Number(
                     super::super::breaks::DEFAULT_BREAK_COUNT as f64,
                 ),
                 // Number (count >= 1), Array of numbers (explicit breaks), or String (temporal interval)
@@ -129,7 +129,7 @@ impl ScaleTypeTrait for Continuous {
             },
             ParamDefinition {
                 name: "pretty",
-                default: ParamDefinitionValue::Boolean(true),
+                default: DefaultParamValue::Boolean(true),
                 constraint: ParamConstraint::boolean(),
             },
         ];
