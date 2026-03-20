@@ -839,6 +839,8 @@ fn collect_layer_required_columns(layer: &Layer, spec: &Plot) -> HashSet<String>
 /// Prune columns from a DataFrame to only include required columns.
 ///
 /// Columns that don't exist in the DataFrame are silently ignored.
+/// If no required columns exist in the DataFrame (e.g., annotation layers with only
+/// literal aesthetics), returns a 0-column DataFrame with the same row count.
 fn prune_dataframe(df: &DataFrame, required: &HashSet<String>) -> Result<DataFrame> {
     let columns_to_keep: Vec<String> = df
         .get_column_names()
@@ -848,10 +850,28 @@ fn prune_dataframe(df: &DataFrame, required: &HashSet<String>) -> Result<DataFra
         .collect();
 
     if columns_to_keep.is_empty() {
-        return Err(GgsqlError::InternalError(format!(
-            "No columns remain after pruning. Required columns: {:?}",
-            required
-        )));
+        // Return a 0-column DataFrame with the same row count
+        // This happens for annotation layers with only literal aesthetics (e.g., PLACE rule SETTING slope => 0.4)
+        // The row count determines how many marks to draw; aesthetics come from Literal values in mappings
+        let row_count = df.height();
+
+        if row_count > 0 {
+            // Create a 0-column DataFrame with the correct row count
+            // We do this by creating a dummy column and then dropping it
+            use polars::prelude::df;
+            let with_rows = df! {
+                "__dummy__" => vec![0i32; row_count]
+            }
+            .map_err(|e| GgsqlError::InternalError(format!("Failed to create DataFrame: {}", e)))?;
+
+            let result = with_rows.drop("__dummy__").map_err(|e| {
+                GgsqlError::InternalError(format!("Failed to drop dummy column: {}", e))
+            })?;
+            return Ok(result);
+        } else {
+            // 0 rows - just return empty DataFrame
+            return Ok(DataFrame::default());
+        }
     }
 
     df.select(&columns_to_keep)
@@ -996,6 +1016,16 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // NOTE: Both global and layer aesthetics are already in internal format (pos1, pos2)
     // because transformation happens in builder.rs right after parsing
     merge_global_mappings_into_layers(&mut specs, &layer_schemas);
+
+    // Allow geoms to adjust mappings based on their specific logic
+    // (e.g., rule geom converts pos1/pos2 to AnnotationColumn when slope is present)
+    for spec in &mut specs {
+        for layer in &mut spec.layers {
+            layer
+                .geom
+                .setup_layer(&mut layer.mappings, &mut layer.parameters)?;
+        }
+    }
 
     // Split 'color' aesthetic to 'fill' and 'stroke' early in the pipeline
     // This must happen before validation so fill/stroke are validated (not color)
