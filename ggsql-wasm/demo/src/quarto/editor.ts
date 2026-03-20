@@ -211,9 +211,9 @@ export async function createEditor(
     hideCursorInOverviewRuler: true,
     overviewRulerBorder: false,
     scrollbar: {
-      vertical: "auto",
+      vertical: "hidden",
       horizontal: "hidden",
-      verticalScrollbarSize: 8,
+      alwaysConsumeMouseWheel: false,
     },
   });
 
