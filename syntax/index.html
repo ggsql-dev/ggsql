@@ -40,14 +40,14 @@ ul.task-list li input[type="checkbox"] {
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-03a7fa63c066d32c082a9fb980bb0fa7.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-ad4c53b191d7efefe095fb1b6208a05a.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-03a7fa63c066d32c082a9fb980bb0fa7.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-2cc8fd0920e32508e647fd7c3584905a.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-2cc8fd0920e32508e647fd7c3584905a.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-2cc8fd0920e32508e647fd7c3584905a.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-46e21902c3b8606b202d81e06abe9baf.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-dd803ae926f158994701a8a87658416f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-46e21902c3b8606b202d81e06abe9baf.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-1ab7f617852fce30e69fe9ec1d8b3dd8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-7968eaf10f5f718b226ab48add9596f0.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-1ab7f617852fce30e69fe9ec1d8b3dd8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -119,8 +119,8 @@ gradient teal.
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll me-auto">
   <li class="nav-item">
-    <a class="nav-link" href="../get_started.html"> 
-<span class="menu-text">Getting started</span></a>
+    <a class="nav-link" href="../get_started/installation.html"> 
+<span class="menu-text">Get started</span></a>
   </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-syntax" role="link" data-bs-toggle="dropdown" aria-expanded="false">
@@ -517,7 +517,7 @@ gradient teal.
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../syntax/scale/aesthetic/1_color.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Fill and Stroke</span></a>
+ <span class="menu-text">Fill and stroke</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -593,7 +593,7 @@ gradient teal.
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#main-clauses" id="toc-main-clauses" class="nav-link active" data-scroll-target="#main-clauses">Main Clauses</a></li>
+  <li><a href="#main-clauses" id="toc-main-clauses" class="nav-link active" data-scroll-target="#main-clauses">Main clauses</a></li>
   <li><a href="#layers" id="toc-layers" class="nav-link" data-scroll-target="#layers">Layers</a>
   <ul class="collapse">
   <li><a href="#layer-types" id="toc-layer-types" class="nav-link" data-scroll-target="#layer-types">Layer types</a></li>
@@ -631,8 +631,8 @@ gradient teal.
 
 
 <section id="main-clauses" class="level2">
-<h2 class="anchored" data-anchor-id="main-clauses">Main Clauses</h2>
-<p>ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:</p>
+<h2 class="anchored" data-anchor-id="main-clauses">Main clauses</h2>
+<p>ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation. Apart from <code>VISUALISE</code> needing to be the first, the order of these clauses is arbitrary, though grouping e.g.&nbsp;all <code>DRAW</code> clauses will lead to queries that are easier to reason about:</p>
 <ul>
 <li><a href="../syntax/clause/visualise.html"><code>VISUALISE</code></a> initiates the visualisation part of the query</li>
 <li><a href="../syntax/clause/draw.html"><code>DRAW</code></a> adds a new layer to the visualisation
@@ -660,7 +660,7 @@ gradient teal.
 <li><a href="../syntax/layer/type/area.html"><code>area</code></a> is used to display series as an area chart.</li>
 <li><a href="../syntax/layer/type/ribbon.html"><code>ribbon</code></a> is used to display series extrema.</li>
 <li><a href="../syntax/layer/type/polygon.html"><code>polygon</code></a> is used to display arbitrary shapes as polygons.</li>
-<li><a href="layer/text.qmd"><code>text</code></a> is used to render datapoints as text.</li>
+<li><a href="../syntax/layer/type/text.html"><code>text</code></a> is used to render datapoints as text.</li>
 <li><a href="../syntax/layer/type/bar.html"><code>bar</code></a> creates a bar chart, optionally calculating y from the number of records in each bar.</li>
 <li><a href="../syntax/layer/type/density.html"><code>density</code></a> creates univariate kernel density estimates, showing the distribution of a variable.</li>
 <li><a href="../syntax/layer/type/violin.html"><code>violin</code></a> displays a rotated kernel density estimate.</li>
