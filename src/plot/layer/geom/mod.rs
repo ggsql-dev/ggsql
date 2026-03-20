@@ -215,6 +215,19 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         Ok(df)
     }
 
+    /// Adjust layer mappings and parameters based on geom-specific logic.
+    ///
+    /// This method is called during layer execution to allow geoms to customize
+    /// how aesthetics and parameters should be treated. The default implementation
+    /// does nothing.
+    fn setup_layer(
+        &self,
+        _mappings: &mut Mappings,
+        _parameters: &mut HashMap<String, ParameterValue>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     /// Returns valid parameter names for SETTING clause.
     ///
     /// Combines supported aesthetics with non-aesthetic parameters from default_params.
@@ -414,6 +427,15 @@ impl Geom {
         parameters: &HashMap<String, ParameterValue>,
     ) -> Result<DataFrame> {
         self.0.post_process(df, parameters)
+    }
+
+    /// Adjust layer mappings and parameters based on geom-specific logic
+    pub fn setup_layer(
+        &self,
+        mappings: &mut Mappings,
+        parameters: &mut HashMap<String, ParameterValue>,
+    ) -> Result<()> {
+        self.0.setup_layer(mappings, parameters)
     }
 
     /// Get valid settings
