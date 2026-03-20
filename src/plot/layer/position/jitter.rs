@@ -1049,9 +1049,11 @@ mod tests {
 
         // Normal distribution is centered at 0
         // Values can exceed the width bounds (unlike uniform), but should be centered
+        // With only 4 samples and σ = width/4 = 0.225, the standard error is ~0.11
+        // Use a wide tolerance to avoid flaky tests with small sample sizes
         let mean: f64 = offsets.iter().sum::<f64>() / offsets.len() as f64;
         assert!(
-            mean.abs() < 0.3, // Should be roughly centered (with 4 values, some variance expected)
+            mean.abs() < 0.5,
             "Normal distribution mean {} should be close to 0",
             mean
         );
