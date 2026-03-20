@@ -125,6 +125,7 @@ website:
 format:
   html:
     lightbox: auto
+    highlight-style: pygments
     syntax-definitions:
       - ggsql.xml
     theme:
