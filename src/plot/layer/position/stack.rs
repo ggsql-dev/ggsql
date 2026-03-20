@@ -270,13 +270,10 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
     // Facet columns must be included so stacking resets per facet panel,
     // matching ggplot2 where position adjustments are computed per-panel.
     let mut over_cols: Vec<Expr> = vec![col(&group_col)];
-    for partition_col in &layer.partition_by {
-        if naming::is_aesthetic_column(partition_col) {
-            if let Some(aes) = naming::extract_aesthetic_name(partition_col) {
-                if aes.starts_with("facet") {
-                    over_cols.push(col(partition_col));
-                }
-            }
+    if let Some(ref facet) = spec.facet {
+        for aes in facet.layout.internal_facet_names() {
+            let facet_col = naming::aesthetic_column(&aes);
+            over_cols.push(col(&facet_col));
         }
     }
 

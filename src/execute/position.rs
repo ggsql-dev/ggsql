@@ -58,6 +58,7 @@ pub fn apply_position_adjustments(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::facet::{Facet, FacetLayout};
     use crate::plot::layer::{Geom, Position};
     use crate::plot::{AestheticValue, Mappings, ParameterValue, Scale, ScaleType};
     use polars::prelude::*;
@@ -375,6 +376,9 @@ mod tests {
         let mut spec = Plot::new();
         spec.scales.push(make_discrete_scale("pos1"));
         spec.scales.push(make_continuous_scale("pos2"));
+        spec.facet = Some(Facet::new(FacetLayout::Wrap {
+            variables: vec!["facet_var".to_string()],
+        }));
         let mut data_map = HashMap::new();
         data_map.insert("__ggsql_layer_0__".to_string(), df);
 
