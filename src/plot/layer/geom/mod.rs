@@ -36,7 +36,6 @@ mod density;
 mod errorbar;
 mod histogram;
 mod line;
-mod linear;
 mod path;
 mod point;
 mod polygon;
@@ -50,7 +49,7 @@ mod violin;
 
 // Re-export types
 pub use types::{
-    DefaultAesthetics, ParamConstraint, ParamDefinition, DefaultParamValue, StatResult,
+    DefaultAesthetics, DefaultParamValue, ParamConstraint, ParamDefinition, StatResult,
 };
 
 // Re-export geom structs for direct access if needed
@@ -62,7 +61,6 @@ pub use density::Density;
 pub use errorbar::ErrorBar;
 pub use histogram::Histogram;
 pub use line::Line;
-pub use linear::Linear;
 pub use path::Path;
 pub use point::Point;
 pub use polygon::Polygon;
@@ -98,7 +96,6 @@ pub enum GeomType {
     Segment,
     Arrow,
     Rule,
-    Linear,
     ErrorBar,
 }
 
@@ -122,7 +119,6 @@ impl std::fmt::Display for GeomType {
             GeomType::Segment => "segment",
             GeomType::Arrow => "arrow",
             GeomType::Rule => "rule",
-            GeomType::Linear => "linear",
             GeomType::ErrorBar => "errorbar",
         };
         write!(f, "{}", s)
@@ -324,11 +320,6 @@ impl Geom {
         Self(Arc::new(Rule))
     }
 
-    /// Create an Linear geom
-    pub fn linear() -> Self {
-        Self(Arc::new(Linear))
-    }
-
     /// Create an ErrorBar geom
     pub fn errorbar() -> Self {
         Self(Arc::new(ErrorBar))
@@ -354,7 +345,6 @@ impl Geom {
             GeomType::Segment => Self::segment(),
             GeomType::Arrow => Self::arrow(),
             GeomType::Rule => Self::rule(),
-            GeomType::Linear => Self::linear(),
             GeomType::ErrorBar => Self::errorbar(),
         }
     }
@@ -553,7 +543,6 @@ mod tests {
             GeomType::Segment,
             GeomType::Arrow,
             GeomType::Rule,
-            GeomType::Linear,
             GeomType::ErrorBar,
         ];
 
@@ -577,7 +566,6 @@ mod tests {
             | GeomType::Segment
             | GeomType::Arrow
             | GeomType::Rule
-            | GeomType::Linear
             | GeomType::ErrorBar => {}
         };
 

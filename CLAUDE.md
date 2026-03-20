@@ -336,7 +336,7 @@ pub enum Geom {
     // Statistical geoms
     Histogram, Density, Smooth, Boxplot, Violin,
     // Annotation geoms
-    Text, Segment, Arrow, Rule, Linear, ErrorBar,
+    Text, Segment, Arrow, Rule, ErrorBar,
 }
 
 pub enum DataSource {
@@ -1219,7 +1219,7 @@ All clauses (MAPPING, SETTING, PARTITION BY, FILTER) are optional.
 
 - **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `rect`, `polygon`, `ribbon`
 - **Statistical**: `histogram`, `density`, `smooth`, `boxplot`, `violin`
-- **Annotation**: `text`, `label`, `segment`, `arrow`, `rule`, `linear`, `errorbar`
+- **Annotation**: `text`, `label`, `segment`, `arrow`, `rule`, `errorbar`
 
 **MAPPING Clause** (Aesthetic Mappings):
 

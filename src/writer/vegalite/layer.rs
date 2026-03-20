@@ -43,7 +43,6 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Segment => "rule",
         GeomType::Smooth => "line",
         GeomType::Rule => "rule",
-        GeomType::Linear => "rule",
         GeomType::ErrorBar => "rule",
         _ => "point", // Default fallback
     };
@@ -512,137 +511,6 @@ impl GeomRenderer for RuleRenderer {
             },
             {
                 "calculate": format!("datum.{} * datum.primary_max + datum.{}", slope_field, intercept_field),
-                "as": "secondary_max"
-            }
-        ]);
-
-        // Prepend to existing transforms (if any)
-        if let Some(existing) = layer_spec.get("transform") {
-            if let Some(arr) = existing.as_array() {
-                let mut new_transforms = transforms.as_array().unwrap().clone();
-                new_transforms.extend_from_slice(arr);
-                layer_spec["transform"] = json!(new_transforms);
-            }
-        } else {
-            layer_spec["transform"] = transforms;
-        }
-
-        Ok(())
-    }
-}
-
-// =============================================================================
-// Linear Renderer
-// =============================================================================
-
-/// Renderer for linear geom - draws lines based on coefficient and intercept
-pub struct LinearRenderer;
-
-impl GeomRenderer for LinearRenderer {
-    fn prepare_data(
-        &self,
-        df: &DataFrame,
-        _layer: &Layer,
-        _data_key: &str,
-        _binned_columns: &HashMap<String, Vec<f64>>,
-    ) -> Result<PreparedData> {
-        // Just convert DataFrame to JSON values
-        // No need to add xmin/xmax - they'll be encoded as literal values
-        let values = dataframe_to_values(df)?;
-        Ok(PreparedData::Single { values })
-    }
-
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        layer: &Layer,
-        _context: &RenderContext,
-    ) -> Result<()> {
-        // Remove coefficient and intercept from encoding - they're only used in transforms
-        encoding.remove("coef");
-        encoding.remove("intercept");
-
-        // Check orientation
-        let is_horizontal = is_transposed(layer);
-
-        // For aligned (default): x is primary axis, y is computed (secondary)
-        // For transposed: y is primary axis, x is computed (secondary)
-        let (primary, primary2, secondary, secondary2) = if is_horizontal {
-            ("y", "y2", "x", "x2")
-        } else {
-            ("x", "x2", "y", "y2")
-        };
-
-        // Add encodings for rule mark
-        // primary_min/primary_max are created by transforms (extent of the axis)
-        // secondary_min/secondary_max are computed via formula
-        encoding.insert(
-            primary.to_string(),
-            json!({
-                "field": "primary_min",
-                "type": "quantitative"
-            }),
-        );
-        encoding.insert(
-            primary2.to_string(),
-            json!({
-                "field": "primary_max"
-            }),
-        );
-        encoding.insert(
-            secondary.to_string(),
-            json!({
-                "field": "secondary_min",
-                "type": "quantitative"
-            }),
-        );
-        encoding.insert(
-            secondary2.to_string(),
-            json!({
-                "field": "secondary_max"
-            }),
-        );
-
-        Ok(())
-    }
-
-    fn modify_spec(
-        &self,
-        layer_spec: &mut Value,
-        layer: &Layer,
-        context: &RenderContext,
-    ) -> Result<()> {
-        // Field names for coef and intercept (with aesthetic column prefix)
-        let coef_field = naming::aesthetic_column("coef");
-        let intercept_field = naming::aesthetic_column("intercept");
-
-        // Check orientation
-        let is_horizontal = is_transposed(layer);
-
-        // Get extent from appropriate axis:
-        // - Aligned (default): extent from pos1 (x-axis), compute y from x
-        // - Transposed: extent from pos2 (y-axis), compute x from y
-        let extent_aesthetic = if is_horizontal { "pos2" } else { "pos1" };
-        let (primary_min, primary_max) = context.get_extent(extent_aesthetic)?;
-
-        // Add transforms:
-        // 1. Create constant primary_min/primary_max fields (extent of the primary axis)
-        // 2. Compute secondary values at those primary positions: secondary = coef * primary + intercept
-        let transforms = json!([
-            {
-                "calculate": primary_min.to_string(),
-                "as": "primary_min"
-            },
-            {
-                "calculate": primary_max.to_string(),
-                "as": "primary_max"
-            },
-            {
-                "calculate": format!("datum.{} * datum.primary_min + datum.{}", coef_field, intercept_field),
-                "as": "secondary_min"
-            },
-            {
-                "calculate": format!("datum.{} * datum.primary_max + datum.{}", coef_field, intercept_field),
                 "as": "secondary_max"
             }
         ]);
@@ -2017,7 +1885,6 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Violin => Box::new(ViolinRenderer),
         GeomType::Text => Box::new(TextRenderer),
         GeomType::Segment => Box::new(SegmentRenderer),
-        GeomType::Linear => Box::new(LinearRenderer),
         GeomType::ErrorBar => Box::new(ErrorBarRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
         // All other geoms (Point, Area, Density, Tile, etc.) use the default renderer
