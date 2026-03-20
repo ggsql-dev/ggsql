@@ -363,7 +363,7 @@
     "href": "syntax/scale/type/continuous.html#settings",
     "title": "Continuous",
     "section": "Settings",
-    "text": "Settings\nThe following settings are recognised by continuous scales:\n\nexpand (only for x/y): Either a scalar number or 2-length array of numbers. Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to 0.05 (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as SCALE x FROM [0, null] expansion will only be applied to the upper range.\noob: How should values outside of the scale input range be treated. One of 'keep' (keep the values as-is), 'censor' (set to null), or 'squish' (set to the nearest values within the range). Default for x/y is 'keep', for the remaining it is 'censor'.\nbreaks: Either a scalar as described in the section on breaks, or an array of values to place breaks at. Defaults to 5.\npretty: A boolean indicating which algorithm to use for automatic calculation of breaks as described in the section on breaks. Defaults to true.\nreverse: A boolean indicating whether the scale direction should be reversed. Defaults to false.\n\n\nExamples\n\nChange expansion of x axis to add a fixed value\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    SETTING expand =&gt; [0.0, 10]\n\n\n\n\n\n\n\nSquish all y values to show them in the margin of the plot\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE y FROM [15, 20]\n    SETTING oob =&gt; 'squish'\n\n\n\n\n\n\n\nSet breaks explicitly\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    SETTING breaks =&gt; [37, 42, 55]\n\n\n\n\n\n\n\nReverse the x axis\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    SETTING reverse =&gt; true",
+    "text": "Settings\nThe following settings are recognised by continuous scales:\n\nexpand (only for x/y): Either a scalar number or 2-element array of numbers (values must be &gt;= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to 0.05 (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as SCALE x FROM [0, null] expansion will only be applied to the upper range.\noob: How should values outside of the scale input range be treated. One of 'keep' (keep the values as-is), 'censor' (set to null), or 'squish' (set to the nearest values within the range). Default for x/y is 'keep', for the remaining it is 'censor'.\nbreaks: Either a scalar (whole number &gt;= 1) as described in the section on breaks, or an array of values to place breaks at. Defaults to 5.\npretty: A boolean indicating which algorithm to use for automatic calculation of breaks as described in the section on breaks. Defaults to true.\nreverse: A boolean indicating whether the scale direction should be reversed. Defaults to false.\n\n\nExamples\n\nChange expansion of x axis to add a fixed value\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    SETTING expand =&gt; [0.0, 10]\n\n\n\n\n\n\n\nSquish all y values to show them in the margin of the plot\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE y FROM [15, 20]\n    SETTING oob =&gt; 'squish'\n\n\n\n\n\n\n\nSet breaks explicitly\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    SETTING breaks =&gt; [37, 42, 55]\n\n\n\n\n\n\n\nReverse the x axis\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    SETTING reverse =&gt; true",
     "crumbs": [
       "Getting started",
       "Scales",
@@ -515,7 +515,7 @@
     "href": "syntax/clause/facet.html#clause-syntax",
     "title": "Create small multiples with FACET",
     "section": "Clause syntax",
-    "text": "Clause syntax\nThe FACET syntax contains a number of subclauses that are all optional\nFACET &lt;column&gt; BY &lt;column&gt;\n    SETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\nThe first column is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the missing parameter of the facet.\n\nBY\nBY &lt;column&gt;\nThe optional BY clause is used to define an additional column to split the data by. If it is missing the small multiples are laid out in a grid with the facet panels filling the cells in a row-wise fashion. If BY is present then the categories of the first column defines the rows of the grid and the categories of the second column the columns of the grid. Each multiple is then positioned according to that.\n\n\nSETTING\nSETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\nThis clause behaves much like the SETTINGS clause in DRAW, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:\n\nfree: Controls whether the positional scales are independent across the small multiples. Permissible values are:\n\nnull or omitted (default): Shared/fixed scales across all panels\n'x': Independent x-axis scale, shared y-axis scale\n'y': Shared x-axis scale, independent y-axis scale\n['x', 'y']: Independent scales for both axes\n\nmissing: Determines how layers behave when the faceting column is missing. It can take two values: 'repeat' (default), and 'null'. If 'repeat' is set, then the layer data is repeated in each panel. If 'null', then such layers are only displayed if a null panel is shown, as controlled by the facet scale.\nncol/nrow: The dimensions of the layout when faceting by a single variable. Only one of these can be given, as the other is derived based on the number of panels to draw. Default is 3 columns when fewer than 6 categories are present, 4 columns when fewer than 12 categories are present and otherwise 5 columns. When the BY-clause is used to set a second faceting variable, the ncol and nrow setting are not allowed.\n\n\n\nFacet variables as aesthetics\nWhen you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no BY clause) the aesthetic is called panel and for 2-dimensional faceting the aesthetics are called row and column. You can read more about these aesthetics in their documentation\n\n\nCustomizing facet strip labels\nTo customize facet strip labels (e.g., renaming categories), use the RENAMING clause on the facet scale:\nFACET region\nSCALE panel RENAMING 'N' =&gt; 'North', 'S' =&gt; 'South'\nSee the facet scale documentation for more details on label customization.",
+    "text": "Clause syntax\nThe FACET syntax contains a number of subclauses that are all optional\nFACET &lt;column&gt; BY &lt;column&gt;\n    SETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\nThe first column is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the missing parameter of the facet.\n\nBY\nBY &lt;column&gt;\nThe optional BY clause is used to define an additional column to split the data by. If it is missing the small multiples are laid out in a grid with the facet panels filling the cells in a row-wise fashion. If BY is present then the categories of the first column defines the rows of the grid and the categories of the second column the columns of the grid. Each multiple is then positioned according to that.\n\n\nSETTING\nSETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\nThis clause behaves much like the SETTINGS clause in DRAW, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:\n\nfree: Controls whether the positional scales are independent across the small multiples. Permissible values are:\n\nnull or omitted (default): Shared/fixed scales across all panels\n'x': Independent x-axis scale, shared y-axis scale\n'y': Shared x-axis scale, independent y-axis scale\n['x', 'y']: Independent scales for both axes\n\nmissing: Determines how layers behave when the faceting column is missing. It can take two values: 'repeat' (default), and 'null'. If 'repeat' is set, then the layer data is repeated in each panel. If 'null', then such layers are only displayed if a null panel is shown, as controlled by the facet scale.\nncol/nrow: The dimensions of the layout when faceting by a single variable (whole number &gt;= 1). Only one of these can be given, as the other is derived based on the number of panels to draw. Default is 3 columns when fewer than 6 categories are present, 4 columns when fewer than 12 categories are present and otherwise 5 columns. When the BY-clause is used to set a second faceting variable, the ncol and nrow setting are not allowed.\n\n\n\nFacet variables as aesthetics\nWhen you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no BY clause) the aesthetic is called panel and for 2-dimensional faceting the aesthetics are called row and column. You can read more about these aesthetics in their documentation\n\n\nCustomizing facet strip labels\nTo customize facet strip labels (e.g., renaming categories), use the RENAMING clause on the facet scale:\nFACET region\nSCALE panel RENAMING 'N' =&gt; 'North', 'S' =&gt; 'South'\nSee the facet scale documentation for more details on label customization.",
     "crumbs": [
       "Getting started",
       "Main clauses",
@@ -611,7 +611,7 @@
     "href": "syntax/coord/polar.html#settings",
     "title": "Polar",
     "section": "Settings",
-    "text": "Settings\n\nclip: Should data be removed if it appears outside the bounds of the coordinate system. Defaults to true\nstart: The starting angle in degrees for the angle scale. Controls where “0” on the angular axis begins. Defaults to 0 (12 o’clock position).\n\n0 = 12 o’clock position (top)\n90 = 3 o’clock position (right)\n-90 or 270 = 9 o’clock position (left)\n180 = 6 o’clock position (bottom)\n\nend: The ending angle in degrees for the angle scale. Defaults to start + 360 (a full circle). Use this with start to create partial polar plots like gauge charts or half-circle visualizations.\ninner: The inner radius as a proportion (0 to 1) of the outer radius. Defaults to 0 (no hole). Setting this creates a donut chart where the inner portion is empty.\n\n0 = full pie (no hole)\n0.3 = donut with 30% hole\n0.5 = donut with 50% hole",
+    "text": "Settings\n\nclip: Should data be removed if it appears outside the bounds of the coordinate system. Defaults to true\nstart: The starting angle in degrees for the theta scale (-360 to 360). Controls where “0” on the angular axis begins. Defaults to 0 (12 o’clock position).\n\n0 = 12 o’clock position (top)\n90 = 3 o’clock position (right)\n-90 or 270 = 9 o’clock position (left)\n180 = 6 o’clock position (bottom)\n\nend: The ending angle in degrees for the theta scale (-360 to 360). Defaults to start + 360 (a full circle). Use this with start to create partial polar plots like gauge charts or half-circle visualizations.\ninner: The inner radius as a proportion (0 to 1) of the outer radius. Defaults to 0 (no hole). Setting this creates a donut chart where the inner portion is empty.\n\n0 = full pie (no hole)\n0.3 = donut with 30% hole\n0.5 = donut with 50% hole",
     "crumbs": [
       "Getting started",
       "Coordinate systems",
@@ -661,7 +661,7 @@
     "href": "syntax/layer/position/jitter.html#settings",
     "title": "Jitter",
     "section": "Settings",
-    "text": "Settings\nApart from the settings of the layer type, setting position =&gt; 'jitter' will allow these additional settings:\n\nwidth: The total width the jittering will occupy as a proportion of the space available on the scale. Defaults to 0.9\ndodge: Should dodging be applied before jittering. The dodging behavior follows the dodge position behavior? Default to true\ndistribution: Which kind of distribution should the jittering follow? One of:\n\n'uniform' (default): Jittering is sampled from a uniform distribution between -width/2 and width/2\n'normal': Jittering is sampled from a normal distribution with σ as width/4 resulting in 95% of the points falling inside the given width\n'density': Jittering follows the density distribution within the group so that the jitter occupies the same area as an equivalent violin plot with density remapped to offset\n'intensity': Jittering follows the intensity distribution within the group so that the jitter occupies the same area as an equivalent violin plot with intensity remapped to offset\n\nIf distribution is either 'density' or 'intensity' then one of the axes must be continuous\nbandwidth: A numerical value setting the smoothing bandwidth to use for the 'density' and 'intensity' distributions. If absent (default), the bandwidth will be computed using Silverman’s rule of thumb.\nadjust: A numerical value as multiplier for the bandwidth setting, with 1 as default.",
+    "text": "Settings\nApart from the settings of the layer type, setting position =&gt; 'jitter' will allow these additional settings:\n\nwidth: The total width the jittering will occupy as a proportion of the space available on the scale (0 to 1). Defaults to 0.4\ndodge: Should dodging be applied before jittering. The dodging behavior follows the dodge position behavior? Default to true\ndistribution: Which kind of distribution should the jittering follow? One of:\n\n'uniform' (default): Jittering is sampled from a uniform distribution between -width/2 and width/2\n'normal': Jittering is sampled from a normal distribution with σ as width/4 resulting in 95% of the points falling inside the given width\n'density': Jittering follows the density distribution within the group so that the jitter occupies the same area as an equivalent violin plot with density remapped to offset\n'intensity': Jittering follows the intensity distribution within the group so that the jitter occupies the same area as an equivalent violin plot with intensity remapped to offset\n\nIf distribution is either 'density' or 'intensity' then one of the axes must be continuous\nbandwidth: Smoothing bandwidth for the 'density' and 'intensity' distributions (must be &gt; 0). If absent (default), the bandwidth will be computed using Silverman’s rule of thumb.\nadjust: Multiplier for the bandwidth setting (must be &gt; 0). Defaults to 1.",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -713,7 +713,7 @@
     "href": "syntax/layer/position/dodge.html#settings",
     "title": "Dodge",
     "section": "Settings",
-    "text": "Settings\nApart from the settings of the layer type, setting position =&gt; 'dodge' will allow these additional settings:\n\nwidth: The total width the dodging will occupy as a proportion of the space available on the scale. Defaults to 0.9 but any defaults from the layer will take precedence.",
+    "text": "Settings\nApart from the settings of the layer type, setting position =&gt; 'dodge' will allow these additional settings:\n\nwidth: The total width the dodging will occupy as a proportion of the space available on the scale (0 to 1). Defaults to 0.9 but any defaults from the layer will take precedence.",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -765,7 +765,7 @@
     "href": "syntax/layer/type/area.html#settings",
     "title": "Area",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'stack')\norientation: The orientation of the layer, see the Orientation section. One of the following:\n\n'aligned' to align the layer’s primary axis with the coordinate system’s first axis.\n'transposed' to align the layer’s primary axis with the coordinate system’s second axis.",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity', 'stack' (default), 'dodge', or 'jitter'\norientation: The orientation of the layer, see the Orientation section. One of the following:\n\n'aligned' to align the layer’s primary axis with the coordinate system’s first axis.\n'transposed' to align the layer’s primary axis with the coordinate system’s second axis.",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -843,7 +843,7 @@
     "href": "syntax/layer/type/polygon.html#settings",
     "title": "Polygon",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'identity')",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity' (default), 'stack', 'dodge', or 'jitter'",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -921,7 +921,7 @@
     "href": "syntax/layer/type/errorbar.html#settings",
     "title": "Errorbar",
     "section": "Settings",
-    "text": "Settings\n\nwidth: The width of the hinges in points. Can be set to null to not display hinges.",
+    "text": "Settings\n\nwidth: The width of the hinges in points (must be &gt;= 0). Defaults to 10. Can be set to null to not display hinges.",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -999,7 +999,7 @@
     "href": "syntax/layer/type/path.html#settings",
     "title": "Path",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'identity')",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity' (default), 'stack', 'dodge', or 'jitter'",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -1155,7 +1155,7 @@
     "href": "syntax/layer/type/boxplot.html#settings",
     "title": "Boxplot",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'dodge')\noutliers: Whether to display outliers as points. Defaults to true.\ncoef: A number indicating the length of the whiskers as a multiple of the interquartile range (IQR). Defaults to 1.5.\nwidth: Relative width of the boxes. Defaults to 0.9.",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity', 'stack', 'dodge' (default), or 'jitter'\noutliers: Whether to display outliers as points. Defaults to true.\ncoef: Length of the whiskers as a multiple of the IQR (must be &gt;= 0). Defaults to 1.5.\nwidth: Relative width of the boxes (0 to 1). Defaults to 0.9.",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -1220,7 +1220,7 @@
     "href": "syntax/layer/type/bar.html#settings",
     "title": "Bar",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'stack')\nwidth: The width of the bars as a proportion of the available width",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity', 'stack' (default), 'dodge', or 'jitter'\nwidth: The width of the bars as a proportion of the available width (0 to 1)",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -1298,7 +1298,7 @@
     "href": "syntax/layer/type/rect.html#settings",
     "title": "Rectangle",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'identity')",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity' (default), 'stack', 'dodge', or 'jitter'",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -1376,7 +1376,7 @@
     "href": "syntax/layer/type/ribbon.html#settings",
     "title": "Ribbon",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'identity')",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity' (default), 'stack', 'dodge', or 'jitter'",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -1698,7 +1698,7 @@
     "href": "syntax/layer/type/histogram.html#settings",
     "title": "Histogram",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'stack')\nbins: The number of bins to calculate. Defaults to 30\nbinwidth: The width of each bin. If provided it will override the binwidth calculated from bins\nclosed: Either 'left' or 'right' (default). Determines whether the bin intervals are closed to the left or right side",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity', 'stack' (default), 'dodge', or 'jitter'\nbins: The number of bins to calculate. Whole number &gt;= 1. Defaults to 30\nbinwidth: The width of each bin (must be &gt; 0). If provided it will override the binwidth calculated from bins\nclosed: Either 'left' or 'right' (default). Determines whether the bin intervals are closed to the left or right side",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -1776,7 +1776,7 @@
     "href": "syntax/layer/type/point.html#settings",
     "title": "Point",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'identity')",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity' (default), 'stack', 'dodge', or 'jitter'",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -1854,7 +1854,7 @@
     "href": "syntax/layer/type/density.html#settings",
     "title": "Density",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'identity')\nbandwidth: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman’s rule of thumb.\nadjust: A numerical value as multiplier for the bandwidth setting, with 1 as default.\nkernel: Determines the smoothing kernel shape. Can be one of the following:\n\n'gaussian' (default)\n'epanechnikov'\n'triangular'\n'rectangular' or 'uniform'\n'biweight' or 'quartic'\n'cosine'",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity' (default), 'stack', 'dodge', or 'jitter'\nbandwidth: Smoothing bandwidth (must be &gt; 0). If absent (default), the bandwidth will be computed using Silverman’s rule of thumb.\nadjust: Multiplier for the bandwidth setting (must be &gt; 0). Defaults to 1.\nkernel: Determines the smoothing kernel shape. Can be one of the following:\n\n'gaussian' (default)\n'epanechnikov'\n'triangular'\n'rectangular' or 'uniform'\n'biweight' or 'quartic'\n'cosine'",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -1932,7 +1932,7 @@
     "href": "syntax/layer/type/violin.html#settings",
     "title": "Violin",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'dodge')\nbandwidth: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman’s rule of thumb.\nadjust: A numerical value as multiplier for the bandwidth setting, with 1 as default.\nkernel: Determines the smoothing kernel shape. Can be one of the following:\n\n'gaussian' (default)\n'epanechnikov'\n'triangular'\n'rectangular' or 'uniform'\n'biweight' or 'quartic'\n'cosine'\n\nwidth: Relative width of the violins. Defaults to 0.9.\ntails: Expansion rule for drawing the tails. One of the following:\n\nA number setting a multiple of adjusted bandwidths to expand each group’s range. Defaults to 3.\nnull to use the whole data range rather than group ranges.",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity', 'stack', 'dodge' (default), or 'jitter'\nbandwidth: Smoothing bandwidth (must be &gt; 0). If absent (default), the bandwidth will be computed using Silverman’s rule of thumb.\nadjust: Multiplier for the bandwidth setting (must be &gt; 0). Defaults to 1.\nkernel: Determines the smoothing kernel shape. Can be one of the following:\n\n'gaussian' (default)\n'epanechnikov'\n'triangular'\n'rectangular' or 'uniform'\n'biweight' or 'quartic'\n'cosine'\n\nwidth: Relative width of the violins (0 to 1). Defaults to 0.9.\ntails: Expansion rule for drawing the tails (must be &gt;= 0 if numeric). One of the following:\n\nA number setting a multiple of adjusted bandwidths to expand each group’s range. Defaults to 3.\nnull to use the whole data range rather than group ranges.",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -2010,7 +2010,7 @@
     "href": "syntax/layer/type/smooth.html#settings",
     "title": "Smooth",
     "section": "Settings",
-    "text": "Settings\n\nmethod: Choice of the method for generating the trendline. One of the following:\n\n'nw' or 'nadaraya-watson' estimates the trendline using the Nadaraya-Watson kernel regression method (default).\n'ols' estimates a straight trendline using ordinary least squares method.\n'tls' estimates a straight trendline using total least squares method.\n\n\nThe settings below only apply when method =&gt; 'nw' and are ignored when using other methods. * bandwidth: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman’s rule of thumb. * adjust: A numerical value as multiplier for the bandwidth setting, with 1 as default. * kernel: Determines the smoothing kernel shape. Can be one of the following: * 'gaussian' (default) * 'epanechnikov' * 'triangular' * 'rectangular' or 'uniform' * 'biweight' or 'quartic' * 'cosine'",
+    "text": "Settings\n\nmethod: Choice of the method for generating the trendline. One of the following:\n\n'nw' or 'nadaraya-watson' estimates the trendline using the Nadaraya-Watson kernel regression method (default).\n'ols' estimates a straight trendline using ordinary least squares method.\n'tls' estimates a straight trendline using total least squares method.\n\n\nThe settings below only apply when method =&gt; 'nw' and are ignored when using other methods. * bandwidth: Smoothing bandwidth (must be &gt; 0). If absent (default), the bandwidth will be computed using Silverman’s rule of thumb. * adjust: Multiplier for the bandwidth setting (must be &gt; 0). Defaults to 1. * kernel: Determines the smoothing kernel shape. Can be one of the following: * 'gaussian' (default) * 'epanechnikov' * 'triangular' * 'rectangular' or 'uniform' * 'biweight' or 'quartic' * 'cosine'",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -2075,7 +2075,7 @@
     "href": "syntax/layer/type/segment.html#settings",
     "title": "Segment",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'identity')",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity' (default), 'stack', 'dodge', or 'jitter'",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -2231,7 +2231,7 @@
     "href": "syntax/layer/type/text.html#settings",
     "title": "Text",
     "section": "Settings",
-    "text": "Settings\n\noffset Position offset expressed in absolute points. Can be one of the following:\n\na single number that applies both horizontally and vertically\nan numeric array [h, v] where the first number is the horizontal offset and the second number is the vertical offset.\n\nformat Formatting specifier, see explanation below.\nposition: Determines the position adjustment to use for the layer (default is 'identity')\n\n\nFormat\nThe format setting can take a string that will be used in formatting the label aesthetic. The basic syntax for this is that the label value will be inserted into any place where {} appears. This means that e.g. SETTING format =&gt; '{} species' will result in the label “adelie species” for a row where the label value is “adelie”. Besides simply inserting the value as-is, it is also possible to apply a formatter to label before insertion by naming a formatter inside the curly braces prefixed with :. Known formatters are:\n\n{:Title} will title-case the value (make the first letter in each work upper case) before insertion, e.g. SETTING format =&gt; '{:Title} species' will become “Adelie species” for the “adelie” label.\n{:UPPER} will make the value upper-case, e.g. SETTING format =&gt; '{:UPPER} species' will become “ADELIE species” for the “adelie” label.\n{:lower} works much like {:UPPER} but changes the value to lower-case instead.\n{:time ...} will format a date/datetime/time value according to the format defined afterwards. The formatting follows strftime format using the Rust chrono library. You can see an overview of the supported syntax at the chrono docs. The basic usage is SETTING format =&gt; '{:time %B %Y} which would format a value at 2025-07-04 as “July 2025”.\n{:num ...} will format a numeric value according to the format defined afterwards. The format follows the printf format using the Rust sprintf library. The syntax is %[flags][width][.precision]type with the following meaning:\n\nflags: One or more modifiers:\n\n-: left-justify\n+: Force sign for positive numbers\n: (space) Space before positive numbers\n0: Zero-pad\n#: Alternate form (0x prefix for hex, etc)\n\nwidth: The minimum width of characters to render. Depending on the flags the string will be padded to be at least this width\nprecision: The maximum precision of the number. For %g/%G it is the total number of digits whereas for the rest it is the number of digits to the right of the decimal point\ntype: How to present the number. One of:\n\nd/i: Signed decimal integers\nu: Unsigned decimal integers\nf/F: Decimal floating point\ne/E: Scientific notation\ng/G: Shortest form of e and f\no: Unsigned octal\nx/X: Unsigned hexadecimal",
+    "text": "Settings\n\noffset Position offset expressed in absolute points. Can be one of the following:\n\na single number that applies both horizontally and vertically\na 2-element numeric array [h, v] where the first number is the horizontal offset and the second number is the vertical offset.\n\nformat Formatting specifier, see explanation below.\nposition: Position adjustment. One of 'identity' (default), 'stack', 'dodge', or 'jitter'\n\n\nFormat\nThe format setting can take a string that will be used in formatting the label aesthetic. The basic syntax for this is that the label value will be inserted into any place where {} appears. This means that e.g. SETTING format =&gt; '{} species' will result in the label “adelie species” for a row where the label value is “adelie”. Besides simply inserting the value as-is, it is also possible to apply a formatter to label before insertion by naming a formatter inside the curly braces prefixed with :. Known formatters are:\n\n{:Title} will title-case the value (make the first letter in each work upper case) before insertion, e.g. SETTING format =&gt; '{:Title} species' will become “Adelie species” for the “adelie” label.\n{:UPPER} will make the value upper-case, e.g. SETTING format =&gt; '{:UPPER} species' will become “ADELIE species” for the “adelie” label.\n{:lower} works much like {:UPPER} but changes the value to lower-case instead.\n{:time ...} will format a date/datetime/time value according to the format defined afterwards. The formatting follows strftime format using the Rust chrono library. You can see an overview of the supported syntax at the chrono docs. The basic usage is SETTING format =&gt; '{:time %B %Y} which would format a value at 2025-07-04 as “July 2025”.\n{:num ...} will format a numeric value according to the format defined afterwards. The format follows the printf format using the Rust sprintf library. The syntax is %[flags][width][.precision]type with the following meaning:\n\nflags: One or more modifiers:\n\n-: left-justify\n+: Force sign for positive numbers\n: (space) Space before positive numbers\n0: Zero-pad\n#: Alternate form (0x prefix for hex, etc)\n\nwidth: The minimum width of characters to render. Depending on the flags the string will be padded to be at least this width\nprecision: The maximum precision of the number. For %g/%G it is the total number of digits whereas for the rest it is the number of digits to the right of the decimal point\ntype: How to present the number. One of:\n\nd/i: Signed decimal integers\nu: Unsigned decimal integers\nf/F: Decimal floating point\ne/E: Scientific notation\ng/G: Shortest form of e and f\no: Unsigned octal\nx/X: Unsigned hexadecimal",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -2309,7 +2309,7 @@
     "href": "syntax/layer/type/line.html#settings",
     "title": "Line",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'identity')\norientation: The orientation of the layer, see the Orientation section. One of the following:\n\n'aligned' to align the layer’s primary axis with the coordinate system’s first axis.\n'transposed' to align the layer’s primary axis with the coordinate system’s second axis.",
+    "text": "Settings\n\nposition: Position adjustment. One of 'identity' (default), 'stack', 'dodge', or 'jitter'\norientation: The orientation of the layer, see the Orientation section. One of the following:\n\n'aligned' to align the layer’s primary axis with the coordinate system’s first axis.\n'transposed' to align the layer’s primary axis with the coordinate system’s second axis.",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -2400,7 +2400,7 @@
     "href": "syntax/layer/position/stack.html#settings",
     "title": "Stack",
     "section": "Settings",
-    "text": "Settings\nApart from the settings of the layer type, setting position =&gt; 'stack' will allow these additional settings:\n\ncenter: Should the full stack be centered around 0. Can be used in conjunction with area layers to create steamgraphs. Default to false\ntotal: Sets a total value to which each stack height is normalised. Setting this value leads to ‘fill’ behaviour. Defaults to null (no normalisation)",
+    "text": "Settings\nApart from the settings of the layer type, setting position =&gt; 'stack' will allow these additional settings:\n\ncenter: Should the full stack be centered around 0. Can be used in conjunction with area layers to create steamgraphs. Default to false\ntotal: Sets a total value to which each stack height is normalised (must be &gt; 0 if specified). Setting this value leads to ‘fill’ behaviour. Defaults to null (no normalisation)",
     "crumbs": [
       "Getting started",
       "Layers",
@@ -2450,7 +2450,7 @@
     "href": "syntax/coord/cartesian.html#settings",
     "title": "Cartesian",
     "section": "Settings",
-    "text": "Settings\n\nclip: Should data be removed if it appears outside the bounds of the coordinate system. Defaults to true\nratio: The aspect ratio between the steps on the vertical and horizontal axis. Defaults to null (no enforced aspect ratio)",
+    "text": "Settings\n\nclip: Should data be removed if it appears outside the bounds of the coordinate system. Defaults to true\nratio: The aspect ratio between the steps on the vertical and horizontal axis (must be &gt; 0 if specified). Defaults to null (no enforced aspect ratio)",
     "crumbs": [
       "Getting started",
       "Coordinate systems",
@@ -2610,7 +2610,7 @@
     "href": "syntax/scale/type/binned.html#settings",
     "title": "Binned",
     "section": "Settings",
-    "text": "Settings\nThe following settings are recognised by binned scales:\n\nexpand (only for x/y): Either a scalar number or 2-length array of numbers. Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to 0.05 (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as SCALE x FROM [0, null] expansion will only be applied to the upper range.\noob: How should values outside of the scale input range be treated. One of 'censor' (set to null), or 'squish' (set to the nearest bin). Default is 'censor'. When set to 'squish' the terminal bin labels will be removed to reflect that they extend to -Inf and Inf.\nbreaks: Either a scalar as described in the section on breaks, or an array of values to place breaks at. Defaults to 5.\npretty: A boolean indicating which algorithm to use for automatic calculation of breaks as described in the section on breaks. Defaults to true.\nreverse: A boolean indicating whether the scale direction should be reversed. Defaults to false.\nclosed: Either 'left' or 'right'. Determines which bin a value will be part of when it lies on the boundary. Defaults to 'left'\n\n\nExamples\n\nUse oob =&gt; ‘squish’ to add data outside range to terminal bins\n\nVISUALISE body_mass AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x\n    SETTING \n        oob =&gt; 'squish', \n        breaks =&gt; [4000, 4250, 4500, 4750, 5000, 5250, 5500]",
+    "text": "Settings\nThe following settings are recognised by binned scales:\n\nexpand (only for x/y): Either a scalar number or 2-element array of numbers (values must be &gt;= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to 0.05 (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as SCALE x FROM [0, null] expansion will only be applied to the upper range.\noob: How should values outside of the scale input range be treated. One of 'censor' (set to null), or 'squish' (set to the nearest bin). Default is 'censor'. When set to 'squish' the terminal bin labels will be removed to reflect that they extend to -Inf and Inf.\nbreaks: Either a scalar (whole number &gt;= 1) as described in the section on breaks, or an array of values to place breaks at. Defaults to 5.\npretty: A boolean indicating which algorithm to use for automatic calculation of breaks as described in the section on breaks. Defaults to true.\nreverse: A boolean indicating whether the scale direction should be reversed. Defaults to false.\nclosed: Either 'left' or 'right'. Determines which bin a value will be part of when it lies on the boundary. Defaults to 'left'\n\n\nExamples\n\nUse oob =&gt; ‘squish’ to add data outside range to terminal bins\n\nVISUALISE body_mass AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x\n    SETTING \n        oob =&gt; 'squish', \n        breaks =&gt; [4000, 4250, 4500, 4750, 5000, 5250, 5500]",
     "crumbs": [
       "Getting started",
       "Scales",
