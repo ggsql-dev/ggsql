@@ -50,7 +50,7 @@ mod violin;
 
 // Re-export types
 pub use types::{
-    DefaultAesthetics, ParamConstraint, ParamDefinition, DefaultParamValue, StatResult,
+    DefaultAesthetics, DefaultParamValue, ParamConstraint, ParamDefinition, StatResult,
 };
 
 // Re-export geom structs for direct access if needed
