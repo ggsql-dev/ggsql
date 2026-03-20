@@ -399,8 +399,8 @@ impl GeomRenderer for RuleRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        layer: &Layer,
-        _context: &RenderContext,
+        _layer: &Layer,
+        context: &RenderContext,
     ) -> Result<()> {
         let has_x = encoding.contains_key("x");
         let has_y = encoding.contains_key("y");
@@ -446,16 +446,19 @@ impl GeomRenderer for RuleRenderer {
             ("x", "x2", "y", "y2")
         };
 
+        let mut primary_enco = json!({"field": "primary_min", "type": "quantitative"});
+
+        // Get primary axis extent from context to set explicit scale domain
+        // This prevents an axis drift
+        let extent_aesthetic = if is_horizontal { "pos2" } else { "pos1" };
+        if let Ok((min, max)) = context.get_extent(extent_aesthetic) {
+            primary_enco["scale"] = json!({"domain": [min, max]})
+        };
+
         // Add encodings for rule mark
         // primary_min/primary_max are created by transforms (extent of the axis)
         // secondary_min/secondary_max are computed via formula
-        encoding.insert(
-            primary.to_string(),
-            json!({
-                "field": "primary_min",
-                "type": "quantitative"
-            }),
-        );
+        encoding.insert(primary.to_string(), primary_enco);
         encoding.insert(
             primary2.to_string(),
             json!({
