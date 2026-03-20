@@ -254,13 +254,13 @@ fn boxplot_sql_append_outliers(
     // Each row type maps to one visual element with y and yend where needed
     let build_summary_select = |table: &str| {
         format!(
-            "SELECT {groups}, 'lower_whisker' AS {type_name}, q1 AS {value_name}, lower AS {value2_name} FROM {table}
+            "SELECT {groups}, 'lower_whisker' AS \"{type_name}\", q1 AS \"{value_name}\", lower AS \"{value2_name}\" FROM {table}
             UNION ALL
-            SELECT {groups}, 'upper_whisker' AS {type_name}, q3 AS {value_name}, upper AS {value2_name} FROM {table}
+            SELECT {groups}, 'upper_whisker' AS \"{type_name}\", q3 AS \"{value_name}\", upper AS \"{value2_name}\" FROM {table}
             UNION ALL
-            SELECT {groups}, 'box' AS {type_name}, q1 AS {value_name}, q3 AS {value2_name} FROM {table}
+            SELECT {groups}, 'box' AS \"{type_name}\", q1 AS \"{value_name}\", q3 AS \"{value2_name}\" FROM {table}
             UNION ALL
-            SELECT {groups}, 'median' AS {type_name}, median AS {value_name}, NULL AS {value2_name} FROM {table}",
+            SELECT {groups}, 'median' AS \"{type_name}\", median AS \"{value_name}\", NULL AS \"{value2_name}\" FROM {table}",
             groups = groups_str,
             type_name = type_name,
             value_name = value_name,
@@ -291,7 +291,7 @@ fn boxplot_sql_append_outliers(
         )
         {summary_select}
         UNION ALL
-          SELECT {groups}, type AS {type_name}, value AS {value_name}, NULL AS {value2_name}
+          SELECT {groups}, type AS \"{type_name}\", value AS \"{value_name}\", NULL AS \"{value2_name}\"
           FROM outliers
         ",
         summary = from,
@@ -470,9 +470,9 @@ mod tests {
         assert!(result.contains("'median'"));
 
         // Check column names
-        assert!(result.contains(&format!("AS {}", naming::stat_column("value"))));
-        assert!(result.contains(&format!("AS {}", naming::stat_column("value2"))));
-        assert!(result.contains(&format!("AS {}", naming::stat_column("type"))));
+        assert!(result.contains(&format!("AS \"{}\"", naming::stat_column("value"))));
+        assert!(result.contains(&format!("AS \"{}\"", naming::stat_column("value2"))));
+        assert!(result.contains(&format!("AS \"{}\"", naming::stat_column("type"))));
     }
 
     #[test]
@@ -494,9 +494,9 @@ mod tests {
         assert!(result.contains("'median'"));
 
         // Check column names
-        assert!(result.contains(&format!("AS {}", naming::stat_column("value"))));
-        assert!(result.contains(&format!("AS {}", naming::stat_column("value2"))));
-        assert!(result.contains(&format!("AS {}", naming::stat_column("type"))));
+        assert!(result.contains(&format!("AS \"{}\"", naming::stat_column("value"))));
+        assert!(result.contains(&format!("AS \"{}\"", naming::stat_column("value2"))));
+        assert!(result.contains(&format!("AS \"{}\"", naming::stat_column("type"))));
     }
 
     #[test]
