@@ -62,7 +62,6 @@ impl GeomTrait for Rule {
 
         Ok(())
     }
-
 }
 
 impl std::fmt::Display for Rule {

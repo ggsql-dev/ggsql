@@ -1021,7 +1021,9 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // (e.g., rule geom converts pos1/pos2 to AnnotationColumn when slope is present)
     for spec in &mut specs {
         for layer in &mut spec.layers {
-            layer.geom.setup_layer(&mut layer.mappings, &mut layer.parameters)?;
+            layer
+                .geom
+                .setup_layer(&mut layer.mappings, &mut layer.parameters)?;
         }
     }
 
