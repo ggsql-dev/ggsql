@@ -27,8 +27,8 @@ include-in-header:
 ggsql brings the elegance of the [Grammar of Graphics](get_started/grammar.qmd) to SQL. Write familiar queries, add visualization clauses, and see your data transform into beautiful, composable charts — no context switching, no separate tools, just SQL with superpowers.
 
 ::: {.hero-buttons}
-[Get Started](get_started/installation.qmd){.btn .btn-primary .btn-lg}
-[View Examples](gallery/index.qmd){.btn .btn-outline-primary .btn-lg}
+[Get started](get_started/installation.qmd){.btn .btn-primary .btn-lg}
+[View examples](gallery/index.qmd){.btn .btn-outline-primary .btn-lg}
 :::
 :::
 
@@ -185,7 +185,7 @@ uv tool install ggsql
 ::: {.features}
 
 ::: {.feature}
-### Familiar Syntax
+### Familiar syntax
 
 Write standard SQL queries and seamlessly extend them with visualization clauses. Your existing SQL knowledge transfers directly.
 
@@ -199,7 +199,7 @@ DRAW line
 :::
 
 ::: {.feature}
-### Grammar of Graphics
+### Grammar of graphics
 
 Compose visualizations from independent layers, scales, and coordinates. Mix and match components for powerful custom visuals. The [grammar of graphics](get_started/grammar.qmd) provides you with a single mental model for every type of plot.
 
@@ -213,7 +213,7 @@ FACET region
 :::
 
 ::: {.feature}
-### Built for Humans _and_ AI
+### Built for humans _and_ AI
 
 The structured syntax makes it easy for AI agents to write, and for you to read, adjust, and verify.
 
