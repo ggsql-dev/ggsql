@@ -779,8 +779,7 @@ fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Resu
         .collect::<Vec<_>>()
         .join(", ");
 
-    // Step 5: Build complete SQL query using standard CTE form
-    // This works across all SQL backends (DuckDB, SQLite, PostgreSQL, etc.)
+    // Step 5: Build complete SQL query
     let column_list = column_names
         .iter()
         .map(|c| format!("\"{}\"", c))
@@ -930,7 +929,6 @@ mod tests {
         let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
         // Should recycle scalar pos2 and label to match array length (3)
-        // Uses CTE form: WITH __ggsql_values__(cols) AS (VALUES (...), (...), (...)) SELECT * FROM __ggsql_values__
         assert!(result.contains("VALUES"));
         // Check that all values appear (order may vary due to HashMap)
         assert!(result.contains("1") && result.contains("2") && result.contains("3"));
@@ -989,7 +987,6 @@ mod tests {
         let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
         // Both arrays have length 2, should work (order may vary)
-        // Uses CTE form: WITH __ggsql_values__(cols) AS (VALUES (...), (...)) SELECT * FROM __ggsql_values__
         assert!(result.contains("VALUES"));
         assert!(result.contains("1") && result.contains("2"));
         assert!(result.contains("10") && result.contains("20"));
