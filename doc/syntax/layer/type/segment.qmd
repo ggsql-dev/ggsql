@@ -38,17 +38,15 @@ The segment layer has no orientations. The axes are treated symmetrically.
 Segments are useful when you have known start and end points of the data. For example in a graph
 
 ```{ggsql}
-WITH edges AS (
-  SELECT * FROM (VALUES
-      (0, 0, 1, 1, 'A'),
-      (1, 1, 2, 1, 'A'),
-      (2, 1, 3, 0, 'A'),
-      (0, 3, 1, 2, 'B'),
-      (1, 2, 2, 2, 'B'),
-      (2, 2, 3, 3, 'B'),
-      (1, 1, 1, 2, 'C'),
-      (2, 2, 2, 1, 'C')
-  ) AS t(x, y, xend, yend, type)
+WITH edges(x, y, xend, yend, type) AS (VALUES
+    (0, 0, 1, 1, 'A'),
+    (1, 1, 2, 1, 'A'),
+    (2, 1, 3, 0, 'A'),
+    (0, 3, 1, 2, 'B'),
+    (1, 2, 2, 2, 'B'),
+    (2, 2, 3, 3, 'B'),
+    (1, 1, 1, 2, 'C'),
+    (2, 2, 2, 1, 'C')
 )
 VISUALISE x, y, xend, yend FROM edges
   DRAW segment MAPPING type AS stroke
@@ -69,6 +67,10 @@ VISUALISE bill_dep AS x, n AS y
 
 By overlaying a thick line on a thin line, you can create a candlestick chart.
 
+::: {.callout-note}
+This example uses DuckDB-specific `FIRST()` and `LAST()` aggregate functions.
+:::
+
 ```{ggsql}
 SELECT
   FIRST(Date) AS date,
@@ -81,7 +83,7 @@ SELECT
     ELSE 'warmer'
   END AS trend
 FROM ggsql:airquality
-GROUP BY WEEKOFYEAR(Date)
+GROUP BY Week
 
 VISUALISE date AS x, trend AS colour
   DRAW segment 
