@@ -717,7 +717,15 @@ fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
         }
     }
 
-    // Step 2: Determine max array length from all annotation parameters
+    // Step 2: Handle empty annotation_params by adding a dummy column
+    // This occurs when geoms have no required aesthetics and user provides only
+    // non-positional scalar parameters (e.g., PLACE rule SETTING stroke => 'red')
+    if annotation_params.is_empty() {
+        // Add a dummy column so we can generate a valid VALUES clause
+        annotation_params.push(("__ggsql_dummy__".to_string(), ParameterValue::Number(1.0)));
+    }
+
+    // Step 3: Determine max array length from all annotation parameters
     let mut max_length = 1;
 
     for (aesthetic, value) in &annotation_params {
@@ -743,7 +751,7 @@ fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
         }
     }
 
-    // Step 3: Build VALUES clause and create final mappings simultaneously
+    // Step 4: Build VALUES clause and create final mappings simultaneously
     let mut columns: Vec<Vec<ArrayElement>> = Vec::new();
     let mut column_names = Vec::new();
 
@@ -766,6 +774,11 @@ fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
         // the same column→aesthetic renaming pipeline as regular layers
         column_names.push(aesthetic.clone());
 
+        // Skip creating mappings for dummy columns (they're just for valid SQL)
+        if aesthetic == "__ggsql_dummy__" {
+            continue;
+        }
+
         // Create final mapping directly (no intermediate Literal step)
         let is_positional = crate::plot::aesthetic::is_positional_aesthetic(aesthetic);
         let mapping_value = if is_positional {
@@ -787,14 +800,14 @@ fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
         layer.parameters.remove(aesthetic);
     }
 
-    // Step 4: Build VALUES rows
+    // Step 5: Build VALUES rows
     let mut rows = Vec::new();
     for i in 0..max_length {
         let values: Vec<String> = columns.iter().map(|col| col[i].to_sql()).collect();
         rows.push(format!("({})", values.join(", ")));
     }
 
-    // Step 5: Build complete SQL query
+    // Step 6: Build complete SQL query
     let values_clause = rows.join(", ");
     let column_list = column_names
         .iter()
@@ -1105,5 +1118,61 @@ mod tests {
             "Non-temporal string should remain String type"
         );
         assert_eq!(series.len(), 2);
+    }
+
+    #[test]
+    fn test_annotation_no_required_aesthetics() {
+        // Rule geom has no required aesthetics, only optional ones
+        let mut layer = Layer::new(Geom::rule());
+        layer.source = Some(DataSource::Annotation);
+        // Only non-positional, non-required scalar parameters
+        layer.parameters.insert(
+            "stroke".to_string(),
+            ParameterValue::String("red".to_string()),
+        );
+        layer
+            .parameters
+            .insert("linewidth".to_string(), ParameterValue::Number(2.0));
+
+        let result = process_annotation_layer(&mut layer);
+
+        // Should generate valid SQL with a dummy column
+        match result {
+            Ok(sql) => {
+                // Check that SQL is valid (has VALUES with at least one column)
+                assert!(
+                    !sql.contains("(VALUES ) AS t()"),
+                    "Should not generate empty VALUES clause"
+                );
+                assert!(
+                    sql.contains("VALUES") && sql.contains("AS t("),
+                    "Should have VALUES with at least one column"
+                );
+                // Should contain the dummy column
+                assert!(
+                    sql.contains("__ggsql_dummy__"),
+                    "Should have dummy column when no data columns exist"
+                );
+            }
+            Err(e) => {
+                panic!("Unexpected error: {}", e);
+            }
+        }
+
+        // Verify that stroke and linewidth remain in parameters (not moved to mappings)
+        assert!(
+            layer.parameters.contains_key("stroke"),
+            "Non-positional, non-required parameters should stay in parameters"
+        );
+        assert!(
+            layer.parameters.contains_key("linewidth"),
+            "Non-positional, non-required parameters should stay in parameters"
+        );
+
+        // Verify dummy column is not in mappings
+        assert!(
+            !layer.mappings.contains_key("__ggsql_dummy__"),
+            "Dummy column should not be added to mappings"
+        );
     }
 }
