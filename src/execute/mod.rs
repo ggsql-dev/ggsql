@@ -1076,7 +1076,12 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         .iter()
         .enumerate()
         .map(|(idx, l)| {
-            layer::build_layer_base_query(l, &layer_source_queries[idx], &type_requirements[idx], dialect)
+            layer::build_layer_base_query(
+                l,
+                &layer_source_queries[idx],
+                &type_requirements[idx],
+                dialect,
+            )
         })
         .collect();
 
