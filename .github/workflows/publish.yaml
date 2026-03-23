@@ -58,7 +58,7 @@ jobs:
         run: python3 -m pip install jupyter jupyterlab
 
       - name: Build Jupyter kernel
-        run: cargo build --package ggsql-jupyter
+        run: cargo build --release --package ggsql-jupyter
 
       - name: Install Jupyter kernel
         run: ./target/release/ggsql-jupyter --install
