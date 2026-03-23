@@ -39,7 +39,7 @@ jobs:
       - name: Caching
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ${{ runner.os }}-build
+          shared-key: ${{ runner.os }}-wasm
           cache-on-failure: true
 
       - name: Install wasm-opt

@@ -47,7 +47,7 @@ jobs:
 
       - name: Run Rust tests
         if: success()
-        run: cargo test --lib --bins
+        run: cargo test --lib --bins --profile dev
 
       - name: Run Rust formatting check
         if: success()
