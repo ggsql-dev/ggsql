@@ -975,7 +975,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     let layer_source_queries: Vec<String> = specs[0]
         .layers
         .iter_mut()
-        .map(|l| layer::layer_source_query(l, &materialized_ctes, has_global_table))
+        .map(|l| layer::layer_source_query(l, &materialized_ctes, has_global_table, dialect))
         .collect::<Result<Vec<_>>>()?;
 
     // Get types for each layer from source queries (Phase 1: types only, no min/max yet)
@@ -1076,7 +1076,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         .iter()
         .enumerate()
         .map(|(idx, l)| {
-            layer::build_layer_base_query(l, &layer_source_queries[idx], &type_requirements[idx])
+            layer::build_layer_base_query(l, &layer_source_queries[idx], &type_requirements[idx], dialect)
         })
         .collect();
 

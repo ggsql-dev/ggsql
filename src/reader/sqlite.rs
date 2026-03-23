@@ -45,6 +45,28 @@ impl super::SqlDialect for SqliteDialect {
     fn time_type_name(&self) -> Option<&str> {
         Some("TEXT")
     }
+
+    fn sql_date_literal(&self, days_since_epoch: i32) -> String {
+        format!("date('1970-01-01', '+{} days')", days_since_epoch)
+    }
+
+    fn sql_datetime_literal(&self, microseconds_since_epoch: i64) -> String {
+        let seconds = microseconds_since_epoch as f64 / 1_000_000.0;
+        format!("datetime('1970-01-01 00:00:00', '+{} seconds')", seconds)
+    }
+
+    fn sql_time_literal(&self, nanoseconds_since_midnight: i64) -> String {
+        let seconds = nanoseconds_since_midnight as f64 / 1_000_000_000.0;
+        format!("time('00:00:00', '+{} seconds')", seconds)
+    }
+
+    fn sql_boolean_literal(&self, value: bool) -> String {
+        if value {
+            "1".to_string()
+        } else {
+            "0".to_string()
+        }
+    }
 }
 
 /// SQLite database reader

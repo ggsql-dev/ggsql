@@ -31,11 +31,12 @@ pub fn layer_source_query(
     layer: &mut Layer,
     materialized_ctes: &HashSet<String>,
     has_global: bool,
+    dialect: &dyn SqlDialect,
 ) -> Result<String> {
     match &layer.source {
         Some(crate::DataSource::Annotation) => {
             // Annotation layers: process parameters and return complete VALUES clause (with on-the-fly recycling)
-            process_annotation_layer(layer)
+            process_annotation_layer(layer, dialect)
         }
         Some(crate::DataSource::Identifier(name)) => {
             // Regular table or CTE
@@ -84,6 +85,7 @@ pub fn layer_source_query(
 pub fn build_layer_select_list(
     layer: &Layer,
     type_requirements: &[TypeRequirement],
+    dialect: &dyn SqlDialect,
 ) -> Vec<String> {
     let mut select_exprs = Vec::new();
 
@@ -117,7 +119,7 @@ pub fn build_layer_select_list(
             }
             AestheticValue::Literal(lit) => {
                 // Literals become columns with prefixed aesthetic name
-                format!("{} AS \"{}\"", lit.to_sql(), aes_col_name)
+                format!("{} AS \"{}\"", lit.to_sql(dialect), aes_col_name)
             }
         };
 
@@ -356,13 +358,14 @@ pub fn build_layer_base_query(
     layer: &Layer,
     source_query: &str,
     type_requirements: &[TypeRequirement],
+    dialect: &dyn SqlDialect,
 ) -> String {
     // Annotation layers now go through the same pipeline as regular layers.
     // The source_query for annotations is a VALUES clause with raw column names,
     // and this function wraps it with SELECT expressions that rename to prefixed aesthetic names.
 
     // Build SELECT list with aesthetic renames, casts
-    let select_exprs = build_layer_select_list(layer, type_requirements);
+    let select_exprs = build_layer_select_list(layer, type_requirements, dialect);
     let select_clause = if select_exprs.is_empty() {
         "*".to_string()
     } else {
@@ -679,7 +682,7 @@ where
 /// # Returns
 ///
 /// A complete SQL expression ready to use as a FROM clause
-fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
+fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Result<String> {
     use crate::plot::ArrayElement;
 
     // Step 1: Identify which parameters to use for annotation data
@@ -790,7 +793,7 @@ fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
     // Step 4: Build VALUES rows
     let values_clause = (0..max_length)
         .map(|i| {
-            let row: Vec<String> = columns.iter().map(|col| col[i].to_sql()).collect();
+            let row: Vec<String> = columns.iter().map(|col| col[i].to_sql(dialect)).collect();
             format!("({})", row.join(", "))
         })
         .collect::<Vec<_>>()
@@ -887,6 +890,7 @@ pub fn resolve_orientations(
 mod tests {
     use super::*;
     use crate::plot::{ArrayElement, DataSource, Geom, Layer, ParameterValue};
+    use crate::reader::AnsiDialect;
 
     #[test]
     fn test_annotation_single_scalar() {
@@ -904,7 +908,7 @@ mod tests {
             ParameterValue::String("Test".to_string()),
         );
 
-        let result = process_annotation_layer(&mut layer).unwrap();
+        let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
         // Uses CTE form: WITH __ggsql_values__(cols) AS (VALUES (...)) SELECT * FROM __ggsql_values__
         // Check all values are present (order may vary due to HashMap)
@@ -943,7 +947,7 @@ mod tests {
             ParameterValue::String("Same".to_string()),
         );
 
-        let result = process_annotation_layer(&mut layer).unwrap();
+        let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
         // Should recycle scalar pos2 and label to match array length (3)
         // Uses CTE form: WITH __ggsql_values__(cols) AS (VALUES (...), (...), (...)) SELECT * FROM __ggsql_values__
@@ -973,7 +977,7 @@ mod tests {
             ParameterValue::Array(vec![ArrayElement::Number(10.0), ArrayElement::Number(20.0)]),
         );
 
-        let result = process_annotation_layer(&mut layer);
+        let result = process_annotation_layer(&mut layer, &AnsiDialect);
 
         // Should error with mismatched lengths
         assert!(result.is_err());
@@ -1002,7 +1006,7 @@ mod tests {
             ParameterValue::Array(vec![ArrayElement::Number(10.0), ArrayElement::Number(20.0)]),
         );
 
-        let result = process_annotation_layer(&mut layer).unwrap();
+        let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
         // Both arrays have length 2, should work (order may vary)
         // Uses CTE form: WITH __ggsql_values__(cols) AS (VALUES (...), (...)) SELECT * FROM __ggsql_values__
@@ -1028,7 +1032,7 @@ mod tests {
             ParameterValue::String("Text".to_string()),
         );
 
-        let result = process_annotation_layer(&mut layer).unwrap();
+        let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
         // Should handle different types (order may vary)
         assert!(result.contains("VALUES"));
