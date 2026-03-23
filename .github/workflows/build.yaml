@@ -37,6 +37,8 @@ jobs:
         with:
           shared-key: ${{ runner.os }}-build
           cache-on-failure: true
+          cache-all-crates: true
+          cache-workspace-crates: true
 
       - name: Build with cargo
         run: cargo build --verbose

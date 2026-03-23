@@ -36,6 +36,8 @@ jobs:
         with:
           shared-key: ${{ runner.os }}-R-CMD-Check
           cache-on-failure: true
+          cache-all-crates: true
+          cache-workspace-crates: true
 
       - name: Check disk space
         run: df -h

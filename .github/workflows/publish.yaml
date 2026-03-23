@@ -48,6 +48,8 @@ jobs:
         with:
           shared-key: ${{ runner.os }}-publish
           cache-on-failure: true
+          cache-all-crates: true
+          cache-workspace-crates: true
 
       - name: Setup quarto
         uses: quarto-dev/quarto-actions/setup@v2
