@@ -228,7 +228,10 @@ mod tests {
         let result = ExecutionResult::DataFrame(df);
         let display = format_display_data(result);
 
-        assert!(display.is_none(), "Empty DataFrame (0 columns) should return None");
+        assert!(
+            display.is_none(),
+            "Empty DataFrame (0 columns) should return None"
+        );
     }
 
     #[test]
@@ -240,7 +243,10 @@ mod tests {
         let result = ExecutionResult::DataFrame(df);
         let display = format_display_data(result);
 
-        assert!(display.is_some(), "DataFrame with columns but 0 rows should return Some");
+        assert!(
+            display.is_some(),
+            "DataFrame with columns but 0 rows should return Some"
+        );
     }
 
     #[test]
