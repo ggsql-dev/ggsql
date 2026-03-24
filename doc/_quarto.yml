@@ -121,6 +121,8 @@ website:
           href: get_started/first_plot.qmd
         - text: Grammar of graphics
           href: get_started/grammar.qmd
+        - text: Anatomy of ggsql
+          href: get_started/anatomy.qmd
 
 format:
   html:

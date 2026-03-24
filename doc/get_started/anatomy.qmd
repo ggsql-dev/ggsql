@@ -1,0 +1,34 @@
+---
+title: The anatomy of ggsql
+---
+
+With a slight bit of knowledge about the grammar of graphics, let's dive into how the concepts are present in ggsql, starting with some key concepts and moving on to how it is reflected in the syntax.
+
+## Layers
+ggsql is composable, allowing you to create arbitrarily complex visualizations. Central to this is the concept of layers. A layer is a single visual encoding of some underlying data, e.g. [points](../syntax/layer/type/point.qmd) for a scatterplot, or [bars](../syntax/layer/type/bar.qmd) for a barplot. You can have multiple layers in which case they are stacked on top of each other in the order they are declared (i.e. a layer declared last will be on top and overlap any layer declared before it). A scatterplot with a regression line consist of two layers: A [point](../syntax/layer/type/point.qmd) layer and a [smooth](../syntax/layer/type/smooth.qmd) layer.
+
+Layers may show data directly, e.g. a [point](../syntax/layer/type/point.qmd) layer will show each observation as a point, or it may apply a statistical transformation and show the result of that, e.g. a [histogram](../syntax/layer/type/histogram.qmd) layer will bin and count your data before showing the result as bars. 
+
+## Aesthetics
+You will encounter aesthetics throughout the documentation and it is arguably one of the most important concepts to get right. Aesthetics are the things that describe the visual entities that makes up a layer, e.g. the [color](../syntax/scale/aesthetic/1_color.qmd) of a point, the [linewidth](../syntax/scale/aesthetic/linewidth.qmd) of a line, and the [opacity](../syntax/scale/aesthetic/2_opacity.qmd) of a polygon.
+
+There are two types of aesthetics: position aesthetics and material aesthetics. The former are related to *where* an entity is *placed* and is deeply connected to the coordinate system of the plot. The latter are related to *how* the entity *looks*.
+
+Aesthetics can either be *mapped* or *set*. You use mapping if you want the aesthetic to be related to values in your data, e.g. have fill color be controlled by a category column from your dataset. You use setting when you wish to fix an aesthetic to a specific value, not related to your data, e.g. you want to set linewidth to 2pt.  
+
+## Scales
+When you map data to an aesthetic it will seldom have values that are meaningful for the aesthetic. Consider mapping `region` to `fill` because you wish the fill color shows the geographical region the data pertains to. `region` might contain values such as `Asia`, `Europe`, and `South America` which are not meaningful color values. How do you translate these values into something the aesthetic understands?
+
+The answer is using a scale. When mapping an aesthetic it will automatically be scaled by a default scale to ensure that the aesthetic receives values it understands, but you can take control of the scaling and e.g. use a different color palette.
+
+## The syntax
+Before we move on, let's examine how the concepts we have just described are reflected in the ggsql syntax. Often these will be enough for your basic visualization needs.
+
+### `VISUALISE`
+Every ggsql query starts with a `VISUALISE` (or `VISUALIZE`) clause. It denotes that we are exiting regular SQL syntax and entering ggsql. 
+
+### DRAW
+
+### SCALE
+
+## Examples
