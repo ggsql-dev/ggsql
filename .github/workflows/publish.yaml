@@ -37,9 +37,6 @@ jobs:
       - name: Install LLVM
         run: sudo apt-get install -y llvm
 
-      - name: Install wasm-pack
-        run: cargo install wasm-pack
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -50,6 +47,9 @@ jobs:
           cache-on-failure: true
           cache-all-crates: true
           cache-workspace-crates: true
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
 
       - name: Setup quarto
         uses: quarto-dev/quarto-actions/setup@v2

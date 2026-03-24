@@ -32,9 +32,6 @@ jobs:
       - name: Install LLVM
         run: sudo apt-get install -y llvm
 
-      - name: Install wasm-pack
-        run: cargo install wasm-pack
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -48,6 +45,9 @@ jobs:
 
       - name: Run Rust formatting check
         run: cargo fmt --all -- --check
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
 
       - name: Build with cargo
         run: cargo build
