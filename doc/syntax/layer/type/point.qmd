@@ -57,6 +57,8 @@ DRAW point
     FILTER sex = 'female'
 ```
 
+When points are plotted on a discrete scale you will likely see a lot of overplotting. Use jitter position to introduce a bit of random offset to counter that.
+
 ```{ggsql}
 VISUALISE species AS x, sex AS y, island AS fill FROM ggsql:penguins
 DRAW point

@@ -4,7 +4,7 @@ title: Faceting
 
 ggsql provides one or two aesthetics related to faceting. These are special in the sense that they do not alter the display of the single data values, but rather alter in which plot they appear. While it is possible to map to these aesthetics in a layer they are most often applied globally as part of the [`FACET` clause](../../clause/facet.qmd).
 
-The aesthetics provided are either `panel` (for 1-dimensional faceting) or `row` and `column` (for 2-dimensional faceting). These aesthetics have to compatible with the facet clause: it is not possible to map to `panel` in a 2-dimensional faceting plot nor is it possible to map `row` and `column` in a 1-dimensional plot.
+The aesthetics provided are either `panel` (for 1-dimensional faceting) or `row` and `column` (for 2-dimensional faceting). These aesthetics have to be compatible with the facet clause: it is not possible to map to `panel` in a 2-dimensional faceting plot nor is it possible to map `row` and `column` in a 1-dimensional plot.
 
 ## Literal values
 Scales for facet aesthetics never use an output range and always relate to the input range. This means that no concept of literal values applies.

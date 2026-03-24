@@ -168,7 +168,7 @@ If `oob => 'squish'` then the terminal labels are formatted as e.g. "≥ 10" to 
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x 
-    RENAMING 50 => 'Fifty'
+    RENAMING 20 => 'Twenty'
 ```
 
 #### Adding suffix to break labels
