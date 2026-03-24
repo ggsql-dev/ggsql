@@ -38,12 +38,15 @@ jobs:
       - name: Caching
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: v3-rust
+          prefix-key: v4-rust
           shared-key: ${{ runner.os }}-build
           cache-on-failure: true
 
       - name: Run Rust formatting check
         run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy -- -D warnings
 
       - name: Install wasm-pack
         run: cargo install wasm-pack
