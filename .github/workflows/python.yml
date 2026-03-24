@@ -1,7 +1,10 @@
 name: Python
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   test:
@@ -42,8 +45,9 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ggsql-python
+          prefix-key: v2-rust
           shared-key: ${{ matrix.os }}-python
+          cache-on-failure: true
 
       - name: Set up MSVC (Windows)
         if: runner.os == 'Windows'

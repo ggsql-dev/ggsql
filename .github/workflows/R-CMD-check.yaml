@@ -1,6 +1,10 @@
 name: R-CMD-Check.yaml
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -30,16 +34,15 @@ jobs:
       - name: Caching
         uses: Swatinem/rust-cache@v2
         with:
+          prefix-key: v2-rust
           shared-key: ${{ runner.os }}-R-CMD-Check
           cache-on-failure: true
-          cache-all-crates: true
-          cache-workspace-crates: true
 
       - name: Check disk space
         run: df -h
 
       - name: Setup CLI tools
-        run: cargo install --path src
+        run: cargo install --release --path src
 
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
