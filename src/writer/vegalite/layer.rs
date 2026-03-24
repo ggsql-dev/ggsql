@@ -1817,11 +1817,19 @@ impl BoxplotRenderer {
         let mut box_part = create_layer(
             &summary_prototype,
             "box",
-            json!({
-                "type": "bar",
-                "width": width_value,
-                "align": "center"
-            }),
+            if is_horizontal {
+                json!({
+                    "type": "bar",
+                    "height": width_value,
+                    "baseline": "middle"
+                })
+            } else {
+                json!({
+                    "type": "bar",
+                    "width": width_value,
+                    "align": "center"
+                })
+            },
         );
         box_part["encoding"][value_var1] = y_encoding.clone();
         box_part["encoding"][value_var2] = y2_encoding.clone();
@@ -1830,11 +1838,19 @@ impl BoxplotRenderer {
         let mut median_line = create_layer(
             &summary_prototype,
             "median",
-            json!({
-                "type": "tick",
-                "width": width_value,
-                "align": "center"
-            }),
+            if is_horizontal {
+                json!({
+                    "type": "tick",
+                    "height": width_value,
+                    "baseline": "middle"
+                })
+            } else {
+                json!({
+                    "type": "tick",
+                    "width": width_value,
+                    "align": "center"
+                })
+            },
         );
         median_line["encoding"][value_var1] = y_encoding;
 
