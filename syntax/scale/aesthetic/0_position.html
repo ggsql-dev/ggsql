@@ -595,7 +595,6 @@ gradient teal.
   <ul>
   <li><a href="#literal-values" id="toc-literal-values" class="nav-link active" data-scroll-target="#literal-values">Literal values</a></li>
   <li><a href="#aesthetic-families" id="toc-aesthetic-families" class="nav-link" data-scroll-target="#aesthetic-families">Aesthetic families</a></li>
-  <li><a href="#coordinate-system" id="toc-coordinate-system" class="nav-link" data-scroll-target="#coordinate-system">Coordinate system</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
@@ -621,7 +620,8 @@ gradient teal.
 </header>
 
 
-<p>Position aesthetics (<code>x</code> and <code>y</code>, plus all their variants) relate data to placement in the coordinate system of the plot. All layers need at least one of each positional aesthetic mapped in order to show its data. However, the layer may compute positional aesthetics from the mapping. For example, a bar plot calculates the <code>y</code> aesthetic by counting the number of records in each group.</p>
+<p>Position aesthetics relate data to placement in the coordinate system of the plot. All layers need at least one of each positional aesthetic mapped in order to show its data. However, the layer may compute positional aesthetics from the mapping. For example, a bar plot calculates the <code>y</code> aesthetic by counting the number of records in each group defined by the mapped <code>x</code> aesthetic.</p>
+<p>In the above we use <code>x</code>and <code>y</code> as examples of position aesthetics but in reality the position aesthetic names are defined by the coordinate system in use. A Cartesian coordinate system recognizes <code>x</code> and <code>y</code> whereas a polar coordinate system recognizes <code>radius</code> and <code>angle</code>. You can implicitly choose the coordinate system by mapping to the aesthetics that it uses, i.e.&nbsp;if you map to <code>radius</code> and <code>angle</code> then a polar coordinate system will be chosen for you.</p>
 <section id="literal-values" class="level2">
 <h2 class="anchored" data-anchor-id="literal-values">Literal values</h2>
 <p>Scales for position aesthetics never use an output range and always relate to the input range. This is a practical decision by ggsql because different writers may treat the positional aesthetic in different ways. <a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a></p>
@@ -641,18 +641,13 @@ Note
 </section>
 <section id="aesthetic-families" class="level2">
 <h2 class="anchored" data-anchor-id="aesthetic-families">Aesthetic families</h2>
-<p>Positional aesthetics consist of two families: The <code>x</code> and <code>y</code> family. Each of these consist of their primary aesthetic along with a range of sub aesthetic defined by their suffix:</p>
+<p>Positional aesthetics have variants defined by a suffix attached to the primary name (e.g.&nbsp;<code>x</code>). The recognized suffixes are:</p>
 <ul>
-<li><code>2</code></li>
 <li><code>end</code></li>
 <li><code>min</code></li>
 <li><code>max</code></li>
 </ul>
-<p>Which version of aesthetic to use depends on the layer, but all aesthetics within a family is scaled by the same scale, which is named after its primary aesthetic. This means that even when rendering a layer that only uses <code>xmin</code> and <code>xmax</code>, you will still scale it by writing <code>SCALE x ...</code> and label it by writing <code>LABEL x =&gt; ...</code></p>
-</section>
-<section id="coordinate-system" class="level2">
-<h2 class="anchored" data-anchor-id="coordinate-system">Coordinate system</h2>
-<p>Another thing that makes positional aesthetics different from other aesthetic is that they are dependent on a coordinate system which takes position scales and defines how values should be converted to a location on a plane. The default Cartesian coordinate system does what is generally expected: it places points along two perpendicular axes in a 2D plane. Other systems such as polar coordinates may dramatically change the look of a layer, transforming both the straightness of lines and positional relation of data.</p>
+<p>Which version of an aesthetic to use depends on the layer, but all aesthetics within a family is scaled by the same scale, which is named after its primary aesthetic. This means that even when rendering a layer that only uses <code>xmin</code> and <code>xmax</code>, you will still scale it by writing <code>SCALE x ...</code> and label it by writing <code>LABEL x =&gt; ...</code></p>
 
 
 </section>
