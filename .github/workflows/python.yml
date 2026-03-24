@@ -45,7 +45,6 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: v4-rust
           shared-key: ${{ matrix.os }}-python
           cache-on-failure: true
 
@@ -65,15 +64,7 @@ jobs:
           working-directory: ggsql-python
           command: build
           args: --release
-          sccache: true
-        env:
-          # On Windows/MSVC, the cc crate's cl.exe detection bypasses its
-          # RUSTC_WRAPPER-based sccache fallback. Setting CC/CXX tells the
-          # cc crate to parse "sccache" as a known wrapper and "cl" as the
-          # compiler, routing DuckDB C++ builds through sccache.
-          # ilammy/msvc-dev-cmd puts cl.exe on PATH so sccache can find it.
-          CC: ${{ runner.os == 'Windows' && 'sccache cl' || '' }}
-          CXX: ${{ runner.os == 'Windows' && 'sccache cl' || '' }}
+          sccache: false
 
       - name: Install wheel and test dependencies
         shell: bash

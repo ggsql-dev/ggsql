@@ -31,11 +31,6 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: windows-release
-
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
@@ -85,11 +80,6 @@ jobs:
         with:
           targets: x86_64-apple-darwin, aarch64-apple-darwin
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: macos-release
-
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
@@ -134,11 +124,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-gnu
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: linux-release
 
       - name: Install system dependencies
         run: |
@@ -188,11 +173,6 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: cargo-publish
 
       - name: Get crates.io publish token
         uses: rust-lang/crates-io-auth-action@v1
