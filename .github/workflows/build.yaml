@@ -41,7 +41,7 @@ jobs:
           cache-workspace-crates: true
 
       - name: Build with cargo
-        run: cargo build --verbose
+        run: cargo build
 
       - name: Run tree-sitter tests
         working-directory: tree-sitter-ggsql
