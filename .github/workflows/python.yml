@@ -47,6 +47,7 @@ jobs:
         with:
           shared-key: ${{ matrix.os }}-python
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.python == '3.13' }}
 
       - name: Set up MSVC (Windows)
         if: runner.os == 'Windows'

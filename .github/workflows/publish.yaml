@@ -41,6 +41,7 @@ jobs:
         with:
           shared-key: ${{ runner.os }}-publish
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install wasm-pack
         run: cargo install wasm-pack
