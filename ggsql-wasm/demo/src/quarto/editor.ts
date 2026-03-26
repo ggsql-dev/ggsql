@@ -6,6 +6,7 @@ import {
 } from "vscode-oniguruma";
 import { Registry, parseRawGrammar, type IGrammar } from "vscode-textmate";
 import { WASM_BASE } from "../wasmBase";
+import { registerGgsqlLinks } from "./links";
 
 // Must be set before any Monaco editor is created
 (self as any).MonacoEnvironment = {
@@ -97,7 +98,7 @@ monaco.editor.defineTheme("ggsql-pygments", {
 
 let languageRegistered = false;
 
-async function ensureLanguageRegistered(): Promise<void> {
+async function ensureLanguageRegistered(siteRoot: string): Promise<void> {
   if (languageRegistered) return;
   languageRegistered = true;
 
@@ -149,6 +150,8 @@ async function ensureLanguageRegistered(): Promise<void> {
       },
     });
   }
+
+  registerGgsqlLinks(siteRoot);
 }
 
 // TextMate state wrapper for Monaco
@@ -185,9 +188,10 @@ function editorHeight(lineCount: number): number {
 
 export async function createEditor(
   container: HTMLElement,
-  initialValue: string
+  initialValue: string,
+  siteRoot: string = "./"
 ): Promise<EditorInstance> {
-  await ensureLanguageRegistered();
+  await ensureLanguageRegistered(siteRoot);
 
   const lineCount = initialValue.split("\n").length;
   container.style.height = editorHeight(lineCount) + "px";
@@ -198,6 +202,7 @@ export async function createEditor(
     theme: "ggsql-pygments",
     automaticLayout: true,
     minimap: { enabled: false },
+    hover: { delay: 500 },
     fontSize: 13,
     lineNumbers: "on",
     glyphMargin: false,
