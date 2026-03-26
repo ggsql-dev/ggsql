@@ -47,6 +47,7 @@ jobs:
         with:
           shared-key: ${{ matrix.os }}-python
           cache-on-failure: true
+          add-rust-environment-hash-key: false
           save-if: ${{ github.ref == 'refs/heads/main' && matrix.python == '3.13' }}
 
       - name: Set up MSVC (Windows)
