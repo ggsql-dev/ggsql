@@ -60,7 +60,6 @@ jobs:
         run: cargo packager --release --formats wix
 
       - name: Sign installers
-        id: sign-files
         uses: ./.github/workflows/actions/sign-files
         with:
           paths: |
