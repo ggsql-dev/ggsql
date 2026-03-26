@@ -1,4 +1,4 @@
-name: build-test.yaml
+name: Build and Test
 
 on:
   push:
