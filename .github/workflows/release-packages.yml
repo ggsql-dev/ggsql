@@ -77,14 +77,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ggsql-windows-nsis
-          path: target/release/packager/*.exe
+          path: src/target/release/packager/*.exe
           retention-days: 30
 
       - name: Upload MSI installer
         uses: actions/upload-artifact@v4
         with:
           name: ggsql-windows-msi
-          path: target/release/packager/*.msi
+          path: src/target/release/packager/*.msi
           retention-days: 30
 
   build-macos:
