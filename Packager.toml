@@ -1,11 +1,9 @@
-name = "ggsql"
+product_name = "ggsql"
 
-[[bin]]
-name = "ggsql"
+[[binaries]]
 path = "target/release/ggsql"
 main = true
 
-[[bin]]
-name = "ggsql-jupyter"
+[[binaries]]
 path = "target/release/ggsql-jupyter"
 main = false
