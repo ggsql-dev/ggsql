@@ -4,8 +4,7 @@ on:
   push:
     tags:
       - "v*"
-  pull_request:
-    branches: [main]
+      - "sign-win"
   workflow_dispatch:
 
 env:
