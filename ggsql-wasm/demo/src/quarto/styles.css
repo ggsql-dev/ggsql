@@ -29,6 +29,10 @@
   display: none;
 }
 
+.ggsql-editor-wrapper .monaco-editor .overflow-guard {
+  touch-action: pan-y !important;
+}
+
 .ggsql-error-display.visible {
   display: block;
 }

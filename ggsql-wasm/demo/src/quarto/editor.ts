@@ -173,24 +173,14 @@ export interface EditorInstance {
   editor: monaco.editor.IStandaloneCodeEditor;
 }
 
-const LINE_HEIGHT = 20;
 const PADDING_TOP = 8;
 const PADDING_BOTTOM = 8;
-const MAX_EDITOR_HEIGHT = 400;
-
-function editorHeight(lineCount: number): number {
-  const contentHeight = lineCount * LINE_HEIGHT + PADDING_TOP + PADDING_BOTTOM;
-  return Math.min(contentHeight, MAX_EDITOR_HEIGHT);
-}
 
 export async function createEditor(
   container: HTMLElement,
   initialValue: string
 ): Promise<EditorInstance> {
   await ensureLanguageRegistered();
-
-  const lineCount = initialValue.split("\n").length;
-  container.style.height = editorHeight(lineCount) + "px";
 
   const editor = monaco.editor.create(container, {
     value: initialValue,
@@ -219,8 +209,8 @@ export async function createEditor(
 
   // Auto-resize editor height to content
   editor.onDidContentSizeChange(() => {
-    const newLineCount = editor.getModel()?.getLineCount() || lineCount;
-    container.style.height = editorHeight(newLineCount) + "px";
+    const contentHeight = editor.getContentHeight();
+    container.style.height = contentHeight + "px";
     editor.layout();
   });
 
