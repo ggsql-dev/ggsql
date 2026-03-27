@@ -222,7 +222,7 @@ async function applyEditors(
 
     cell.codeScaffold.replaceWith(wrapper);
 
-    const editorInst = await createEditor(editorContainer, cell.query);
+    const editorInst = await createEditor(editorContainer, cell.query, SITE_ROOT);
     cell.editor = editorInst;
 
     if (cell.result && cell.visId && cell.visContainer) {
