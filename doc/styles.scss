@@ -41,7 +41,20 @@ body:has(.hero-banner) {
   background-attachment: fixed;
 }
 
+// Animated background line charts canvas
+#bg-lines {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .hero-banner {
+  position: relative;
+  z-index: 1;
   width: 100%;
   padding: 4rem 2rem;
   background: transparent;
@@ -162,6 +175,8 @@ body:has(.hero-banner) {
 
 
 .content-block {
+  position: relative;
+  z-index: 1;
   max-width: 1200px;
   margin: 2rem auto;
   padding: 4rem 2rem 2rem;
