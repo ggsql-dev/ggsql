@@ -115,6 +115,21 @@ body:has(.hero-banner) {
     text-align: left;
   }
 
+  // Blurred backdrop behind hero text to stay readable over animated lines
+  h1, .hero-body > p {
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -30px -40px;
+      background: var(--brand-paleteal, #DEF1EB);
+      filter: blur(20px);
+      z-index: -1;
+      border-radius: 50%;
+    }
+  }
+
   .hero-body {
     display: flex;
     flex-direction: column;
@@ -529,6 +544,20 @@ body:has(.hero-banner) {
 .cta-section {
   text-align: center;
   padding: 2rem 0;
+
+  h2, > p {
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -30px -40px;
+      background: var(--brand-paleteal, #DEF1EB);
+      filter: blur(20px);
+      z-index: -1;
+      border-radius: 50%;
+    }
+  }
 
   h2 {
     margin-bottom: 1rem;
