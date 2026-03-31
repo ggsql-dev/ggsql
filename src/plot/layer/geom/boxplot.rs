@@ -169,7 +169,7 @@ fn boxplot_sql_compute_summary(
     coef: &f64,
     dialect: &dyn SqlDialect,
 ) -> String {
-    let quoted_groups: Vec<String> = groups.iter().map(|g| format!("\"{}\"", g)).collect();
+    let quoted_groups: Vec<String> = groups.iter().map(|g| naming::quote_ident(g)).collect();
     let groups_str = quoted_groups.join(", ");
     let lower_expr = dialect.sql_greatest(&[&format!("q1 - {coef} * (q3 - q1)"), "min"]);
     let upper_expr = dialect.sql_least(&[&format!("q3 + {coef} * (q3 - q1)"), "max"]);
@@ -178,7 +178,7 @@ fn boxplot_sql_compute_summary(
     let q3 = dialect.sql_percentile(value, 0.75, from, groups);
     let qt = "\"__ggsql_qt__\"";
     let fn_alias = "\"__ggsql_fn__\"";
-    let quoted_value = format!("\"{}\"", value);
+    let quoted_value = naming::quote_ident(value);
     format!(
         "SELECT
           *,
@@ -211,12 +211,12 @@ fn boxplot_sql_filter_outliers(groups: &[String], value: &str, from: &str) -> St
     let mut join_pairs = Vec::new();
     let mut keep_columns = Vec::new();
     for column in groups {
-        let quoted = format!("\"{}\"", column);
+        let quoted = naming::quote_ident(column);
         join_pairs.push(format!("raw.{} = summary.{}", quoted, quoted));
         keep_columns.push(format!("raw.{}", quoted));
     }
 
-    let quoted_value = format!("\"{}\"", value);
+    let quoted_value = naming::quote_ident(value);
     // We're joining outliers with the summary to use the lower/upper whisker
     // values as a filter
     format!(
@@ -245,7 +245,7 @@ fn boxplot_sql_append_outliers(
     let value2_name = naming::stat_column("value2");
     let type_name = naming::stat_column("type");
 
-    let quoted_groups: Vec<String> = groups.iter().map(|g| format!("\"{}\"", g)).collect();
+    let quoted_groups: Vec<String> = groups.iter().map(|g| naming::quote_ident(g)).collect();
     let groups_str = quoted_groups.join(", ");
 
     // Helper to build visual-element rows from summary table

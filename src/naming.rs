@@ -225,6 +225,21 @@ pub fn aesthetic_column(aesthetic: &str) -> String {
 }
 
 // ============================================================================
+// SQL Quoting
+// ============================================================================
+
+/// Double-quote a SQL identifier for case-preserving databases (e.g. Snowflake).
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert_eq!(naming::quote_ident("__ggsql_aes_x__"), "\"__ggsql_aes_x__\"");
+/// ```
+pub fn quote_ident(name: &str) -> String {
+    format!("\"{}\"", name)
+}
+
+// ============================================================================
 // Detection Functions
 // ============================================================================
 

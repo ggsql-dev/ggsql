@@ -314,9 +314,9 @@ pub fn apply_pre_stat_transform(
         .filter(|col| seen.insert(&col.name))
         .map(|col| {
             if let Some((_, sql)) = transform_exprs.iter().find(|(c, _)| c == &col.name) {
-                format!("{} AS \"{}\"", sql, col.name)
+                format!("{} AS {}", sql, naming::quote_ident(&col.name))
             } else {
-                format!("\"{}\"", col.name)
+                naming::quote_ident(&col.name)
             }
         })
         .collect();

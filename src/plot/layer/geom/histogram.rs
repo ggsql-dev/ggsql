@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use super::types::{get_column_name, CLOSED_VALUES, POSITION_VALUES};
+use super::types::{get_quoted_column_name, CLOSED_VALUES, POSITION_VALUES};
 use super::{
     DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
     StatResult,
@@ -125,7 +125,7 @@ fn stat_histogram(
     dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
     // Get x column name from aesthetics
-    let x_col = get_column_name(aesthetics, "pos1").ok_or_else(|| {
+    let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
         GgsqlError::ValidationError("Histogram requires 'x' aesthetic mapping".to_string())
     })?;
 
@@ -213,7 +213,7 @@ fn stat_histogram(
             ));
         }
         if let Some(weight_col) = weight_value.column_name() {
-            format!("SUM({})", weight_col)
+            format!("SUM({})", naming::quote_ident(weight_col))
         } else {
             "COUNT(*)".to_string()
         }

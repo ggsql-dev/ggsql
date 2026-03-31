@@ -186,13 +186,13 @@ pub trait SqlDialect {
         // Uses NTILE(4) to divide data into quartiles, then interpolates between boundaries.
         let group_filter = groups
             .iter()
-            .map(|g| format!("AND \"__ggsql_pct__\".\"{g}\" IS NOT DISTINCT FROM \"__ggsql_qt__\".\"{g}\""))
+            .map(|g| { let q = crate::naming::quote_ident(g); format!("AND \"__ggsql_pct__\".{q} IS NOT DISTINCT FROM \"__ggsql_qt__\".{q}") })
             .collect::<Vec<_>>()
             .join(" ");
 
         let lo_tile = (fraction * 4.0).ceil() as usize;
         let hi_tile = lo_tile + 1;
-        let quoted_column = format!("\"{}\"", column);
+        let quoted_column = crate::naming::quote_ident(column);
 
         format!(
             "(SELECT (\

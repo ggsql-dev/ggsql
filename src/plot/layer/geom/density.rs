@@ -229,7 +229,7 @@ fn density_sql_bandwidth(
     let (groups_select, group_by) = if groups.is_empty() {
         (String::new(), String::new())
     } else {
-        let quoted_groups: Vec<String> = groups.iter().map(|g| format!("\"{}\"", g)).collect();
+        let quoted_groups: Vec<String> = groups.iter().map(|g| naming::quote_ident(g)).collect();
         let groups_str = quoted_groups.join(", ");
         (
             format!("\n      {},", groups_str),
@@ -237,7 +237,7 @@ fn density_sql_bandwidth(
         )
     };
 
-    let quoted_value = format!("\"{}\"", value);
+    let quoted_value = naming::quote_ident(value);
     format!(
         "WITH RECURSIVE
           bandwidth AS (
@@ -266,7 +266,7 @@ fn silverman_rule(
     // The query computes Silverman's rule of thumb (R's `stats::bw.nrd0()`).
     // We absorb the adjustment in the 0.9 multiplier of the rule
     let adjust = 0.9 * adjust;
-    let v = format!("\"{}\"", value_column);
+    let v = naming::quote_ident(value_column);
     let stddev = format!("SQRT(AVG({v}*{v}) - AVG({v})*AVG({v}))", v = v);
     let q75 = dialect.sql_percentile(value_column, 0.75, from, groups);
     let q25 = dialect.sql_percentile(value_column, 0.25, from, groups);
@@ -354,28 +354,28 @@ fn build_data_cte(
 ) -> String {
     // Include weight column if provided, otherwise default to 1.0
     let weight_col = if let Some(w) = weight {
-        format!(", \"{}\" AS weight", w)
+        format!(", {} AS weight", naming::quote_ident(w))
     } else {
         ", 1.0 AS weight".to_string()
     };
     let smooth_col = if let Some(s) = smooth {
-        format!(", \"{}\"", s)
+        format!(", {}", naming::quote_ident(s))
     } else {
         "".to_string()
     };
 
-    let quoted_value = format!("\"{}\"", value);
+    let quoted_value = naming::quote_ident(value);
     // Only filter out nulls in value column, keep NULLs in group columns
     let mut filter_valid = format!("{} IS NOT NULL", quoted_value);
     if let Some(s) = smooth {
         filter_valid = format!(
-            "{filter} AND \"{}\" IS NOT NULL",
-            s,
+            "{filter} AND {} IS NOT NULL",
+            naming::quote_ident(s),
             filter = filter_valid,
         );
     }
 
-    let quoted_groups: Vec<String> = group_by.iter().map(|g| format!("\"{}\"", g)).collect();
+    let quoted_groups: Vec<String> = group_by.iter().map(|g| naming::quote_ident(g)).collect();
     format!(
         "data AS (
           SELECT {groups}{value} AS val{weight_col}{smooth_col}
@@ -430,7 +430,7 @@ fn build_grid_cte(
             x_formula = x_formula
         )
     } else {
-        let quoted_groups: Vec<String> = groups.iter().map(|g| format!("\"{}\"", g)).collect();
+        let quoted_groups: Vec<String> = groups.iter().map(|g| naming::quote_ident(g)).collect();
         let groups_str = quoted_groups.join(", ");
         // When tails is specified, create full_grid; otherwise create grid directly
         let cte_name = if tails.is_some() { "full_grid" } else { "grid" };
@@ -455,14 +455,12 @@ fn build_grid_cte(
             let bandwidth_join_conds: Vec<String> = groups
                 .iter()
                 .map(|g| {
-                    format!(
-                        "full_grid.\"{}\" IS NOT DISTINCT FROM bandwidth.\"{}\"",
-                        g, g
-                    )
+                    let q = naming::quote_ident(g);
+                    format!("full_grid.{q} IS NOT DISTINCT FROM bandwidth.{q}")
                 })
                 .collect();
             let grid_groups_select: Vec<String> =
-                groups.iter().map(|g| format!("full_grid.\"{}\"", g)).collect();
+                groups.iter().map(|g| format!("full_grid.{}", naming::quote_ident(g))).collect();
 
             format!(
                 "{seq_cte},
@@ -519,7 +517,7 @@ fn compute_density(
     } else {
         group_by
             .iter()
-            .map(|g| format!("data.\"{}\" IS NOT DISTINCT FROM bandwidth.\"{}\"", g, g))
+            .map(|g| { let q = naming::quote_ident(g); format!("data.{q} IS NOT DISTINCT FROM bandwidth.{q}") })
             .collect::<Vec<String>>()
             .join(" AND ")
     };
@@ -530,7 +528,7 @@ fn compute_density(
     } else {
         let grid_data_conds: Vec<String> = group_by
             .iter()
-            .map(|g| format!("grid.\"{}\" IS NOT DISTINCT FROM data.\"{}\"", g, g))
+            .map(|g| { let q = naming::quote_ident(g); format!("grid.{q} IS NOT DISTINCT FROM data.{q}") })
             .collect();
         format!("WHERE {}", grid_data_conds.join(" AND "))
     };
@@ -544,7 +542,7 @@ fn compute_density(
     );
 
     // Build group-related SQL fragments
-    let grid_groups: Vec<String> = group_by.iter().map(|g| format!("grid.\"{}\"", g)).collect();
+    let grid_groups: Vec<String> = group_by.iter().map(|g| format!("grid.{}", naming::quote_ident(g))).collect();
     let aggregation = format!(
         "GROUP BY grid.x{grid_group_by}
         ORDER BY grid.x{grid_group_by}",
@@ -554,7 +552,7 @@ fn compute_density(
     let groups = if group_by.is_empty() {
         String::new()
     } else {
-        let quoted: Vec<String> = group_by.iter().map(|g| format!("\"{}\"", g)).collect();
+        let quoted: Vec<String> = group_by.iter().map(|g| naming::quote_ident(g)).collect();
         format!("{},", quoted.join(", "))
     };
 

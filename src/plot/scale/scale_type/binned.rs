@@ -8,6 +8,7 @@ use super::{
     expand_numeric_range, resolve_common_steps, ScaleDataContext, ScaleTypeKind, ScaleTypeTrait,
     TransformKind, CLOSED_VALUES, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_BINNED,
 };
+use crate::naming;
 use crate::plot::types::{
     ArrayConstraint, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
 };
@@ -727,7 +728,7 @@ fn build_bin_condition(
         (if is_first { ">=" } else { ">" }, "<=")
     };
 
-    let quoted = format!("\"{}\"", column_name);
+    let quoted = naming::quote_ident(column_name);
     if oob_squish && is_first && is_last {
         // Single bin with squish: capture everything
         "TRUE".to_string()

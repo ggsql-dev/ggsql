@@ -150,6 +150,11 @@ pub fn get_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String>
     })
 }
 
+/// Helper to extract a double-quoted column name for use in SQL expressions.
+pub fn get_quoted_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String> {
+    get_column_name(aesthetics, aesthetic).map(|n| crate::naming::quote_ident(&n))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

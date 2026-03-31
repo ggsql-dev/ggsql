@@ -178,7 +178,7 @@ fn stat_bar_count(
         if let Some(weight_col) = weight_value.column_name() {
             if schema_columns.contains(weight_col) {
                 // weight column exists - use SUM (but still call it "count")
-                format!("SUM({}) AS \"{}\"", weight_col, stat_count)
+                format!("SUM({}) AS \"{}\"", naming::quote_ident(weight_col), stat_count)
             } else {
                 // weight mapped but column doesn't exist - fall back to COUNT
                 // (this shouldn't happen with upfront validation, but handle gracefully)
@@ -264,7 +264,7 @@ fn stat_bar_count(
         )
     } else {
         // x is mapped - use existing logic with two-stage query
-        let x_col = x_col.unwrap();
+        let x_col = naming::quote_ident(&x_col.unwrap());
 
         // Build grouped columns (group_by includes partition_by + facet variables + x)
         let group_cols = if group_by.is_empty() {
