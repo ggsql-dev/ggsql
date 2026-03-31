@@ -46,9 +46,9 @@ use crate::{DataFrame, GgsqlError, Result};
 ///
 /// Default implementations produce portable ANSI SQL.
 pub trait SqlDialect {
-    /// SQL type name for numeric columns (e.g., "DOUBLE")
+    /// SQL type name for numeric columns (e.g., "DOUBLE PRECISION")
     fn number_type_name(&self) -> Option<&str> {
-        Some("DOUBLE")
+        Some("DOUBLE PRECISION")
     }
 
     /// SQL type name for integer columns (e.g., "BIGINT")

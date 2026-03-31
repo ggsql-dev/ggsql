@@ -423,17 +423,22 @@ impl DataExplorerState {
         if wants_summary {
             match display {
                 "integer" | "floating" => {
+                    let float_type = dialect.number_type_name().unwrap_or("DOUBLE PRECISION");
                     select_parts.push(format!("MIN({}) AS min_val", quoted_col));
                     select_parts.push(format!("MAX({}) AS max_val", quoted_col));
-                    select_parts.push(format!("AVG(CAST({} AS DOUBLE)) AS mean_val", quoted_col));
+                    select_parts.push(format!(
+                        "AVG(CAST({} AS {})) AS mean_val",
+                        quoted_col, float_type
+                    ));
                     // Stddev: fetch raw aggregates, compute in Rust
                     select_parts.push(format!(
-                        "SUM(CAST({c} AS DOUBLE) * CAST({c} AS DOUBLE)) AS sum_sq",
-                        c = quoted_col
+                        "SUM(CAST({c} AS {t}) * CAST({c} AS {t})) AS sum_sq",
+                        c = quoted_col,
+                        t = float_type
                     ));
                     select_parts.push(format!(
-                        "SUM(CAST({} AS DOUBLE)) AS sum_val",
-                        quoted_col
+                        "SUM(CAST({} AS {})) AS sum_val",
+                        quoted_col, float_type
                     ));
                     select_parts.push(format!("COUNT({}) AS cnt", quoted_col));
                 }
@@ -539,8 +544,9 @@ impl DataExplorerState {
                     // Median via dialect's sql_percentile (uses QUANTILE_CONT on
                     // DuckDB, NTILE fallback on other backends)
                     let col_name = col.name.replace('"', "\"\"");
+                    let from_query = format!("SELECT * FROM {}", self.table_path);
                     let median_expr =
-                        dialect.sql_percentile(&col_name, 0.5, &self.table_path, &[]);
+                        dialect.sql_percentile(&col_name, 0.5, &from_query, &[]);
                     let median_sql = format!("SELECT {} AS median_val", median_expr);
                     if let Ok(median_df) = reader.execute_sql(&median_sql) {
                         if let Some(v) = median_df
