@@ -1,16 +1,29 @@
 //! Violin geom implementation
 
+use super::types::POSITION_VALUES;
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::{
     naming,
     plot::{
-        geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
-        ParameterValue,
+        geom::types::get_column_name, DefaultAestheticValue, DefaultParamValue, ParamConstraint,
+        ParamDefinition, ParameterValue,
     },
     DataFrame, GgsqlError, Mappings, Result,
 };
 use polars::prelude::*;
 use std::collections::HashMap;
+
+/// Valid kernel types for violin density estimation
+const KERNEL_VALUES: &[&str] = &[
+    "gaussian",
+    "epanechnikov",
+    "triangular",
+    "rectangular",
+    "uniform",
+    "biweight",
+    "quartic",
+    "cosine",
+];
 
 /// Violin geom - violin plots (mirrored density)
 #[derive(Debug, Clone, Copy)]
@@ -41,36 +54,49 @@ impl GeomTrait for Violin {
         true
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "bandwidth",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "adjust",
                 default: DefaultParamValue::Number(1.0),
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "kernel",
                 default: DefaultParamValue::String("gaussian"),
+                constraint: ParamConstraint::string_option(KERNEL_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "position",
                 default: DefaultParamValue::String("dodge"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
+                constraint: ParamConstraint::number_range(0.0, 1.0),
             },
-        ]
+            ParamDefinition {
+                name: "tails",
+                default: DefaultParamValue::Number(3.0),
+                constraint: ParamConstraint::number_min(0.0),
+            },
+        ];
+        PARAMS
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[
-            ("pos2", DefaultAestheticValue::Column("pos2")),
-            ("offset", DefaultAestheticValue::Column("density")),
-        ]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos2", DefaultAestheticValue::Column("pos2")),
+                ("offset", DefaultAestheticValue::Column("density")),
+            ],
+        }
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
@@ -88,17 +114,10 @@ impl GeomTrait for Violin {
         aesthetics: &Mappings,
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
-        execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
     ) -> Result<StatResult> {
-        stat_violin(
-            query,
-            aesthetics,
-            group_by,
-            parameters,
-            execute_query,
-            dialect,
-        )
+        stat_violin(query, aesthetics, group_by, parameters, dialect)
     }
 
     /// Post-process the violin DataFrame to scale offset to [0, 0.5 * width].
@@ -172,7 +191,6 @@ fn stat_violin(
     aesthetics: &Mappings,
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
-    execute: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
     dialect: &dyn crate::reader::SqlDialect,
 ) -> Result<StatResult> {
     // Verify y exists
@@ -194,13 +212,14 @@ fn stat_violin(
         ));
     }
 
+    // Violin uses tails parameter from user (default 3.0 set in default_params)
     super::density::stat_density(
         query,
         aesthetics,
         "pos2",
+        None,
         group_by.as_slice(),
         parameters,
-        execute,
         dialect,
     )
 }
@@ -264,15 +283,8 @@ mod tests {
 
         let execute = |sql: &str| reader.execute_sql(sql);
 
-        let result = stat_violin(
-            query,
-            &aesthetics,
-            &groups,
-            &parameters,
-            &execute,
-            &AnsiDialect,
-        )
-        .expect("stat_violin should succeed");
+        let result = stat_violin(query, &aesthetics, &groups, &parameters, &AnsiDialect)
+            .expect("stat_violin should succeed");
 
         // Verify the result is a transformed stat result
         match result {
@@ -336,15 +348,8 @@ mod tests {
 
         let execute = |sql: &str| reader.execute_sql(sql);
 
-        let result = stat_violin(
-            query,
-            &aesthetics,
-            &groups,
-            &parameters,
-            &execute,
-            &AnsiDialect,
-        )
-        .expect("stat_violin should succeed");
+        let result = stat_violin(query, &aesthetics, &groups, &parameters, &AnsiDialect)
+            .expect("stat_violin should succeed");
 
         // Verify the result is a transformed stat result
         match result {
@@ -411,6 +416,77 @@ mod tests {
                 }
                 _ => panic!("Width parameter should have a numeric default"),
             }
+        }
+    }
+
+    #[test]
+    fn test_violin_tails_parameter() {
+        // Verify that the violin geom has a tails parameter with default 3.0
+        let violin = Violin;
+        let params = violin.default_params();
+
+        let tails_param = params.iter().find(|p| p.name == "tails");
+        assert!(
+            tails_param.is_some(),
+            "Violin should have a 'tails' parameter"
+        );
+
+        if let Some(param) = tails_param {
+            match param.default {
+                DefaultParamValue::Number(n) => {
+                    assert!(
+                        (n - 3.0).abs() < 1e-6,
+                        "Default tails should be 3.0, got {}",
+                        n
+                    );
+                }
+                _ => panic!("Tails parameter should have a numeric default"),
+            }
+        }
+
+        // Test with custom tails value
+        let query = "SELECT species, flipper_length FROM penguins";
+        let aesthetics = create_basic_aesthetics();
+        let groups: Vec<String> = vec![];
+        let mut parameters = HashMap::new();
+        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
+        parameters.insert(
+            "kernel".to_string(),
+            ParameterValue::String("gaussian".to_string()),
+        );
+        parameters.insert("tails".to_string(), ParameterValue::Number(1.5)); // Custom tails
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data
+        let setup_sql = "CREATE TABLE penguins AS SELECT * FROM (VALUES
+            ('Adelie', 181.0), ('Adelie', 186.0), ('Adelie', 195.0),
+            ('Gentoo', 217.0), ('Gentoo', 221.0), ('Gentoo', 230.0)
+        ) AS t(species, flipper_length)";
+        reader.execute_sql(setup_sql).unwrap();
+
+        let execute = |sql: &str| reader.execute_sql(sql);
+
+        let result = stat_violin(query, &aesthetics, &groups, &parameters, &AnsiDialect)
+            .expect("stat_violin with custom tails should succeed");
+
+        // Verify the SQL includes the tails constraint
+        match result {
+            StatResult::Transformed {
+                query: stat_query, ..
+            } => {
+                // The generated SQL should include the tails filtering
+                // We verify this by checking the SQL contains the bandwidth filtering
+                assert!(
+                    stat_query.contains("1.5"),
+                    "SQL should contain the custom tails value 1.5"
+                );
+
+                // Execute and verify it produces results
+                let df = execute(&stat_query).expect("Generated SQL should execute");
+                assert!(df.height() > 0, "Should produce density data");
+            }
+            _ => panic!("Expected Transformed result"),
         }
     }
 

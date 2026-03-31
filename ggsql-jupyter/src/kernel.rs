@@ -317,30 +317,32 @@ impl KernelServer {
         match result {
             Ok(exec_result) => {
                 // If the connection changed, open a new connection comm
-                let is_connection_changed = matches!(&exec_result, ExecutionResult::ConnectionChanged { .. });
+                let is_connection_changed =
+                    matches!(&exec_result, ExecutionResult::ConnectionChanged { .. });
                 if let ExecutionResult::ConnectionChanged { ref uri, .. } = &exec_result {
                     self.open_connection_comm(uri).await?;
                 }
 
                 // Send execute_result (not display_data)
                 // Per Jupyter spec: execute_result includes execution_count
+                // Only send if there's something to display (DDL returns None)
                 if !silent && !is_connection_changed {
-                    let display_data = format_display_data(exec_result);
+                    if let Some(display_data) = format_display_data(exec_result) {
+                        // Build message content, including output_location if present
+                        let mut content = json!({
+                            "execution_count": self.execution_count,
+                            "data": display_data["data"],
+                            "metadata": display_data["metadata"]
+                        });
 
-                    // Build message content, including output_location if present
-                    let mut content = json!({
-                        "execution_count": self.execution_count,
-                        "data": display_data["data"],
-                        "metadata": display_data["metadata"]
-                    });
+                        // Add output_location for Positron routing (e.g., to Plots pane)
+                        if let Some(location) = display_data.get("output_location") {
+                            content["output_location"] = location.clone();
+                            tracing::info!("Setting output_location: {}", location);
+                        }
 
-                    // Add output_location for Positron routing (e.g., to Plots pane)
-                    if let Some(location) = display_data.get("output_location") {
-                        content["output_location"] = location.clone();
-                        tracing::info!("Setting output_location: {}", location);
+                        self.send_iopub("execute_result", content, parent).await?;
                     }
-
-                    self.send_iopub("execute_result", content, parent).await?;
                 }
 
                 // Send execute_reply
@@ -717,11 +719,7 @@ impl KernelServer {
         // Close existing connection comm if any
         if let Some(old_id) = self.connection_comm_id.take() {
             tracing::info!("Closing old connection comm: {}", old_id);
-            let close_msg = self.create_message(
-                "comm_close",
-                json!({ "comm_id": old_id }),
-                None,
-            );
+            let close_msg = self.create_message("comm_close", json!({ "comm_id": old_id }), None);
             let zmq_msg = self.serialize_message_with_topic(&close_msg, "comm_close")?;
             self.iopub.send(zmq_msg).await?;
         }
@@ -817,10 +815,7 @@ impl KernelServer {
                 }
             }
             "contains_data" => {
-                let path: Vec<Value> = params["path"]
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_default();
+                let path: Vec<Value> = params["path"].as_array().cloned().unwrap_or_default();
                 let has_data = connection::contains_data(&path);
                 json!(has_data)
             }

@@ -289,10 +289,14 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     // This must happen after all clauses are processed (especially PROJECT and FACET)
     spec.initialize_aesthetic_context();
 
-    // Transform all aesthetic keys from user-facing (x/y or theta/radius) to internal (pos1/pos2)
+    // Transform all aesthetic keys from user-facing (x/y or angle/radius) to internal (pos1/pos2)
     // This enables generic handling throughout the pipeline and must happen before merge
     // since geom definitions use internal names for their supported/required aesthetics
     spec.transform_aesthetics_to_internal();
+
+    // Note: Annotation layer processing (moving parameters to mappings) now happens
+    // during execution in process_annotation_layer(), not during parsing.
+    // This keeps all annotation-specific logic in one place.
 
     Ok(spec)
 }
@@ -304,6 +308,10 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
         match child.kind() {
             "draw_clause" => {
                 let layer = build_layer(&child, source)?;
+                spec.layers.push(layer);
+            }
+            "place_clause" => {
+                let layer = build_place_layer(&child, source)?;
                 spec.layers.push(layer);
             }
             "scale_clause" => {
@@ -507,6 +515,22 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
     Ok(layer)
 }
 
+/// Build an annotation Layer from a place_clause node
+/// This is similar to build_layer but marks it as an annotation layer.
+/// The transformation of positional/required aesthetics from SETTING to mappings
+/// happens later in Plot::transform_aesthetics_to_internal().
+/// Syntax: PLACE geom [MAPPING col AS x, ...] [SETTING param => val, ...] [FILTER condition]
+fn build_place_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
+    // Build the layer using standard logic
+    let mut layer = build_layer(node, source)?;
+
+    // Mark as annotation layer
+    // Array recycling happens later during SQL generation in process_annotation_layer()
+    layer.source = Some(DataSource::Annotation);
+
+    Ok(layer)
+}
+
 /// Parse a setting_clause: SETTING param => value, ...
 fn parse_setting_clause(
     node: &Node,
@@ -602,7 +626,7 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "path" => Ok(Geom::path()),
         "bar" => Ok(Geom::bar()),
         "area" => Ok(Geom::area()),
-        "tile" => Ok(Geom::tile()),
+        "rect" => Ok(Geom::rect()),
         "polygon" => Ok(Geom::polygon()),
         "ribbon" => Ok(Geom::ribbon()),
         "histogram" => Ok(Geom::histogram()),
@@ -611,7 +635,6 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "boxplot" => Ok(Geom::boxplot()),
         "violin" => Ok(Geom::violin()),
         "text" => Ok(Geom::text()),
-        "label" => Ok(Geom::label()),
         "segment" => Ok(Geom::segment()),
         "arrow" => Ok(Geom::arrow()),
         "rule" => Ok(Geom::rule()),
@@ -791,7 +814,7 @@ fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform>
         GgsqlError::ParseError(format!(
             "Unknown transform: '{}'. Valid transforms are: {}",
             transform_name,
-            crate::plot::scale::ALL_TRANSFORM_NAMES.join(", ")
+            crate::and_list_quoted(crate::plot::scale::ALL_TRANSFORM_NAMES, '\'')
         ))
     })
 }
@@ -1320,7 +1343,7 @@ mod tests {
     fn test_project_default_aesthetics_polar() {
         let query = r#"
             VISUALISE
-            DRAW bar MAPPING category AS theta, value AS radius
+            DRAW bar MAPPING category AS angle, value AS radius
             PROJECT TO polar
         "#;
 
@@ -1331,7 +1354,7 @@ mod tests {
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(
             project.aesthetics,
-            vec!["theta".to_string(), "radius".to_string()]
+            vec!["radius".to_string(), "angle".to_string()]
         );
     }
 
@@ -3329,9 +3352,10 @@ mod tests {
 
         let literal_node = source.find_node(&root, "(literal_value) @lit").unwrap();
         let parsed = parse_literal_value(&literal_node, &source).unwrap();
-        assert!(
-            matches!(parsed, AestheticValue::Literal(ParameterValue::String(ref s)) if s == "red")
-        );
+        assert!(matches!(
+            parsed,
+            AestheticValue::Literal(ParameterValue::String(ref s)) if s == "red"
+        ));
 
         // Test number literal
         let source2 = make_source("VISUALISE DRAW point MAPPING 42 AS size");
@@ -3375,8 +3399,8 @@ mod tests {
     }
 
     #[test]
-    fn test_infer_polar_from_theta_radius_mappings() {
-        let query = "VISUALISE DRAW bar MAPPING cat AS theta, val AS radius";
+    fn test_infer_polar_from_angle_radius_mappings() {
+        let query = "VISUALISE DRAW bar MAPPING cat AS angle, val AS radius";
 
         let result = parse_test_query(query);
         assert!(result.is_ok());
@@ -3385,15 +3409,15 @@ mod tests {
         // Should infer polar projection
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Polar);
-        assert_eq!(project.aesthetics, vec!["theta", "radius"]);
+        assert_eq!(project.aesthetics, vec!["radius", "angle"]);
     }
 
     #[test]
     fn test_explicit_project_overrides_inference() {
-        // Explicitly use cartesian even though mappings use theta
+        // Explicitly use cartesian even though mappings use angle
         let query = r#"
             VISUALISE
-            DRAW bar MAPPING cat AS theta, val AS radius
+            DRAW bar MAPPING cat AS angle, val AS radius
             PROJECT TO cartesian
         "#;
 
@@ -3408,8 +3432,8 @@ mod tests {
 
     #[test]
     fn test_conflicting_aesthetics_error() {
-        // Using both x and theta should error
-        let query = "VISUALISE DRAW point MAPPING a AS x, b AS theta";
+        // Using both x and angle should error
+        let query = "VISUALISE DRAW point MAPPING a AS x, b AS angle";
 
         let result = parse_test_query(query);
         assert!(result.is_err());

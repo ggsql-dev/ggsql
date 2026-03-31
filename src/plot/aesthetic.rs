@@ -19,7 +19,7 @@
 //! # Internal vs User-Facing Aesthetics
 //!
 //! The pipeline uses internal positional aesthetic names (pos1, pos2, etc.) that are
-//! transformed from user-facing names (x/y or theta/radius) early in the pipeline
+//! transformed from user-facing names (x/y or angle/radius) early in the pipeline
 //! and transformed back for output. This is handled by `AestheticContext`.
 
 use std::collections::HashMap;
@@ -30,6 +30,10 @@ use std::collections::HashMap;
 
 /// Positional aesthetic suffixes - applied to primary names to create variant aesthetics
 /// e.g., "x" + "min" = "xmin", "pos1" + "end" = "pos1end"
+///
+/// Note: "offset" is intentionally NOT included here because it's a positioning
+/// adjustment that shouldn't influence scale training or be part of aesthetic families.
+/// The `flip_positional` method handles offset correctly via prefix detection.
 pub const POSITIONAL_SUFFIXES: &[&str] = &["min", "max", "end"];
 
 // =============================================================================
@@ -54,7 +58,7 @@ pub const USER_FACET_AESTHETICS: &[&str] = &["panel", "row", "column"];
 /// - Color aesthetics: color, colour, fill, stroke, opacity
 /// - Size/shape aesthetics: size, shape, linetype, linewidth
 /// - Dimension aesthetics: width, height
-/// - Text aesthetics: label, family, fontface, hjust, vjust
+/// - Text aesthetics: label, typeface, fontweight, italic, hjust, vjust
 pub const NON_POSITIONAL: &[&str] = &[
     "color",
     "colour",
@@ -68,8 +72,10 @@ pub const NON_POSITIONAL: &[&str] = &[
     "width",
     "height",
     "label",
-    "family",
-    "fontface",
+    "typeface",
+    "fontweight",
+    "italic",
+    "fontsize",
     "hjust",
     "vjust",
 ];
@@ -81,7 +87,7 @@ pub const NON_POSITIONAL: &[&str] = &[
 /// Comprehensive context for aesthetic operations.
 ///
 /// Uses HashMaps for efficient O(1) lookups between user-facing and internal aesthetic names.
-/// Used to transform between user-facing aesthetic names (x/y or theta/radius)
+/// Used to transform between user-facing aesthetic names (x/y or angle/radius)
 /// and internal names (pos1/pos2), as well as facet aesthetics (panel/row/column)
 /// to internal facet names (facet1/facet2).
 ///
@@ -96,8 +102,8 @@ pub const NON_POSITIONAL: &[&str] = &[
 /// assert_eq!(ctx.map_user_to_internal("ymin"), Some("pos2min"));
 ///
 /// // For polar coords
-/// let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
-/// assert_eq!(ctx.map_user_to_internal("theta"), Some("pos1"));
+/// let ctx = AestheticContext::from_static(&["angle", "radius"], &[]);
+/// assert_eq!(ctx.map_user_to_internal("angle"), Some("pos1"));
 /// assert_eq!(ctx.map_user_to_internal("radius"), Some("pos2"));
 ///
 /// // With facets
@@ -206,7 +212,7 @@ impl AestheticContext {
 
     /// Map user aesthetic (positional or facet) to internal name.
     ///
-    /// Positional: "x" → "pos1", "ymin" → "pos2min", "theta" → "pos1"
+    /// Positional: "x" → "pos1", "ymin" → "pos2min", "angle" → "pos1"
     /// Facet: "panel" → "facet1", "row" → "facet1", "column" → "facet2"
     ///
     /// Note: Facet mappings work regardless of whether a FACET clause exists,
@@ -232,6 +238,36 @@ impl AestheticContext {
             "column" => Some("facet2"),
             _ => None,
         }
+    }
+
+    /// Map internal aesthetic to user-facing name (reverse of map_user_to_internal).
+    ///
+    /// Positional: "pos1" → "x", "pos2min" → "ymin", "pos1" → "angle" (for polar)
+    /// Facet: "facet1" → "panel" (wrap), "facet1" → "row" (grid), "facet2" → "column" (grid)
+    /// Non-positional: "color" → "color" (unchanged)
+    ///
+    /// Returns None if the internal aesthetic is not recognized.
+    pub fn map_internal_to_user(&self, internal_aesthetic: &str) -> String {
+        // Check internal facet (facet1, facet2)
+        if let Some(idx) = self
+            .internal_facet
+            .iter()
+            .position(|i| i == internal_aesthetic)
+        {
+            return self.user_facet[idx].to_string();
+        }
+
+        // Check internal positional (pos1, pos1min, pos2, etc.)
+        // Iterate through user_to_internal to find reverse mapping
+        for (user, internal) in &self.user_to_internal {
+            if internal == internal_aesthetic {
+                return user.to_string();
+            }
+        }
+
+        // Non-positional aesthetics (color, size, etc.)
+        // Internal is the same as external
+        internal_aesthetic.to_string()
     }
 
     // === Checking (O(1) HashMap lookups) ===
@@ -295,7 +331,7 @@ impl AestheticContext {
         &self.internal_primaries
     }
 
-    /// Get user positional aesthetics (x, y or theta, radius or custom names)
+    /// Get user positional aesthetics (x, y or angle, radius or custom names)
     pub fn user_positional(&self) -> &[String] {
         &self.user_primaries
     }
@@ -303,6 +339,40 @@ impl AestheticContext {
     /// Get user-facing facet aesthetics (panel, row, column)
     pub fn user_facet(&self) -> &[&'static str] {
         &self.user_facet
+    }
+
+    // === Orientation Flipping ===
+
+    /// Flip a positional aesthetic to its opposite position.
+    ///
+    /// Swaps pos1 ↔ pos2 (and their suffixed variants like pos1min ↔ pos2min).
+    /// Non-positional aesthetics are returned unchanged.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+    /// assert_eq!(ctx.flip_positional("pos1"), "pos2");
+    /// assert_eq!(ctx.flip_positional("pos2min"), "pos1min");
+    /// assert_eq!(ctx.flip_positional("pos1end"), "pos2end");
+    /// assert_eq!(ctx.flip_positional("color"), "color"); // unchanged
+    /// ```
+    pub fn flip_positional(&self, name: &str) -> String {
+        // Only flip if we have exactly 2 positional aesthetics
+        if self.internal_primaries.len() != 2 {
+            return name.to_string();
+        }
+
+        // Check if it's a pos1 or pos2 variant
+        if let Some(rest) = name.strip_prefix("pos1") {
+            return format!("pos2{}", rest);
+        }
+        if let Some(rest) = name.strip_prefix("pos2") {
+            return format!("pos1{}", rest);
+        }
+
+        // Not a positional aesthetic, return unchanged
+        name.to_string()
     }
 }
 
@@ -362,6 +432,25 @@ pub fn is_positional_aesthetic(name: &str) -> bool {
     }
 
     false
+}
+
+/// Parse a positional aesthetic name to extract its slot number and suffix.
+///
+/// Returns `Some((slot, suffix))` for positional aesthetics:
+/// - `pos1` → (1, "")
+/// - `pos2min` → (2, "min")
+/// - `pos1end` → (1, "end")
+///
+/// Returns `None` for non-positional aesthetics.
+pub fn parse_positional(name: &str) -> Option<(u8, &str)> {
+    if !name.starts_with("pos") {
+        return None;
+    }
+    let rest = &name[3..];
+    let slot_char = rest.chars().next()?;
+    let slot = slot_char.to_digit(10)? as u8;
+    let suffix = &rest[1..];
+    Some((slot, suffix))
 }
 
 #[cfg(test)]
@@ -426,7 +515,7 @@ mod tests {
         assert!(!is_positional_aesthetic("x"));
         assert!(!is_positional_aesthetic("y"));
         assert!(!is_positional_aesthetic("xmin"));
-        assert!(!is_positional_aesthetic("theta"));
+        assert!(!is_positional_aesthetic("angle"));
 
         // Non-positional
         assert!(!is_positional_aesthetic("color"));
@@ -460,10 +549,10 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_polar() {
-        let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
+        let ctx = AestheticContext::from_static(&["angle", "radius"], &[]);
 
         // User positional names
-        assert_eq!(ctx.user_positional(), &["theta", "radius"]);
+        assert_eq!(ctx.user_positional(), &["angle", "radius"]);
 
         // Primary internal names
         let primary: Vec<&str> = ctx
@@ -497,12 +586,12 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_polar_mapping() {
-        let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
+        let ctx = AestheticContext::from_static(&["angle", "radius"], &[]);
 
         // User to internal
-        assert_eq!(ctx.map_user_to_internal("theta"), Some("pos1"));
+        assert_eq!(ctx.map_user_to_internal("angle"), Some("pos1"));
         assert_eq!(ctx.map_user_to_internal("radius"), Some("pos2"));
-        assert_eq!(ctx.map_user_to_internal("thetaend"), Some("pos1end"));
+        assert_eq!(ctx.map_user_to_internal("angleend"), Some("pos1end"));
         assert_eq!(ctx.map_user_to_internal("radiusmin"), Some("pos2min"));
     }
 
@@ -562,7 +651,7 @@ mod tests {
     fn test_aesthetic_context_families() {
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
-        // Get internal family
+        // Get internal family (offset not included - it's a positioning adjustment)
         let pos1_family = ctx.internal_positional_family("pos1").unwrap();
         let pos1_strs: Vec<&str> = pos1_family.iter().map(|s| s.as_str()).collect();
         assert_eq!(pos1_strs, vec!["pos1", "pos1min", "pos1max", "pos1end"]);
@@ -572,5 +661,86 @@ mod tests {
         assert_eq!(ctx.primary_internal_positional("pos1min"), Some("pos1"));
         assert_eq!(ctx.primary_internal_positional("pos2end"), Some("pos2"));
         assert_eq!(ctx.primary_internal_positional("color"), Some("color"));
+    }
+
+    #[test]
+    fn test_aesthetic_context_internal_to_user_cartesian() {
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+
+        // Primary aesthetics
+        assert_eq!(ctx.map_internal_to_user("pos1"), "x");
+        assert_eq!(ctx.map_internal_to_user("pos2"), "y");
+
+        // Variants
+        assert_eq!(ctx.map_internal_to_user("pos1min"), "xmin");
+        assert_eq!(ctx.map_internal_to_user("pos1max"), "xmax");
+        assert_eq!(ctx.map_internal_to_user("pos1end"), "xend");
+        assert_eq!(ctx.map_internal_to_user("pos2min"), "ymin");
+        assert_eq!(ctx.map_internal_to_user("pos2max"), "ymax");
+        assert_eq!(ctx.map_internal_to_user("pos2end"), "yend");
+
+        // Non-positional aesthetics remain unchanged
+        assert_eq!(ctx.map_internal_to_user("color"), "color");
+        assert_eq!(ctx.map_internal_to_user("size"), "size");
+        assert_eq!(ctx.map_internal_to_user("fill"), "fill");
+    }
+
+    #[test]
+    fn test_aesthetic_context_internal_to_user_polar() {
+        let ctx = AestheticContext::from_static(&["angle", "radius"], &[]);
+
+        // Primary aesthetics map to polar names
+        assert_eq!(ctx.map_internal_to_user("pos1"), "angle");
+        assert_eq!(ctx.map_internal_to_user("pos2"), "radius");
+
+        // Variants
+        assert_eq!(ctx.map_internal_to_user("pos1end"), "angleend");
+        assert_eq!(ctx.map_internal_to_user("pos2min"), "radiusmin");
+        assert_eq!(ctx.map_internal_to_user("pos2max"), "radiusmax");
+    }
+
+    #[test]
+    fn test_aesthetic_context_internal_to_user_facets() {
+        // Wrap facet (panel)
+        let ctx_wrap = AestheticContext::from_static(&["x", "y"], &["panel"]);
+        assert_eq!(ctx_wrap.map_internal_to_user("facet1"), "panel");
+
+        // Grid facet (row, column)
+        let ctx_grid = AestheticContext::from_static(&["x", "y"], &["row", "column"]);
+        assert_eq!(ctx_grid.map_internal_to_user("facet1"), "row");
+        assert_eq!(ctx_grid.map_internal_to_user("facet2"), "column");
+    }
+
+    #[test]
+    fn test_aesthetic_context_roundtrip() {
+        // Test that user -> internal -> user roundtrips correctly
+        let ctx = AestheticContext::from_static(&["x", "y"], &["panel"]);
+
+        // Positional
+        let internal = ctx.map_user_to_internal("x").unwrap();
+        assert_eq!(ctx.map_internal_to_user(internal), "x");
+
+        let internal = ctx.map_user_to_internal("ymin").unwrap();
+        assert_eq!(ctx.map_internal_to_user(internal), "ymin");
+
+        // Facet
+        let internal = ctx.map_user_to_internal("panel").unwrap();
+        assert_eq!(ctx.map_internal_to_user(internal), "panel");
+    }
+    #[test]
+    fn test_parse_positional() {
+        // Primary positional
+        assert_eq!(parse_positional("pos1"), Some((1, "")));
+        assert_eq!(parse_positional("pos2"), Some((2, "")));
+
+        // Variants with suffixes
+        assert_eq!(parse_positional("pos1min"), Some((1, "min")));
+        assert_eq!(parse_positional("pos2max"), Some((2, "max")));
+        assert_eq!(parse_positional("pos1end"), Some((1, "end")));
+
+        // Non-positional
+        assert_eq!(parse_positional("color"), None);
+        assert_eq!(parse_positional("x"), None);
+        assert_eq!(parse_positional("xmin"), None);
     }
 }

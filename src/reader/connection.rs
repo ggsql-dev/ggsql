@@ -11,8 +11,6 @@ pub enum ConnectionInfo {
     DuckDBMemory,
     /// DuckDB file-based database
     DuckDBFile(String),
-    /// Polars in-memory SQL context
-    PolarsMemory,
     /// PostgreSQL connection
     #[allow(dead_code)]
     PostgreSQL(String),
@@ -61,18 +59,6 @@ pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
         return Ok(ConnectionInfo::DuckDBFile(cleaned_path.to_string()));
     }
 
-    if uri == "polars://" || uri == "polars://memory" {
-        return Ok(ConnectionInfo::PolarsMemory);
-    }
-
-    if uri.starts_with("polars://") {
-        // Polars only supports in-memory mode
-        return Err(GgsqlError::ReaderError(
-            "Polars reader only supports in-memory mode. Use 'polars://memory' or 'polars://'"
-                .to_string(),
-        ));
-    }
-
     if uri.starts_with("postgres://") || uri.starts_with("postgresql://") {
         return Ok(ConnectionInfo::PostgreSQL(uri.to_string()));
     }
@@ -97,7 +83,7 @@ pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
     }
 
     Err(GgsqlError::ReaderError(format!(
-        "Unsupported connection string format: {}. Supported: duckdb://, polars://, postgres://, sqlite://, odbc://",
+        "Unsupported connection string format: {}. Supported: duckdb://, postgres://, sqlite://, odbc://",
         uri
     )))
 }
@@ -154,28 +140,6 @@ mod tests {
     }
 
     #[test]
-    fn test_polars_memory() {
-        let info = parse_connection_string("polars://memory").unwrap();
-        assert_eq!(info, ConnectionInfo::PolarsMemory);
-    }
-
-    #[test]
-    fn test_polars_empty() {
-        let info = parse_connection_string("polars://").unwrap();
-        assert_eq!(info, ConnectionInfo::PolarsMemory);
-    }
-
-    #[test]
-    fn test_polars_file_not_supported() {
-        let result = parse_connection_string("polars://data.db");
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("only supports in-memory"));
-    }
-
-    #[test]
     fn test_empty_duckdb_path() {
         let result = parse_connection_string("duckdb://");
         assert!(result.is_err());
@@ -183,9 +147,10 @@ mod tests {
 
     #[test]
     fn test_odbc() {
-        let info =
-            parse_connection_string("odbc://Driver=Snowflake;Server=myaccount.snowflakecomputing.com")
-                .unwrap();
+        let info = parse_connection_string(
+            "odbc://Driver=Snowflake;Server=myaccount.snowflakecomputing.com",
+        )
+        .unwrap();
         assert_eq!(
             info,
             ConnectionInfo::ODBC(

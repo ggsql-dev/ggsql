@@ -13,7 +13,6 @@ DRAW line
 SCALE x VIA date
 SCALE y FROM [0, 100000]
 LABEL title => 'Sales by Region', x => 'Date', y => 'Revenue'
-THEME minimal
 ```
 
 **Statistics**:
@@ -74,16 +73,18 @@ Direct visualization from tables/CTEs (auto-injects `SELECT * FROM`):
 ```sql
 -- Direct table visualization
 VISUALISE FROM sales
-DRAW bar MAPPING region AS x, total AS y
+DRAW bar
+  MAPPING region AS x, total AS y
 
 -- CTE visualization
 WITH monthly_totals AS (
-    SELECT DATE_TRUNC('month', sale_date) as month, SUM(revenue) as total
-    FROM sales
-    GROUP BY month
+  SELECT DATE_TRUNC('month', sale_date) as month, SUM(revenue) as total
+  FROM sales
+  GROUP BY month
 )
 VISUALISE FROM monthly_totals
-DRAW line MAPPING month AS x, total AS y
+DRAW line
+  MAPPING month AS x, total AS y
 ```
 
 ---
@@ -322,23 +323,39 @@ pub enum GlobalMappingItem {
 
 pub struct Layer {
     pub geom: Geom,                  // Geometric object type
+    pub position: Position,          // Position adjustment (from SETTING position)
     pub aesthetics: HashMap<String, AestheticValue>,  // Aesthetic mappings (from MAPPING)
     pub parameters: HashMap<String, ParameterValue>,  // Geom parameters (from SETTING)
+    pub source: Option<DataSource>,  // Data source (from MAPPING ... FROM or PLACE)
     pub filter: Option<FilterExpression>,  // Layer filter (from FILTER)
     pub partition_by: Vec<String>,   // Grouping columns (from PARTITION BY)
 }
 
 pub enum Geom {
     // Basic geoms
-    Point, Line, Path, Bar, Col, Area, Tile, Polygon, Ribbon,
+    Point, Line, Path, Bar, Col, Area, Rect, Polygon, Ribbon,
     // Statistical geoms
     Histogram, Density, Smooth, Boxplot, Violin,
     // Annotation geoms
-    Text, Label, Segment, Arrow, Rule, Linear, ErrorBar,
+    Text, Segment, Arrow, Rule, Linear, ErrorBar,
+}
+
+pub enum DataSource {
+    Identifier(String),  // Table/CTE name
+    FilePath(String),    // File path (quoted)
+    Annotation,          // PLACE clause (no external data)
+}
+
+pub enum Position {
+    Identity,  // No adjustment
+    Stack,     // Stack elements (bars, areas)
+    Dodge,     // Dodge side-by-side (bars)
+    Jitter,    // Jitter points randomly
 }
 
 pub enum AestheticValue {
-    Column(String),                  // Unquoted column reference: revenue AS x
+    Column(String),                  // Column from data: revenue AS x
+    AnnotationColumn(String),        // Annotation literal (PLACE): uses identity scale
     Literal(ParameterValue),         // Quoted literal: 'value' AS fill
 }
 
@@ -433,7 +450,7 @@ pub struct Theme {
 - `Layer::with_parameter(parameter, value)` - Add a geom parameter (builder pattern)
 - `Layer::get_column(aesthetic)` - Get column name for an aesthetic (if mapped to column)
 - `Layer::get_literal(aesthetic)` - Get literal value for an aesthetic (if literal)
-- `Layer::validate_required_aesthetics()` - Validate that required aesthetics are present for the geom type
+- `Layer::validate_mapping()` - Validate that required aesthetics are present for the geom type
 
 **Type conversions:**
 
@@ -773,14 +790,15 @@ cargo build --release --package ggsql-jupyter
 -- Cell 1: Create data
 CREATE TABLE sales AS
 SELECT * FROM (VALUES
-    ('2024-01-01'::DATE, 100, 'North'),
-    ('2024-01-02'::DATE, 120, 'South')
+  ('2024-01-01'::DATE, 100, 'North'),
+  ('2024-01-02'::DATE, 120, 'South')
 ) AS t(date, revenue, region)
 
 -- Cell 2: Visualize
 SELECT * FROM sales
 VISUALISE
-DRAW line MAPPING date AS x, revenue AS y, region AS color
+DRAW line
+  MAPPING date AS x, revenue AS y, region AS color
 SCALE x VIA date
 LABEL title => 'Sales Trends'
 ```
@@ -1178,6 +1196,7 @@ Where `<global_mapping>` can be:
 | ----------- | ---------- | ----------------- | ----------------------------------------- |
 | `VISUALISE` | ✅ Yes     | Entry point       | `VISUALISE date AS x, revenue AS y`       |
 | `DRAW`      | ✅ Yes     | Define layers     | `DRAW line MAPPING date AS x, value AS y` |
+| `PLACE`     | ✅ Yes     | Annotation layers | `PLACE point SETTING x => 5, y => 10`     |
 | `SCALE`     | ✅ Yes     | Configure scales  | `SCALE x VIA date`                        |
 | `FACET`     | ❌ No      | Small multiples   | `FACET region`                            |
 | `PROJECT`   | ❌ No      | Coordinate system | `PROJECT TO cartesian` |
@@ -1190,17 +1209,17 @@ Where `<global_mapping>` can be:
 
 ```sql
 DRAW <geom>
-    [MAPPING <value> AS <aesthetic>, ...]
-    [SETTING <param> => <value>, ...]
-    [PARTITION BY <column>, ...]
-    [FILTER <condition>]
+  [MAPPING <value> AS <aesthetic>, ...]
+  [SETTING <param> => <value>, ...]
+  [PARTITION BY <column>, ...]
+  [FILTER <condition>]
 ```
 
 All clauses (MAPPING, SETTING, PARTITION BY, FILTER) are optional.
 
 **Geom Types**:
 
-- **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `tile`, `polygon`, `ribbon`
+- **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `rect`, `polygon`, `ribbon`
 - **Statistical**: `histogram`, `density`, `smooth`, `boxplot`, `violin`
 - **Annotation**: `text`, `label`, `segment`, `arrow`, `rule`, `linear`, `errorbar`
 
@@ -1211,7 +1230,7 @@ Maps data values (columns or literals) to visual aesthetics. Syntax: `value AS a
 - **Position**: `x`, `y`, `xmin`, `xmax`, `ymin`, `ymax`
 - **Color**: `color`, `fill`, `stroke`, `opacity`
 - **Size/Shape**: `size`, `shape`, `linetype`, `linewidth`
-- **Text**: `label`, `family`, `fontface`
+- **Text**: `label`, `typeface`, `fontweight`, `italic`
 
 **Literal vs Column**:
 
@@ -1244,49 +1263,73 @@ Applies a filter to the layer data. Supports basic comparison operators.
 ```sql
 -- Basic mapping
 DRAW line
-    MAPPING date AS x, revenue AS y, region AS color
+  MAPPING date AS x, revenue AS y, region AS color
 
 -- Mapping with literal
 DRAW point
-    MAPPING date AS x, revenue AS y, 'value' AS color
+  MAPPING date AS x, revenue AS y, 'value' AS color
 
 -- Setting parameters
 DRAW point
-    MAPPING x AS x, y AS y
-    SETTING size => 5, opacity => 0.7
+  MAPPING x AS x, y AS y
+  SETTING size => 5, opacity => 0.7
 
 -- With filter
 DRAW point
-    MAPPING x AS x, y AS y, category AS color
-    FILTER value > 100
+  MAPPING x AS x, y AS y, category AS color
+  FILTER value > 100
 
 -- Combined
 DRAW line
-    MAPPING date AS x, value AS y
-    SETTING stroke_width => 2
-    FILTER category = 'A' AND year >= 2024
+  MAPPING date AS x, value AS y
+  SETTING stroke_width => 2
+  FILTER category = 'A' AND year >= 2024
 
 -- With PARTITION BY (single column)
 DRAW line
-    MAPPING date AS x, value AS y
-    PARTITION BY category
+  MAPPING date AS x, value AS y
+  PARTITION BY category
 
 -- With PARTITION BY (multiple columns)
 DRAW line
-    MAPPING date AS x, value AS y
-    PARTITION BY category, region
+  MAPPING date AS x, value AS y
+  PARTITION BY category, region
 
 -- PARTITION BY with color (grouped lines with different colors)
 DRAW line
-    MAPPING date AS x, value AS y, region AS color
-    PARTITION BY category
+  MAPPING date AS x, value AS y, region AS color
+  PARTITION BY category
 
 -- All clauses combined
 DRAW line
-    MAPPING date AS x, value AS y
-    SETTING stroke_width => 2
-    PARTITION BY category, region
-    FILTER year >= 2020
+  MAPPING date AS x, value AS y
+  SETTING stroke_width => 2
+  PARTITION BY category, region
+  FILTER year >= 2020
+```
+
+### PLACE Clause (Annotation Layers)
+
+**Syntax**:
+
+```sql
+PLACE <geom>
+  SETTING <aesthetic/parameter> => <value>, ...
+```
+
+Creates annotation layers with literal values only (no data mappings). All aesthetics set via SETTING; supports arrays that are recycled to longest length. No FILTER/PARTITION BY/ORDER BY support.
+
+**Examples**:
+
+```sql
+-- Single annotation
+PLACE point SETTING x => 5, y => 10, color => 'red'
+
+-- Multiple annotations (array recycling)
+PLACE point SETTING x => [1, 2, 3], y => [10, 20, 30]
+
+-- Reference line
+PLACE rule SETTING x => 5, color => 'red'
 ```
 
 ### SCALE Clause
@@ -1294,7 +1337,8 @@ DRAW line
 **Syntax**:
 
 ```sql
-SCALE [TYPE] <aesthetic> [FROM <input>] [TO <output>] [VIA <transform>] [SETTING <properties>]
+SCALE [TYPE] <aesthetic> [FROM <input>] [TO <output>] [VIA <transform>]
+  [SETTING <properties>]
 ```
 
 **Type Modifiers** (optional, placed before aesthetic):
@@ -1364,7 +1408,8 @@ SCALE DISCRETE color FROM ['A', 'B', 'C'] TO ['red', 'green', 'blue']
 SCALE color TO viridis
 
 -- Scale with input range and additional settings
-SCALE x VIA date FROM ['2024-01-01', '2024-12-31'] SETTING breaks => '1 month'
+SCALE x VIA date FROM ['2024-01-01', '2024-12-31']
+  SETTING breaks => '1 month'
 ```
 
 ### FACET Clause
@@ -1373,10 +1418,12 @@ SCALE x VIA date FROM ['2024-01-01', '2024-12-31'] SETTING breaks => '1 month'
 
 ```sql
 -- Wrap layout (single variable = automatic wrap)
-FACET <vars> [SETTING <param> => <value>, ...]
+FACET <vars>
+  [SETTING <param> => <value>, ...]
 
 -- Grid layout (BY clause for row × column)
-FACET <row_vars> BY <col_vars> [SETTING ...]
+FACET <row_vars> BY <col_vars>
+  [SETTING ...]
 ```
 
 **SETTING Properties**:
@@ -1406,18 +1453,21 @@ FACET region
 FACET region BY category
 
 -- With free y-axis scales
-FACET region SETTING free => 'y'
+FACET region
+  SETTING free => 'y'
 
 -- With column count for wrap
-FACET region SETTING ncol => 3
+FACET region
+  SETTING ncol => 3
 
 -- With label renaming via scale
 FACET region
-SCALE panel RENAMING 'N' => 'North', 'S' => 'South'
+SCALE panel
+  RENAMING 'N' => 'North', 'S' => 'South'
 
 -- Combined grid with settings
 FACET region BY category
-    SETTING free => ['x', 'y'], spacing => 10
+  SETTING free => ['x', 'y'], spacing => 10
 ```
 
 ### PROJECT Clause
@@ -1425,7 +1475,8 @@ FACET region BY category
 **Syntax**:
 
 ```sql
-PROJECT [<aesthetic>, ...] TO <coord_type> [SETTING <properties>]
+PROJECT [<aesthetic>, ...] TO <coord_type>
+  [SETTING <properties>]
 ```
 
 **Components**:
@@ -1440,7 +1491,7 @@ PROJECT [<aesthetic>, ...] TO <coord_type> [SETTING <properties>]
 | Coord Type | Default Aesthetics | Description |
 |------------|-------------------|-------------|
 | `cartesian` | `x`, `y` | Standard x/y Cartesian coordinates |
-| `polar` | `theta`, `radius` | Polar coordinates (for pie charts, rose plots) |
+| `polar` | `angle`, `radius` | Polar coordinates (for pie charts, rose plots) |
 
 **Flipping Axes**:
 
@@ -1465,7 +1516,7 @@ Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]
 
 **Polar**:
 
-- `theta => <aesthetic>` - Which aesthetic maps to angle (defaults to `y`)
+- No special properties (angle/radius aesthetics are used directly)
 
 **Important Notes**:
 
@@ -1494,23 +1545,26 @@ PROJECT y, x TO cartesian
 -- Custom aesthetic names
 PROJECT myX, myY TO cartesian
 
--- Polar for pie chart (using default theta/radius aesthetics)
+-- Polar for pie chart (using default angle/radius aesthetics)
 PROJECT TO polar
 
--- Polar with y/x aesthetics (y becomes theta, x becomes radius)
+-- Polar with y/x aesthetics (y becomes angle, x becomes radius)
 PROJECT y, x TO polar
 
 -- Polar with start angle offset (3 o'clock position)
 PROJECT y, x TO polar SETTING start => 90
 
 -- Clip marks to plot area
-PROJECT TO cartesian SETTING clip => true
+PROJECT TO cartesian
+  SETTING clip => true
 
 -- Combined with other clauses
-DRAW bar MAPPING category AS x, value AS y
+DRAW bar
+  MAPPING category AS x, value AS y
 SCALE x FROM [0, 100]
 SCALE y FROM [0, 200]
-PROJECT y, x TO cartesian SETTING clip => true
+PROJECT y, x TO cartesian
+  SETTING clip => true
 LABEL x => 'Category', y => 'Count'
 ```
 
@@ -1539,25 +1593,6 @@ LABEL
   caption => 'Data from Q4 2024'
 ```
 
-### THEME Clause
-
-**Syntax**:
-
-```sql
-THEME <name> [SETTING <overrides>]
-```
-
-**Base Themes**: `minimal`, `classic`, `gray`, `bw`, `dark`, `void`
-
-**Example**:
-
-```sql
-THEME minimal
-THEME dark SETTING background => '#1a1a1a'
-```
-
----
-
 ## Complete Example Walkthrough
 
 ### Query
@@ -1568,15 +1603,18 @@ FROM sales
 WHERE sale_date >= '2024-01-01'
 GROUP BY sale_date, region
 ORDER BY sale_date
+
 VISUALISE
 DRAW line
-    MAPPING sale_date AS x, total AS y, region AS color
+  MAPPING sale_date AS x, total AS y, region AS color
 DRAW point
-    MAPPING sale_date AS x, total AS y, region AS color
+  MAPPING sale_date AS x, total AS y, region AS color
 SCALE x VIA date
 FACET region
-LABEL title => 'Sales Trends by Region', x => 'Date', y => 'Total Quantity'
-THEME minimal
+LABEL
+  title => 'Sales Trends by Region',
+  x => 'Date',
+  y => 'Total Quantity'
 ```
 
 ### Execution Flow

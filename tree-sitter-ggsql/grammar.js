@@ -462,6 +462,7 @@ module.exports = grammar({
     // All the visualization clauses (same as current grammar)
     viz_clause: $ => choice(
       $.draw_clause,
+      $.place_clause,
       $.scale_clause,
       $.facet_clause,
       $.project_clause,
@@ -481,6 +482,14 @@ module.exports = grammar({
       optional($.order_clause)
     ),
 
+    // PLACE clause - syntax: PLACE geom [SETTING ...]
+    // For annotation layers with literal values only (no data mappings)
+    place_clause: $ => seq(
+      caseInsensitive('PLACE'),
+      $.geom_type,
+      optional($.setting_clause)
+    ),
+
     // REMAPPING clause: maps stat-computed columns to aesthetics
     // Syntax: REMAPPING count AS y, sum AS size
     // Reuses mapping_list for parsing - stat names are treated as column references
@@ -490,7 +499,7 @@ module.exports = grammar({
     ),
 
     geom_type: $ => choice(
-      'point', 'line', 'path', 'bar', 'area', 'tile', 'polygon', 'ribbon',
+      'point', 'line', 'path', 'bar', 'area', 'rect', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
       'text', 'label', 'segment', 'arrow', 'rule', 'linear', 'errorbar'
     ),
@@ -663,8 +672,8 @@ module.exports = grammar({
       // Position aesthetics (cartesian)
       'x', 'y', 'xmin', 'xmax', 'ymin', 'ymax', 'xend', 'yend',
       // Position aesthetics (polar)
-      'theta', 'radius', 'thetamin', 'thetamax', 'radiusmin', 'radiusmax',
-      'thetaend', 'radiusend',
+      'angle', 'radius', 'anglemin', 'anglemax', 'radiusmin', 'radiusmax',
+      'angleend', 'radiusend',
       // Aggregation aesthetic (for bar charts)
       'weight',
       // Color aesthetics
@@ -672,7 +681,7 @@ module.exports = grammar({
       // Size and shape
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
       // Text aesthetics
-      'label', 'family', 'fontface', 'hjust', 'vjust',
+      'label', 'typeface', 'fontweight', 'italic', 'fontsize', 'hjust', 'vjust', 'rotation',
       // Specialty aesthetics,
       'coef', 'intercept',
       // Facet aesthetics
@@ -784,8 +793,8 @@ module.exports = grammar({
     //   PROJECT TO cartesian (defaults to x, y)
     //   PROJECT x, y TO cartesian (explicit aesthetics)
     //   PROJECT a, b TO cartesian (custom aesthetic names)
-    //   PROJECT TO polar (defaults to theta, radius)
-    //   PROJECT theta, radius TO polar (explicit aesthetics)
+    //   PROJECT TO polar (defaults to angle, radius)
+    //   PROJECT angle, radius TO polar (explicit aesthetics)
     //   PROJECT TO cartesian SETTING clip => true
     project_clause: $ => seq(
       caseInsensitive('PROJECT'),
