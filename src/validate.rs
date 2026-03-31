@@ -184,8 +184,7 @@ pub fn validate(query: &str) -> Result<Validated> {
                 let mut merged = layer.clone();
                 let supported = layer.geom.aesthetics().supported();
                 for (aesthetic, value) in &plot.global_mappings.aesthetics {
-                    let is_color_alias =
-                        matches!(aesthetic.as_str(), "color" | "colour");
+                    let is_color_alias = matches!(aesthetic.as_str(), "color" | "colour");
                     let is_facet_aesthetic =
                         crate::plot::scale::is_facet_aesthetic(aesthetic.as_str());
                     if supported.contains(&aesthetic.as_str())
