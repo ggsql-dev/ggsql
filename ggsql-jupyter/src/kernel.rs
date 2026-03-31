@@ -516,6 +516,7 @@ impl KernelServer {
         self.send_status("busy", parent).await?;
 
         // Check if it's a JSON-RPC request
+        #[allow(clippy::if_same_then_else)]
         if let Some(method) = data["method"].as_str() {
             let rpc_id = &data["id"];
 
@@ -606,11 +607,37 @@ impl KernelServer {
             }
             // Handle positron.ui requests
             else if Some(comm_id.to_string()) == self.ui_comm_id {
-                tracing::info!("Received UI request: {} (ignoring)", method);
+                self.send_shell_reply(
+                    "comm_msg",
+                    json!({
+                        "comm_id": comm_id,
+                        "data": {
+                            "jsonrpc": "2.0",
+                            "id": rpc_id,
+                            "result": null
+                        }
+                    }),
+                    parent,
+                    identities,
+                )
+                .await?;
             }
             // Handle positron.plot requests
             else if Some(comm_id.to_string()) == self.plot_comm_id {
-                tracing::info!("Received plot request: {} (ignoring)", method);
+                self.send_shell_reply(
+                    "comm_msg",
+                    json!({
+                        "comm_id": comm_id,
+                        "data": {
+                            "jsonrpc": "2.0",
+                            "id": rpc_id,
+                            "result": null
+                        }
+                    }),
+                    parent,
+                    identities,
+                )
+                .await?;
             }
             // Handle positron.connection requests
             else if Some(comm_id.to_string()) == self.connection_comm_id {
@@ -868,17 +895,11 @@ impl KernelServer {
                             }),
                             Some(parent),
                         );
-                        let zmq_msg =
-                            self.serialize_message_with_topic(&msg, "comm_open")?;
+                        let zmq_msg = self.serialize_message_with_topic(&msg, "comm_open")?;
                         self.iopub.send(zmq_msg).await?;
 
-                        tracing::info!(
-                            "Opened data explorer comm: {} for {}",
-                            de_comm_id,
-                            title
-                        );
-                        self.data_explorer_comms
-                            .insert(de_comm_id, state);
+                        tracing::info!("Opened data explorer comm: {} for {}", de_comm_id, title);
+                        self.data_explorer_comms.insert(de_comm_id, state);
                     }
                     Err(e) => {
                         tracing::error!("preview_object failed: {}", e);
