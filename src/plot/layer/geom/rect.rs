@@ -172,8 +172,8 @@ fn process_direction(
 
     // Build SELECT parts using the stat columns
     let select_parts = vec![
-        format!("{} AS {}", expr_1, naming::stat_column(&stat_cols[0])),
-        format!("{} AS {}", expr_2, naming::stat_column(&stat_cols[1])),
+        format!("{} AS \"{}\"", expr_1, naming::stat_column(&stat_cols[0])),
+        format!("{} AS \"{}\"", expr_2, naming::stat_column(&stat_cols[1])),
     ];
 
     Ok((select_parts, stat_cols))
@@ -522,7 +522,7 @@ mod tests {
                 let stat_pos1min = naming::stat_column("pos1min");
                 let stat_pos1max = naming::stat_column("pos1max");
                 assert!(
-                    query.contains(&format!("{} AS {}", expected_min, stat_pos1min)),
+                    query.contains(&format!("{} AS \"{}\"", expected_min, stat_pos1min)),
                     "{}: Expected '{} AS {}' in query, got: {}",
                     name,
                     expected_min,
@@ -530,7 +530,7 @@ mod tests {
                     query
                 );
                 assert!(
-                    query.contains(&format!("{} AS {}", expected_max, stat_pos1max)),
+                    query.contains(&format!("{} AS \"{}\"", expected_max, stat_pos1max)),
                     "{}: Expected '{} AS {}' in query, got: {}",
                     name,
                     expected_max,
@@ -632,7 +632,7 @@ mod tests {
                 let stat_pos2min = naming::stat_column("pos2min");
                 let stat_pos2max = naming::stat_column("pos2max");
                 assert!(
-                    query.contains(&format!("{} AS {}", expected_min, stat_pos2min)),
+                    query.contains(&format!("{} AS \"{}\"", expected_min, stat_pos2min)),
                     "{}: Expected '{} AS {}' in query, got: {}",
                     name,
                     expected_min,
@@ -640,7 +640,7 @@ mod tests {
                     query
                 );
                 assert!(
-                    query.contains(&format!("{} AS {}", expected_max, stat_pos2max)),
+                    query.contains(&format!("{} AS \"{}\"", expected_max, stat_pos2max)),
                     "{}: Expected '{} AS {}' in query, got: {}",
                     name,
                     expected_max,
@@ -687,8 +687,8 @@ mod tests {
             ..
         }) = result
         {
-            assert!(query.contains("__ggsql_aes_pos1__ AS __ggsql_stat_pos1"));
-            assert!(query.contains("__ggsql_aes_width__ AS __ggsql_stat_width"));
+            assert!(query.contains("__ggsql_aes_pos1__ AS \"__ggsql_stat_pos1"));
+            assert!(query.contains("__ggsql_aes_width__ AS \"__ggsql_stat_width"));
             assert!(stat_columns.contains(&"pos1".to_string()));
             assert!(stat_columns.contains(&"width".to_string()));
             assert!(stat_columns.contains(&"pos2min".to_string()));
@@ -718,8 +718,8 @@ mod tests {
             ..
         }) = result
         {
-            assert!(query.contains("__ggsql_aes_pos2__ AS __ggsql_stat_pos2"));
-            assert!(query.contains("__ggsql_aes_height__ AS __ggsql_stat_height"));
+            assert!(query.contains("__ggsql_aes_pos2__ AS \"__ggsql_stat_pos2"));
+            assert!(query.contains("__ggsql_aes_height__ AS \"__ggsql_stat_height"));
             assert!(stat_columns.contains(&"pos1min".to_string()));
             assert!(stat_columns.contains(&"pos1max".to_string()));
             assert!(stat_columns.contains(&"pos2".to_string()));
@@ -749,10 +749,10 @@ mod tests {
             ..
         }) = result
         {
-            assert!(query.contains("__ggsql_aes_pos1__ AS __ggsql_stat_pos1"));
-            assert!(query.contains("__ggsql_aes_width__ AS __ggsql_stat_width"));
-            assert!(query.contains("__ggsql_aes_pos2__ AS __ggsql_stat_pos2"));
-            assert!(query.contains("__ggsql_aes_height__ AS __ggsql_stat_height"));
+            assert!(query.contains("__ggsql_aes_pos1__ AS \"__ggsql_stat_pos1"));
+            assert!(query.contains("__ggsql_aes_width__ AS \"__ggsql_stat_width"));
+            assert!(query.contains("__ggsql_aes_pos2__ AS \"__ggsql_stat_pos2"));
+            assert!(query.contains("__ggsql_aes_height__ AS \"__ggsql_stat_height"));
             assert_eq!(stat_columns.len(), 4);
         }
     }
@@ -852,7 +852,7 @@ mod tests {
                 stat_columns,
                 ..
             } => {
-                assert!(query.contains("1.0 AS __ggsql_stat_width"));
+                assert!(query.contains("1.0 AS \"__ggsql_stat_width"));
                 assert!(stat_columns.contains(&"width".to_string()));
             }
             _ => panic!("Expected Transformed"),
@@ -883,8 +883,8 @@ mod tests {
             assert!(query.contains("__ggsql_aes_fill__"));
             // Should NOT include width/height as pass-through (they're consumed)
             // They should only appear as stat columns
-            assert!(query.contains("__ggsql_aes_width__ AS __ggsql_stat_width"));
-            assert!(query.contains("__ggsql_aes_height__ AS __ggsql_stat_height"));
+            assert!(query.contains("__ggsql_aes_width__ AS \"__ggsql_stat_width"));
+            assert!(query.contains("__ggsql_aes_height__ AS \"__ggsql_stat_height"));
         }
     }
 
@@ -909,8 +909,8 @@ mod tests {
 
         if let Ok(StatResult::Transformed { query, .. }) = result {
             // Should use SETTING values as SQL literals
-            assert!(query.contains("0.7 AS __ggsql_stat_width"));
-            assert!(query.contains("0.9 AS __ggsql_stat_height"));
+            assert!(query.contains("0.7 AS \"__ggsql_stat_width"));
+            assert!(query.contains("0.9 AS \"__ggsql_stat_height"));
         }
     }
 }

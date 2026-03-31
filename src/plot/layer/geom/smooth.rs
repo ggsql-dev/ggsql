@@ -172,13 +172,13 @@ fn stat_ols(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<S
           {group_by}
         )
         SELECT
-          {groups}x_min AS {x_out},
-          (y_mean + ((xy_mean - x_mean * y_mean) / (xx_mean - x_mean * x_mean)) * (x_min - x_mean)) AS {y_out}
+          {groups}x_min AS \"{x_out}\",
+          (y_mean + ((xy_mean - x_mean * y_mean) / (xx_mean - x_mean * x_mean)) * (x_min - x_mean)) AS \"{y_out}\"
         FROM coefficients
         UNION ALL
         SELECT
-          {groups}x_max AS {x_out},
-          (y_mean + ((xy_mean - x_mean * y_mean) / (xx_mean - x_mean * x_mean)) * (x_max - x_mean)) AS {y_out}
+          {groups}x_max AS \"{x_out}\",
+          (y_mean + ((xy_mean - x_mean * y_mean) / (xx_mean - x_mean * x_mean)) * (x_max - x_mean)) AS \"{y_out}\"
         FROM coefficients",
         groups = groups_str,
         x = x_col,
@@ -245,13 +245,13 @@ fn stat_tls(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<S
           FROM coefficients
         )
         SELECT
-          {groups}x_min AS {x_out},
-          (y_mean + ((var_diff + SQRT(var_diff * var_diff + 4 * covariance * covariance)) / (2 * covariance)) * (x_min - x_mean)) AS {y_out}
+          {groups}x_min AS \"{x_out}\",
+          (y_mean + ((var_diff + SQRT(var_diff * var_diff + 4 * covariance * covariance)) / (2 * covariance)) * (x_min - x_mean)) AS \"{y_out}\"
         FROM tls_coefficients
         UNION ALL
         SELECT
-          {groups}x_max AS {x_out},
-          (y_mean + ((var_diff + SQRT(var_diff * var_diff + 4 * covariance * covariance)) / (2 * covariance)) * (x_max - x_mean)) AS {y_out}
+          {groups}x_max AS \"{x_out}\",
+          (y_mean + ((var_diff + SQRT(var_diff * var_diff + 4 * covariance * covariance)) / (2 * covariance)) * (x_max - x_mean)) AS \"{y_out}\"
         FROM tls_coefficients",
         groups = groups_str,
         x = x_col,
