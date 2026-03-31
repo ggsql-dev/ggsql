@@ -36,7 +36,7 @@ impl super::SqlDialect for DuckDbDialect {
 
     fn sql_generate_series(&self, n: usize) -> String {
         format!(
-            "__ggsql_seq__(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {}))",
+            "\"__ggsql_seq__\"(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {}))",
             n - 1
         )
     }
@@ -44,14 +44,19 @@ impl super::SqlDialect for DuckDbDialect {
     fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
         let group_filter = groups
             .iter()
-            .map(|g| format!("AND __ggsql_pct__.{g} IS NOT DISTINCT FROM __ggsql_qt__.{g}"))
+            .map(|g| {
+                let q = crate::naming::quote_ident(g);
+                format!("AND \"__ggsql_pct__\".{q} IS NOT DISTINCT FROM \"__ggsql_qt__\".{q}")
+            })
             .collect::<Vec<_>>()
             .join(" ");
 
+        let quoted_column = crate::naming::quote_ident(column);
         format!(
             "(SELECT QUANTILE_CONT({column}, {fraction}) \
-            FROM ({from}) AS __ggsql_pct__ \
-            WHERE {column} IS NOT NULL {group_filter})"
+            FROM ({from}) AS \"__ggsql_pct__\" \
+            WHERE {column} IS NOT NULL {group_filter})",
+            column = quoted_column
         )
     }
 }
@@ -144,34 +149,7 @@ impl DuckDBReader {
     }
 }
 
-/// Validate a table name
-fn validate_table_name(name: &str) -> Result<()> {
-    if name.is_empty() {
-        return Err(GgsqlError::ReaderError("Table name cannot be empty".into()));
-    }
-
-    // Reject characters that could break double-quoted identifiers or cause issues
-    let forbidden = ['"', '\0', '\n', '\r'];
-    for ch in forbidden {
-        if name.contains(ch) {
-            return Err(GgsqlError::ReaderError(format!(
-                "Table name '{}' contains invalid character '{}'",
-                name,
-                ch.escape_default()
-            )));
-        }
-    }
-
-    // Reasonable length limit
-    if name.len() > 128 {
-        return Err(GgsqlError::ReaderError(format!(
-            "Table name '{}' exceeds maximum length of 128 characters",
-            name
-        )));
-    }
-
-    Ok(())
-}
+use super::validate_table_name;
 
 /// Convert a Polars DataFrame to DuckDB Arrow query parameters via IPC serialization
 fn dataframe_to_arrow_params(df: DataFrame) -> Result<[usize; 2]> {
@@ -637,6 +615,10 @@ impl Reader for DuckDBReader {
         self.registered_tables.borrow_mut().remove(name);
 
         Ok(())
+    }
+
+    fn execute(&self, query: &str) -> Result<super::Spec> {
+        super::execute_with_reader(self, query)
     }
 
     fn dialect(&self) -> &dyn super::SqlDialect {

@@ -178,19 +178,23 @@ fn stat_bar_count(
         if let Some(weight_col) = weight_value.column_name() {
             if schema_columns.contains(weight_col) {
                 // weight column exists - use SUM (but still call it "count")
-                format!("SUM({}) AS {}", weight_col, stat_count)
+                format!(
+                    "SUM({}) AS \"{}\"",
+                    naming::quote_ident(weight_col),
+                    stat_count
+                )
             } else {
                 // weight mapped but column doesn't exist - fall back to COUNT
                 // (this shouldn't happen with upfront validation, but handle gracefully)
-                format!("COUNT(*) AS {}", stat_count)
+                format!("COUNT(*) AS \"{}\"", stat_count)
             }
         } else {
             // Shouldn't happen (not literal, not column), fall back to COUNT
-            format!("COUNT(*) AS {}", stat_count)
+            format!("COUNT(*) AS \"{}\"", stat_count)
         }
     } else {
         // weight not mapped - use COUNT
-        format!("COUNT(*) AS {}", stat_count)
+        format!("COUNT(*) AS \"{}\"", stat_count)
     };
 
     // Build the query based on whether x is mapped or not
@@ -200,13 +204,13 @@ fn stat_bar_count(
         let (grouped_select, final_select) = if group_by.is_empty() {
             (
                 format!(
-                    "'{dummy}' AS {x}, {agg}",
+                    "'{dummy}' AS \"{x}\", {agg}",
                     dummy = stat_dummy_value,
                     x = stat_x,
                     agg = agg_expr
                 ),
                 format!(
-                    "*, {count} * 1.0 / SUM({count}) OVER () AS {prop}",
+                    "*, \"{count}\" * 1.0 / SUM(\"{count}\") OVER () AS \"{prop}\"",
                     count = stat_count,
                     prop = stat_proportion
                 ),
@@ -215,14 +219,14 @@ fn stat_bar_count(
             let grp_cols = group_by.join(", ");
             (
                 format!(
-                    "{g}, '{dummy}' AS {x}, {agg}",
+                    "{g}, '{dummy}' AS \"{x}\", {agg}",
                     g = grp_cols,
                     dummy = stat_dummy_value,
                     x = stat_x,
                     agg = agg_expr
                 ),
                 format!(
-                    "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {prop}",
+                    "*, \"{count}\" * 1.0 / SUM(\"{count}\") OVER (PARTITION BY {grp}) AS \"{prop}\"",
                     count = stat_count,
                     grp = grp_cols,
                     prop = stat_proportion
@@ -233,7 +237,7 @@ fn stat_bar_count(
         let query_str = if group_by.is_empty() {
             // No grouping at all - single aggregate
             format!(
-                "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__) SELECT {final} FROM __grouped__",
+                "WITH \"__stat_src__\" AS ({query}), \"__grouped__\" AS (SELECT {grouped} FROM \"__stat_src__\") SELECT {final} FROM \"__grouped__\"",
                 query = query,
                 grouped = grouped_select,
                 final = final_select
@@ -242,7 +246,7 @@ fn stat_bar_count(
             // Group by partition/facet variables only
             let group_cols = group_by.join(", ");
             format!(
-                "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __grouped__",
+                "WITH \"__stat_src__\" AS ({query}), \"__grouped__\" AS (SELECT {grouped} FROM \"__stat_src__\" GROUP BY {group}) SELECT {final} FROM \"__grouped__\"",
                 query = query,
                 grouped = grouped_select,
                 group = group_cols,
@@ -264,7 +268,7 @@ fn stat_bar_count(
         )
     } else {
         // x is mapped - use existing logic with two-stage query
-        let x_col = x_col.unwrap();
+        let x_col = naming::quote_ident(&x_col.unwrap());
 
         // Build grouped columns (group_by includes partition_by + facet variables + x)
         let group_cols = if group_by.is_empty() {
@@ -280,7 +284,7 @@ fn stat_bar_count(
             (
                 format!("{x}, {agg}", x = x_col, agg = agg_expr),
                 format!(
-                    "*, {count} * 1.0 / SUM({count}) OVER () AS {prop}",
+                    "*, \"{count}\" * 1.0 / SUM(\"{count}\") OVER () AS \"{prop}\"",
                     count = stat_count,
                     prop = stat_proportion
                 ),
@@ -290,7 +294,7 @@ fn stat_bar_count(
             (
                 format!("{g}, {x}, {agg}", g = grp_cols, x = x_col, agg = agg_expr),
                 format!(
-                    "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {prop}",
+                    "*, \"{count}\" * 1.0 / SUM(\"{count}\") OVER (PARTITION BY {grp}) AS \"{prop}\"",
                     count = stat_count,
                     grp = grp_cols,
                     prop = stat_proportion
@@ -299,7 +303,7 @@ fn stat_bar_count(
         };
 
         let query_str = format!(
-            "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __grouped__",
+            "WITH \"__stat_src__\" AS ({query}), \"__grouped__\" AS (SELECT {grouped} FROM \"__stat_src__\" GROUP BY {group}) SELECT {final} FROM \"__grouped__\"",
             query = query,
             grouped = grouped_select,
             group = group_cols,

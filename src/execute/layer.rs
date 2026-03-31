@@ -54,7 +54,7 @@ pub fn layer_source_query(
         None => {
             // Layer uses global data
             debug_assert!(has_global, "Layer has no source and no global data");
-            Ok(format!("SELECT * FROM {}", naming::global_table()))
+            Ok(format!("SELECT * FROM \"{}\"", naming::global_table()))
         }
     }
 }
@@ -314,15 +314,15 @@ pub fn apply_pre_stat_transform(
         .filter(|col| seen.insert(&col.name))
         .map(|col| {
             if let Some((_, sql)) = transform_exprs.iter().find(|(c, _)| c == &col.name) {
-                format!("{} AS \"{}\"", sql, col.name)
+                format!("{} AS {}", sql, naming::quote_ident(&col.name))
             } else {
-                format!("\"{}\"", col.name)
+                naming::quote_ident(&col.name)
             }
         })
         .collect();
 
     format!(
-        "SELECT {} FROM ({}) AS __ggsql_pre__",
+        "SELECT {} FROM ({}) AS \"__ggsql_pre__\"",
         select_exprs.join(", "),
         query
     )
@@ -374,14 +374,14 @@ pub fn build_layer_base_query(
     // Build query with optional WHERE clause
     if let Some(ref f) = layer.filter {
         format!(
-            "SELECT {} FROM ({}) AS __ggsql_src__ WHERE {}",
+            "SELECT {} FROM ({}) AS \"__ggsql_src__\" WHERE {}",
             select_clause,
             source_query,
             f.as_str()
         )
     } else {
         format!(
-            "SELECT {} FROM ({}) AS __ggsql_src__",
+            "SELECT {} FROM ({}) AS \"__ggsql_src__\"",
             select_clause, source_query
         )
     }
@@ -620,7 +620,7 @@ where
                 transformed_query
             } else {
                 format!(
-                    "SELECT *, {} FROM ({}) AS __ggsql_stat__",
+                    "SELECT *, {} FROM ({}) AS \"__ggsql_stat__\"",
                     stat_rename_exprs.join(", "),
                     transformed_query
                 )

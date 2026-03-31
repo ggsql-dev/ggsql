@@ -4,7 +4,7 @@ use super::types::POSITION_VALUES;
 use super::{
     DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
 };
-use crate::plot::geom::types::get_column_name;
+use crate::plot::geom::types::get_quoted_column_name;
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::{ParameterValue, StatResult};
 use crate::reader::SqlDialect;
@@ -136,10 +136,10 @@ impl std::fmt::Display for Smooth {
 }
 
 fn stat_ols(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<StatResult> {
-    let x_col = get_column_name(aesthetics, "pos1").ok_or_else(|| {
+    let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
         GgsqlError::ValidationError("Smooth requires 'pos1' aesthetic".to_string())
     })?;
-    let y_col = get_column_name(aesthetics, "pos2").ok_or_else(|| {
+    let y_col = get_quoted_column_name(aesthetics, "pos2").ok_or_else(|| {
         GgsqlError::ValidationError("Smooth requires 'pos2' aesthetic".to_string())
     })?;
 
@@ -172,13 +172,13 @@ fn stat_ols(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<S
           {group_by}
         )
         SELECT
-          {groups}x_min AS {x_out},
-          (y_mean + ((xy_mean - x_mean * y_mean) / (xx_mean - x_mean * x_mean)) * (x_min - x_mean)) AS {y_out}
+          {groups}x_min AS \"{x_out}\",
+          (y_mean + ((xy_mean - x_mean * y_mean) / (xx_mean - x_mean * x_mean)) * (x_min - x_mean)) AS \"{y_out}\"
         FROM coefficients
         UNION ALL
         SELECT
-          {groups}x_max AS {x_out},
-          (y_mean + ((xy_mean - x_mean * y_mean) / (xx_mean - x_mean * x_mean)) * (x_max - x_mean)) AS {y_out}
+          {groups}x_max AS \"{x_out}\",
+          (y_mean + ((xy_mean - x_mean * y_mean) / (xx_mean - x_mean * x_mean)) * (x_max - x_mean)) AS \"{y_out}\"
         FROM coefficients",
         groups = groups_str,
         x = x_col,
@@ -198,10 +198,10 @@ fn stat_ols(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<S
 }
 
 fn stat_tls(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<StatResult> {
-    let x_col = get_column_name(aesthetics, "pos1").ok_or_else(|| {
+    let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
         GgsqlError::ValidationError("Smooth requires 'pos1' aesthetic".to_string())
     })?;
-    let y_col = get_column_name(aesthetics, "pos2").ok_or_else(|| {
+    let y_col = get_quoted_column_name(aesthetics, "pos2").ok_or_else(|| {
         GgsqlError::ValidationError("Smooth requires 'pos2' aesthetic".to_string())
     })?;
 
@@ -245,13 +245,13 @@ fn stat_tls(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<S
           FROM coefficients
         )
         SELECT
-          {groups}x_min AS {x_out},
-          (y_mean + ((var_diff + SQRT(var_diff * var_diff + 4 * covariance * covariance)) / (2 * covariance)) * (x_min - x_mean)) AS {y_out}
+          {groups}x_min AS \"{x_out}\",
+          (y_mean + ((var_diff + SQRT(var_diff * var_diff + 4 * covariance * covariance)) / (2 * covariance)) * (x_min - x_mean)) AS \"{y_out}\"
         FROM tls_coefficients
         UNION ALL
         SELECT
-          {groups}x_max AS {x_out},
-          (y_mean + ((var_diff + SQRT(var_diff * var_diff + 4 * covariance * covariance)) / (2 * covariance)) * (x_max - x_mean)) AS {y_out}
+          {groups}x_max AS \"{x_out}\",
+          (y_mean + ((var_diff + SQRT(var_diff * var_diff + 4 * covariance * covariance)) / (2 * covariance)) * (x_max - x_mean)) AS \"{y_out}\"
         FROM tls_coefficients",
         groups = groups_str,
         x = x_col,
