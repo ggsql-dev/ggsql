@@ -322,14 +322,14 @@ fn cursor_to_dataframe(mut cursor: impl Cursor) -> Result<DataFrame> {
         .map_err(|e| GgsqlError::ReaderError(format!("Failed to fetch batch: {}", e)))?
     {
         let num_rows = batch.num_rows();
-        for col_idx in 0..col_count {
+        for (col_idx, column) in columns.iter_mut().enumerate() {
             for row_idx in 0..num_rows {
                 let value = batch
                     .at_as_str(col_idx, row_idx)
                     .ok()
                     .flatten()
                     .map(|s| s.to_string());
-                columns[col_idx].push(value);
+                column.push(value);
             }
         }
     }
