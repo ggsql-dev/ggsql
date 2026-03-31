@@ -17,101 +17,41 @@ fn odbc_env() -> &'static Environment {
     ENV.get_or_init(|| Environment::new().expect("Failed to create ODBC environment"))
 }
 
-/// ODBC SQL dialect.
+/// Detect the backend SQL dialect from an ODBC connection string.
 ///
-/// Uses ANSI SQL by default. The `variant` field can be used to detect
-/// specific backends for dialect customization.
-pub struct OdbcDialect {
-    #[allow(dead_code)]
-    variant: OdbcVariant,
-}
-
-/// Detected ODBC backend variant.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum OdbcVariant {
-    Generic,
-    Snowflake,
-    PostgreSQL,
-    SqlServer,
-}
-
-impl super::SqlDialect for OdbcDialect {
-    fn sql_list_catalogs(&self) -> String {
-        match self.variant {
-            OdbcVariant::Snowflake => "SHOW DATABASES".into(),
-            _ => {
-                "SELECT DISTINCT catalog_name FROM information_schema.schemata \
-                 ORDER BY catalog_name"
-                    .into()
-            }
+/// Returns a dialect matching the detected backend (e.g. Snowflake, SQLite,
+/// DuckDB, or ANSI for generic/unknown backends).
+fn detect_dialect(conn_str: &str) -> Box<dyn super::SqlDialect> {
+    let lower = conn_str.to_lowercase();
+    if lower.contains("driver=snowflake") {
+        Box::new(super::snowflake::SnowflakeDialect)
+    } else if lower.contains("driver=sqlite") || lower.contains("driver={sqlite") {
+        #[cfg(feature = "sqlite")]
+        {
+            Box::new(super::sqlite::SqliteDialect)
         }
-    }
-
-    fn sql_list_schemas(&self, catalog: &str) -> String {
-        match self.variant {
-            OdbcVariant::Snowflake => {
-                let catalog_ident = catalog.replace('"', "\"\"");
-                format!("SHOW SCHEMAS IN DATABASE \"{catalog_ident}\"")
-            }
-            _ => {
-                let catalog = catalog.replace('\'', "''");
-                format!(
-                    "SELECT DISTINCT schema_name FROM information_schema.schemata \
-                     WHERE catalog_name = '{catalog}' ORDER BY schema_name"
-                )
-            }
+        #[cfg(not(feature = "sqlite"))]
+        {
+            Box::new(super::AnsiDialect)
         }
-    }
-
-    fn sql_list_tables(&self, catalog: &str, schema: &str) -> String {
-        match self.variant {
-            OdbcVariant::Snowflake => {
-                let catalog_ident = catalog.replace('"', "\"\"");
-                let schema_ident = schema.replace('"', "\"\"");
-                format!(
-                    "SHOW OBJECTS IN SCHEMA \"{catalog_ident}\".\"{schema_ident}\""
-                )
-            }
-            _ => {
-                let catalog = catalog.replace('\'', "''");
-                let schema = schema.replace('\'', "''");
-                format!(
-                    "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
-                     WHERE table_catalog = '{catalog}' AND table_schema = '{schema}' \
-                     ORDER BY table_name"
-                )
-            }
+    } else if lower.contains("driver=duckdb") || lower.contains("driver={duckdb") {
+        #[cfg(feature = "duckdb")]
+        {
+            Box::new(super::duckdb::DuckDbDialect)
         }
-    }
-
-    fn sql_list_columns(&self, catalog: &str, schema: &str, table: &str) -> String {
-        match self.variant {
-            OdbcVariant::Snowflake => {
-                let catalog_ident = catalog.replace('"', "\"\"");
-                let schema_ident = schema.replace('"', "\"\"");
-                let table_ident = table.replace('"', "\"\"");
-                format!(
-                    "SHOW COLUMNS IN TABLE \"{catalog_ident}\".\"{schema_ident}\".\"{table_ident}\""
-                )
-            }
-            _ => {
-                let catalog = catalog.replace('\'', "''");
-                let schema = schema.replace('\'', "''");
-                let table = table.replace('\'', "''");
-                format!(
-                    "SELECT column_name, data_type FROM information_schema.columns \
-                     WHERE table_catalog = '{catalog}' AND table_schema = '{schema}' \
-                     AND table_name = '{table}' ORDER BY ordinal_position"
-                )
-            }
+        #[cfg(not(feature = "duckdb"))]
+        {
+            Box::new(super::AnsiDialect)
         }
+    } else {
+        Box::new(super::AnsiDialect)
     }
 }
 
 /// Generic ODBC reader implementing the `Reader` trait.
 pub struct OdbcReader {
     connection: odbc_api::Connection<'static>,
-    dialect: OdbcDialect,
+    dialect: Box<dyn super::SqlDialect>,
     registered_tables: RefCell<HashSet<String>>,
 }
 
@@ -147,8 +87,8 @@ impl OdbcReader {
             }
         }
 
-        // Detect variant from connection string
-        let variant = detect_variant(&conn_str);
+        // Detect backend dialect from connection string
+        let dialect = detect_dialect(&conn_str);
 
         let env = odbc_env();
         let connection = env
@@ -157,7 +97,7 @@ impl OdbcReader {
 
         Ok(Self {
             connection,
-            dialect: OdbcDialect { variant },
+            dialect,
             registered_tables: RefCell::new(HashSet::new()),
         })
     }
@@ -326,7 +266,7 @@ impl Reader for OdbcReader {
     }
 
     fn dialect(&self) -> &dyn super::SqlDialect {
-        &self.dialect
+        &*self.dialect
     }
 }
 
@@ -457,23 +397,12 @@ fn has_token(conn_str: &str) -> bool {
     conn_str.to_lowercase().contains("token=")
 }
 
-fn detect_variant(conn_str: &str) -> OdbcVariant {
-    let lower = conn_str.to_lowercase();
-    if lower.contains("driver=snowflake") {
-        OdbcVariant::Snowflake
-    } else if lower.contains("driver={postgresql}") || lower.contains("driver=postgresql") {
-        OdbcVariant::PostgreSQL
-    } else if lower.contains("driver={odbc driver") || lower.contains("driver={sql server") {
-        OdbcVariant::SqlServer
-    } else {
-        OdbcVariant::Generic
-    }
-}
-
 fn home_dir() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "windows")]
     {
-        std::env::var("USERPROFILE").ok().map(std::path::PathBuf::from)
+        std::env::var("USERPROFILE")
+            .ok()
+            .map(std::path::PathBuf::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -505,8 +434,7 @@ fn find_snowflake_connections_toml() -> Option<std::path::PathBuf> {
     if let Some(home) = home_dir() {
         #[cfg(target_os = "macos")]
         {
-            let p = home
-                .join("Library/Application Support/snowflake/connections.toml");
+            let p = home.join("Library/Application Support/snowflake/connections.toml");
             if p.exists() {
                 return Some(p);
             }
@@ -525,8 +453,7 @@ fn find_snowflake_connections_toml() -> Option<std::path::PathBuf> {
 
         #[cfg(target_os = "windows")]
         {
-            let p = home
-                .join("AppData/Local/snowflake/connections.toml");
+            let p = home.join("AppData/Local/snowflake/connections.toml");
             if p.exists() {
                 return Some(p);
             }
@@ -565,9 +492,7 @@ fn resolve_connection_name(conn_str: &str) -> Option<String> {
     }
 
     // Build ODBC connection string from TOML entry fields
-    let get_str = |key: &str| -> Option<String> {
-        entry.get(key)?.as_str().map(|s| s.to_string())
-    };
+    let get_str = |key: &str| -> Option<String> { entry.get(key)?.as_str().map(|s| s.to_string()) };
 
     let account = get_str("account")?;
     let mut parts = vec![
@@ -656,19 +581,18 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_variant() {
-        assert_eq!(
-            detect_variant("Driver=Snowflake;Server=foo"),
-            OdbcVariant::Snowflake
-        );
-        assert_eq!(
-            detect_variant("Driver={PostgreSQL};Server=localhost"),
-            OdbcVariant::PostgreSQL
-        );
-        assert_eq!(
-            detect_variant("Driver=SomeOther;Server=localhost"),
-            OdbcVariant::Generic
-        );
+    fn test_detect_dialect() {
+        // Snowflake uses SHOW commands
+        let dialect = detect_dialect("Driver=Snowflake;Server=foo");
+        assert!(dialect.sql_list_catalogs().contains("SHOW"));
+
+        // PostgreSQL uses information_schema (ANSI default)
+        let dialect = detect_dialect("Driver={PostgreSQL};Server=localhost");
+        assert!(dialect.sql_list_catalogs().contains("information_schema"));
+
+        // Generic uses information_schema (ANSI default)
+        let dialect = detect_dialect("Driver=SomeOther;Server=localhost");
+        assert!(dialect.sql_list_catalogs().contains("information_schema"));
     }
 
     #[test]
@@ -712,8 +636,7 @@ account = "otheraccount"
         // Point SNOWFLAKE_HOME at our temp dir
         std::env::set_var("SNOWFLAKE_HOME", dir.path());
 
-        let result =
-            resolve_connection_name("Driver=Snowflake;ConnectionName=myconn");
+        let result = resolve_connection_name("Driver=Snowflake;ConnectionName=myconn");
         assert!(result.is_some());
         let conn = result.unwrap();
         assert!(conn.contains("Driver=Snowflake"));
@@ -726,21 +649,18 @@ account = "otheraccount"
         assert!(conn.contains("Role=myrole"));
 
         // Test with a connection that has fewer fields
-        let result2 =
-            resolve_connection_name("Driver=Snowflake;ConnectionName=other");
+        let result2 = resolve_connection_name("Driver=Snowflake;ConnectionName=other");
         assert!(result2.is_some());
         let conn2 = result2.unwrap();
         assert!(conn2.contains("Server=otheraccount.snowflakecomputing.com"));
         assert!(!conn2.contains("UID="));
 
         // Test with non-existent connection name
-        let result3 =
-            resolve_connection_name("Driver=Snowflake;ConnectionName=nonexistent");
+        let result3 = resolve_connection_name("Driver=Snowflake;ConnectionName=nonexistent");
         assert!(result3.is_none());
 
         // No ConnectionName param → None
-        let result4 =
-            resolve_connection_name("Driver=Snowflake;Server=foo");
+        let result4 = resolve_connection_name("Driver=Snowflake;Server=foo");
         assert!(result4.is_none());
 
         // Clean up env

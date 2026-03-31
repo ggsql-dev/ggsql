@@ -257,6 +257,9 @@ pub mod sqlite;
 #[cfg(feature = "odbc")]
 pub mod odbc;
 
+#[cfg(feature = "odbc")]
+pub mod snowflake;
+
 pub mod connection;
 pub mod data;
 mod spec;

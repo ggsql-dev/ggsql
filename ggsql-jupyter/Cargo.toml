@@ -57,7 +57,8 @@ hex = "0.4"
 uuid = { version = "1.0", features = ["v4"] }
 
 [features]
-default = []
+default = ["all-readers"]
+all-readers = ["sqlite", "odbc"]
 odbc = ["ggsql/odbc"]
 sqlite = ["ggsql/sqlite"]
 
