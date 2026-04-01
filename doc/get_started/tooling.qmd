@@ -16,7 +16,7 @@ Once the Jupyter kernel is installed you can use ggsql as an engine in your Jupy
 VISUALISE ...
 ```
 
-Each block in the document are using the same session, so tables created in one block will be available in subsequent blocks.
+Each block in the document uses the same session, so tables created in one block will be available in subsequent blocks.
 
 ## Python package
 We have a [python package](https://pypi.org/project/ggsql/) which you can install through pip (`pip install ggsql`). The package provides binding to ggsql and allows you to plot with ggsql directly from within python and register alternative data backends.

@@ -29,7 +29,7 @@ We use the [`PROJECT`](../syntax/clause/project.qmd) clause to control the coord
 
 The above alludes to the fact that coordinate systems have different position aesthetics. Often you expect `x` and `y` as position aesthetics and while these are indeed the default name for the [`cartesian`](../syntax/coord/cartesian.qmd) coordinate system they would be nonsensical for a [`polar`](../syntax/coord/polar.qmd) system which uses `radius` and `angle` as defaults. You can, however, freely define your own names, e.g. `r` and `a` for a polar system if you value brevity over comprehension.
 
-`PROJECT` also takes a `SETTING` clause which works much like the `SETTING` clause in `DRAW` and `SCALE`, allowing you to modify the behavior of the coordinate system. An example of a full `PROJECT` query could be:
+`PROJECT` also takes a `SETTING` clause which works much like the `SETTING` clause in `DRAW` and `SCALE`, allowing you to modify the behavior of the coordinate system. An example of a full `PROJECT` clause could be:
 
 ```ggsql
 PROJECT r, a TO polar
@@ -41,7 +41,7 @@ However, you may not need to specify anything at all. ggsql will automatically d
 ### `FACET`
 Faceting is applied with the [`FACET`](../syntax/clause/facet.qmd) clause. It allows you to either facet by a single variable (`FACET var`) or by a combination of two variables `FACET var1 BY var2`. In the former case the small multiples are laid out in a row-wise manner, wrapping to the next row if there are more multiples than the number of column. In the latter case the first variable is related to the rows and the second is related to the columns.
 
-There is an alternative to using the `FACET` variable, which is to map the variables directly to the facet aesthetics. There are three of these: `panel` is used when faceting by a single variable and `row` and `column` is used when faceting by two variables. `FACET var` is thus equivalent to `VISUALISE var AS panel`. Whichever you choose to use is thus a matter of personal preference as well as whether you also need to modify faceting behavior (in which case )
+There is an alternative to using the `FACET` variable, which is to map the variables directly to the facet aesthetics. There are three of these: `panel` is used when faceting by a single variable and `row` and `column` is used when faceting by two variables. `FACET var` is thus equivalent to `VISUALISE var AS panel`. Whichever you choose to use is thus a matter of personal preference, as well as whether you also need to modify faceting behavior (in which case you'd need a `FACET` clause anyway).
 
 ### `LABEL`
 ggsql automatically labels the axes and legends in your plot by the column name of the data mapped to it. However, you often want to provide more descriptive names as well as a title to give context to the plot. All of this is accomplished with the [`LABEL`](../syntax/clause/label.qmd) clause by setting the label text for both titles, subtitles, etc. as well as any 
