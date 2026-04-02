@@ -1273,16 +1273,6 @@ dependencies = [
 
 [[package]]
 name = "ggsql"
-version = "0.1.0"
-dependencies = [
- "extendr-api",
- "ggsql 0.1.9",
- "polars",
- "serde_json",
-]
-
-[[package]]
-name = "ggsql"
 version = "0.1.9"
 dependencies = [
  "anyhow",
@@ -1304,6 +1294,16 @@ dependencies = [
  "tree-sitter",
  "tree-sitter-ggsql",
  "uuid",
+]
+
+[[package]]
+name = "ggsql-r"
+version = "0.1.9"
+dependencies = [
+ "extendr-api",
+ "ggsql",
+ "polars",
+ "serde_json",
 ]
 
 [[package]]
